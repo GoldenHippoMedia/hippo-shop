@@ -27,11 +27,8 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
-
-      - name: Upgrade npm to ≥11.5.1 for OIDC trusted publishing
-        run: npm install -g npm@latest
 
       - run: pnpm install --frozen-lockfile
 
