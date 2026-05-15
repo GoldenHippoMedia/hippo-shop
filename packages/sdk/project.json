@@ -1,0 +1,8 @@
+{
+  "name": "sdk",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "packages/sdk/src",
+  "tags": ["scope:runtime", "type:lib"],
+  "implicitDependencies": ["types"]
+}

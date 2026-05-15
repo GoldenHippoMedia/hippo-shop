@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hippo Shop SDK — declarative product pricing</title>
+    <style>
+      :root { color-scheme: light dark; font: 16px/1.5 ui-sans-serif, system-ui, sans-serif; }
+      body { max-width: 48rem; margin: 2rem auto; padding: 0 1rem; }
+      header { margin-bottom: 1.5rem; }
+      .card {
+        display: grid;
+        grid-template-columns: 160px 1fr;
+        gap: 1.25rem;
+        border: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
+        border-radius: 12px;
+        padding: 1.25rem;
+        align-items: start;
+      }
+      .card img { width: 100%; border-radius: 8px; background: color-mix(in srgb, CanvasText 8%, transparent); }
+      .price { font-size: 1.75rem; font-weight: 600; margin: 0.25rem 0; }
+      .savings { color: #047857; font-weight: 600; }
+      .muted { color: color-mix(in srgb, CanvasText 60%, transparent); }
+      .badge {
+        display: inline-block;
+        font-size: 0.8rem;
+        font-weight: 600;
+        padding: 0.15rem 0.5rem;
+        border-radius: 999px;
+        background: #fee2e2;
+        color: #991b1b;
+      }
+      .reviews { color: #d97706; font-weight: 600; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Product pricing — declarative bindings</h1>
+      <p class="muted">
+        The entire card below is markup. No JavaScript was written for this page —
+        the SDK reads <code>data-gh-product</code> and resolves the fields itself.
+      </p>
+    </header>
+
+    <article class="card" data-gh-product="bio-complete-3">
+      <img
+        data-attr-src="image"
+        data-attr-alt="name"
+        src=""
+        alt="Loading…"
+      />
+
+      <div>
+        <p class="muted" data-field="category">…</p>
+        <h2 data-field="name">Product name</h2>
+
+        <p class="reviews">
+          <span data-field="reviews.average" data-format="number:1">—</span>★
+          <span class="muted">
+            (<span data-field="reviews.count" data-format="number:0">—</span> reviews)
+          </span>
+        </p>
+
+        <p class="price">
+          <span data-field="variants.subscription.standard.0.price" data-format="currency:USD:en-US">
+            $0.00
+          </span>
+        </p>
+
+        <p class="savings" data-if="variants.subscription.standard.0.savings">
+          Save <span data-field="variants.subscription.standard.0.savings" data-format="currency:USD:en-US">$0.00</span>
+          vs. one-time
+        </p>
+
+        <p data-if="outOfStock">
+          <span class="badge">Out of stock</span>
+        </p>
+      </div>
+    </article>
+
+    <script
+      src="../../packages/sdk/dist/gh.js"
+      data-key="gh_pk_example_consumer_aaaaaa"
+      data-brand="Gundry MD"
+      data-debug="false"
+    ></script>
+  </body>
+</html>

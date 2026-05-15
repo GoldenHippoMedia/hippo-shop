@@ -1,0 +1,79 @@
+{
+  "id": "prod_bio_complete_3",
+  "slug": "bio-complete-3",
+  "name": "Bio Complete 3",
+  "category": "Digestive Health",
+  "packaging": {
+    "singular": "Bottle",
+    "plural": "Bottles"
+  },
+  "image": "https://cdn.gundrymd.com/products/bio-complete-3.png",
+  "reviews": {
+    "count": 18432,
+    "average": 4.7,
+    "globalFiveStarReviews": 14210
+  },
+  "outOfStock": false,
+  "variants": {
+    "subscription": {
+      "standard": [
+        {
+          "productId": "prod_bio_complete_3",
+          "variantId": "var_bc3_sub_1",
+          "sku": "BC3-SUB-1",
+          "price": 49.95,
+          "rebillPrice": 49.95,
+          "quantity": 1,
+          "packageType": "bottle",
+          "savings": 30.00,
+          "alternatePurchaseTypePrice": 69.95,
+          "defaultFrequency": {
+            "interval": 1,
+            "scale": "month",
+            "publicInterval": 30,
+            "publicScale": "day",
+            "value": "30-day",
+            "label": "Every 30 Days"
+          }
+        },
+        {
+          "productId": "prod_bio_complete_3",
+          "variantId": "var_bc3_sub_6",
+          "sku": "BC3-SUB-6",
+          "price": 199.74,
+          "rebillPrice": 199.74,
+          "quantity": 6,
+          "packageType": "bottle",
+          "savings": 359.76,
+          "alternatePurchaseTypePrice": 299.70,
+          "defaultFrequency": {
+            "interval": 3,
+            "scale": "month",
+            "publicInterval": 90,
+            "publicScale": "day",
+            "value": "90-day",
+            "label": "Every 90 Days"
+          }
+        }
+      ],
+      "myAccount": []
+    },
+    "oneTime": {
+      "standard": [
+        {
+          "productId": "prod_bio_complete_3",
+          "variantId": "var_bc3_ot_1",
+          "sku": "BC3-OT-1",
+          "price": 69.95,
+          "rebillPrice": 0,
+          "quantity": 1,
+          "packageType": "bottle",
+          "savings": 0,
+          "alternatePurchaseTypePrice": 49.95,
+          "defaultFrequency": null
+        }
+      ],
+      "myAccount": []
+    }
+  }
+}

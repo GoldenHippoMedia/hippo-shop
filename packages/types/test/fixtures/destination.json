@@ -1,0 +1,21 @@
+{
+  "slug": "bio-complete-3-6btl-sub",
+  "name": "Bio Complete 3 — 6 Bottle Subscription",
+  "description": "Six-bottle subscription with the deepest discount and free shipping.",
+  "funnelSlug": "bio-complete-3-main",
+  "pricing": {
+    "productSlug": "bio-complete-3",
+    "packageQuantity": 6,
+    "purchaseType": "subscription",
+    "price": {
+      "amount": 199.74,
+      "currency": "USD",
+      "savings": 359.76
+    },
+    "rebillPrice": {
+      "amount": 199.74,
+      "currency": "USD",
+      "savings": 359.76
+    }
+  }
+}

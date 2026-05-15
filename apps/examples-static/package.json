@@ -1,0 +1,10 @@
+{
+  "name": "@hippo-shop/examples-static",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Hand-authored HTML pages exercising the SDK.",
+  "scripts": {
+    "build": "echo 'static — nothing to build'",
+    "serve": "npx --yes http-server . -p 4200 -c-1"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "@hippo-shop/integration-harness",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Vitest E2E tests for /public/v1/* — gated on UAT_KEY env var.",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@goldenhippo/hippo-shop-types": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.10",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

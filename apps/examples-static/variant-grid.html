@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hippo Shop SDK — variant pricing grid</title>
+    <style>
+      :root { color-scheme: light dark; font: 16px/1.5 ui-sans-serif, system-ui, sans-serif; }
+      body { max-width: 64rem; margin: 2rem auto; padding: 0 1rem; }
+      .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; }
+      .tier {
+        border: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
+        border-radius: 12px;
+        padding: 1.25rem;
+        text-align: center;
+      }
+      .qty { font-size: 2rem; font-weight: 700; margin: 0; }
+      .package { color: color-mix(in srgb, CanvasText 60%, transparent); margin: 0; }
+      .price { font-size: 1.5rem; font-weight: 600; margin: 0.75rem 0 0.25rem; }
+      .savings { color: #047857; font-weight: 600; font-size: 0.9rem; }
+      .empty { color: color-mix(in srgb, CanvasText 60%, transparent); font-style: italic; }
+      .muted { color: color-mix(in srgb, CanvasText 60%, transparent); }
+    </style>
+  </head>
+  <body>
+    <h1>Choose your subscription</h1>
+    <p class="muted">
+      One <code>data-gh-product</code> sets the context for every tier card below.
+      The <code>&lt;template data-each="..."&gt;</code> clones itself per variant.
+    </p>
+
+    <section data-gh-product="bio-complete-3">
+      <h2 data-field="name">Product</h2>
+
+      <p data-if-not="variants.subscription.standard" class="empty">
+        No subscription tiers available right now.
+      </p>
+
+      <div class="grid">
+        <template data-each="variants.subscription.standard">
+          <article class="tier">
+            <p class="qty"><span data-field="quantity">—</span></p>
+            <p class="package"><span data-field="packageType">bottle</span>s</p>
+            <p class="price">
+              <span data-field="price" data-format="currency:USD:en-US">$0.00</span>
+            </p>
+            <p class="savings" data-if="savings">
+              Save <span data-field="savings" data-format="currency:USD:en-US">$0</span>
+            </p>
+          </article>
+        </template>
+      </div>
+    </section>
+
+    <script
+      src="../../packages/sdk/dist/gh.js"
+      data-key="gh_pk_example_consumer_aaaaaa"
+      data-brand="Gundry MD"
+    ></script>
+  </body>
+</html>

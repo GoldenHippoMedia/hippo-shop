@@ -1,0 +1,43 @@
+{
+  "name": "@goldenhippo/hippo-shop-sdk",
+  "version": "1.0.0",
+  "description": "Browser SDK for Hippo Shop — auto-boots from a <script> tag and attaches window.gh.data.",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/gh.cjs",
+  "module": "dist/gh.mjs",
+  "types": "dist/gh.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/gh.d.ts",
+      "import": "./dist/gh.mjs",
+      "require": "./dist/gh.cjs"
+    },
+    "./bundle": "./dist/gh.js"
+  },
+  "files": ["dist", "README.md"],
+  "sideEffects": ["./src/index.ts", "./dist/gh.js"],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src",
+    "size": "node ../../scripts/size-check.mjs"
+  },
+  "dependencies": {
+    "@goldenhippo/hippo-shop-types": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.10",
+    "jsdom": "^25.0.1",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8",
+    "@vitest/coverage-v8": "^2.1.8"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}

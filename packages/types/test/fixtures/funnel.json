@@ -1,0 +1,36 @@
+{
+  "slug": "bio-complete-3-main",
+  "name": "Bio Complete 3 — Main Funnel",
+  "active": true,
+  "entryUrl": "https://order.gundrymd.com/bio-complete-3",
+  "steps": [
+    {
+      "stepNumber": 1,
+      "slug": "vsl",
+      "name": "Video Sales Letter",
+      "kind": "landing",
+      "url": "https://order.gundrymd.com/bio-complete-3"
+    },
+    {
+      "stepNumber": 2,
+      "slug": "order-form",
+      "name": "Order Form",
+      "kind": "order-form",
+      "url": "https://order.gundrymd.com/bio-complete-3/order"
+    },
+    {
+      "stepNumber": 3,
+      "slug": "upsell-1",
+      "name": "Total Restore Upsell",
+      "kind": "upsell",
+      "url": "https://order.gundrymd.com/bio-complete-3/upsell-1"
+    },
+    {
+      "stepNumber": 4,
+      "slug": "thank-you",
+      "name": "Thank You",
+      "kind": "thank-you",
+      "url": "https://order.gundrymd.com/bio-complete-3/thank-you"
+    }
+  ]
+}
