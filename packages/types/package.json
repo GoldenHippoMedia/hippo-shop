@@ -14,7 +14,10 @@
       "require": "./dist/index.cjs"
     }
   },
-  "files": ["dist", "README.md"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "sideEffects": false,
   "scripts": {
     "build": "tsup",
@@ -34,7 +37,6 @@
     "directory": "test"
   },
   "publishConfig": {
-    "access": "public",
-    "provenance": true
+    "access": "public"
   }
 }
