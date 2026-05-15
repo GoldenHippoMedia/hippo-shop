@@ -52,10 +52,9 @@ jobs:
 
       - name: Deploy SDK to Cloudflare Pages
         if: steps.changesets.outputs.published == 'true'
-        uses: cloudflare/pages-action@v1
+        uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          projectName: gh-hippo-shop-sdk
-          directory: packages/sdk/dist
+          command: pages deploy packages/sdk/dist --project-name=gh-hippo-shop-sdk --branch=main
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
