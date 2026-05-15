@@ -1,11 +1,31 @@
 # @goldenhippo/hippo-shop-sdk
 
-Browser SDK for reading Golden Hippo public data — funnels, destinations, products. Loads from a `<script>` tag and gives partners (and AI-authored funnel pages) two ways to use it:
+[![npm version](https://img.shields.io/npm/v/@goldenhippo/hippo-shop-sdk.svg)](https://www.npmjs.com/package/@goldenhippo/hippo-shop-sdk)
+[![bundle size](https://img.shields.io/badge/gzipped-%E2%89%A48%20KB-blue)](https://www.npmjs.com/package/@goldenhippo/hippo-shop-sdk)
+[![license: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
+
+Browser SDK for reading Golden Hippo public data — funnels, destinations, products. Loads from a `<script>` tag and exposes two complementary surfaces:
 
 1. **Declarative** — write HTML with `data-gh-*` attributes; the SDK scans the page, fetches the right resources, and renders the values. No JS required.
 2. **Programmatic** — call `window.gh.data.product(slug)` and friends for full control.
 
-Both share the same auth, caching, and brand-tenancy guardrails enforced at Kong.
+Both share the same auth, caching, and brand-tenancy guardrails enforced at the API gateway.
+
+> Source: [GoldenHippoMedia/hippo-shop](https://github.com/GoldenHippoMedia/hippo-shop) · DTO contract: [`@goldenhippo/hippo-shop-types`](https://www.npmjs.com/package/@goldenhippo/hippo-shop-types)
+
+---
+
+## Installation
+
+For most pages, no install — drop the `<script>` tag (see Quickstart below). For TypeScript projects or build-tool integrations:
+
+```bash
+npm install @goldenhippo/hippo-shop-sdk
+# or
+pnpm add @goldenhippo/hippo-shop-sdk
+```
+
+The published bundle is `dist/gh.js` (IIFE, browser-loadable directly from a CDN-like URL) and ESM/CJS entries for tooling.
 
 ---
 
@@ -178,6 +198,10 @@ Declarative bindings degrade gracefully: a failed fetch logs a warning and leave
 
 Hard-budgeted at **8 KB gzipped**, CI-enforced.
 
+## Provenance
+
+Published with [SLSA provenance](https://slsa.dev/spec/v1.0/provenance) attestation via npm Trusted Publishers + GitHub Actions OIDC. Look for the "Built and signed on GitHub Actions" badge on the [package page](https://www.npmjs.com/package/@goldenhippo/hippo-shop-sdk) — it links back to the exact workflow run that built the artifact.
+
 ## License
 
-UNLICENSED. Internal Golden Hippo use until external partner enrollment is approved.
+MIT. See [LICENSE](./LICENSE).
