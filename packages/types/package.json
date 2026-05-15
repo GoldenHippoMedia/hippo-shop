@@ -3,6 +3,11 @@
   "version": "1.0.0",
   "description": "Public DTO types for Hippo Shop — the typed contract shared by the commerce API and the browser SDK.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/GoldenHippoMedia/hippo-shop.git",
+    "directory": "packages/types"
+  },
   "type": "module",
   "main": "dist/index.cjs",
   "module": "dist/index.js",

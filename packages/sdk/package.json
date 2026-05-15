@@ -3,6 +3,11 @@
   "version": "1.0.0",
   "description": "Browser SDK for Hippo Shop — auto-boots from a <script> tag and attaches window.gh.data.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/GoldenHippoMedia/hippo-shop.git",
+    "directory": "packages/sdk"
+  },
   "type": "module",
   "main": "dist/gh.cjs",
   "module": "dist/gh.mjs",
