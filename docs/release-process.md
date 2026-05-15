@@ -186,6 +186,10 @@ When you publish the bootstrap stub, npm always also tags it as `latest` because
 | [`.changeset/config.json`](../.changeset/config.json) | changesets configuration |
 | [`packages/*/package.json`](../packages) | Per-package publish config |
 
+## Related
+
+- [`cloudflare-deploy.md`](./cloudflare-deploy.md) — what happens after npm publish: CDN deploy, URL model, Kong wiring, rollback
+
 ## Manual rescue scenarios
 
 ### "I need to publish from my machine, just this once"

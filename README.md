@@ -51,6 +51,7 @@ docs/
   onboarding-partners.md
   incident-response.md
   release-process.md
+  cloudflare-deploy.md
 ```
 
 ## Boundaries
