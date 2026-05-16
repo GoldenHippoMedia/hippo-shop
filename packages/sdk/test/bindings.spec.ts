@@ -378,3 +378,133 @@ describe('applyBindings — loops (data-each on <template>)', () => {
     expect((document.getElementById('six') as HTMLElement).style.display).not.toBe('none');
   });
 });
+
+describe('applyBindings — data-with', () => {
+  const formatters = new FormatRegistry();
+
+  function setup(html: string, data: unknown): void {
+    document.body.innerHTML = html;
+    applyBindings(document, {
+      formatters,
+      resources: new Map([['product:p1', data]]),
+    });
+  }
+
+  it('narrows scope so descendants can use relative paths', () => {
+    setup(
+      `<article data-gh-product="p1">
+         <div data-with="variants.subscription.standardByQuantity.6">
+           <span id="q" data-field="quantity"></span>
+           <span id="p" data-field="price"></span>
+         </div>
+       </article>`,
+      {
+        variants: {
+          subscription: {
+            standardByQuantity: {
+              '6': { quantity: 6, price: 169.95 },
+            },
+          },
+        },
+      },
+    );
+    expect(document.getElementById('q')?.textContent).toBe('6');
+    expect(document.getElementById('p')?.textContent).toBe('169.95');
+  });
+
+  it('hides the element and skips the subtree when the path is missing', () => {
+    setup(
+      `<article data-gh-product="p1">
+         <div id="card" data-with="variants.subscription.standardByQuantity.7">
+           <span id="p" data-field="price">UNRENDERED</span>
+         </div>
+       </article>`,
+      {
+        variants: {
+          subscription: {
+            standardByQuantity: { '6': { quantity: 6, price: 169.95 } },
+          },
+        },
+      },
+    );
+    expect((document.getElementById('card') as HTMLElement).style.display).toBe('none');
+    expect(document.getElementById('p')?.textContent).toBe('UNRENDERED');
+  });
+
+  it('hides on null and on a falsy primitive that resolves to null', () => {
+    setup(
+      `<article data-gh-product="p1">
+         <div id="card" data-with="nullish">child</div>
+       </article>`,
+      { nullish: null },
+    );
+    expect((document.getElementById('card') as HTMLElement).style.display).toBe('none');
+  });
+
+  it('supports nested data-with — inner path is relative to outer narrowed scope', () => {
+    setup(
+      `<article data-gh-product="p1">
+         <div data-with="variants.subscription">
+           <div data-with="standardByQuantity.6">
+             <span id="p" data-field="price"></span>
+           </div>
+         </div>
+       </article>`,
+      {
+        variants: {
+          subscription: {
+            standardByQuantity: { '6': { price: 169.95 } },
+          },
+        },
+      },
+    );
+    expect(document.getElementById('p')?.textContent).toBe('169.95');
+  });
+
+  it('evaluates data-with before data-if so data-if path is relative to narrowed scope', () => {
+    setup(
+      `<article data-gh-product="p1">
+         <div id="card" data-with="variants.subscription.standardByQuantity.6"
+              data-if="savings">
+           <span id="s" data-field="savings"></span>
+         </div>
+       </article>`,
+      {
+        variants: {
+          subscription: {
+            standardByQuantity: { '6': { savings: 25 } },
+          },
+        },
+      },
+    );
+    expect((document.getElementById('card') as HTMLElement).style.display).not.toBe('none');
+    expect(document.getElementById('s')?.textContent).toBe('25');
+  });
+
+  it('scopes loop body when data-with is on the <template data-each> element', () => {
+    setup(
+      `<article data-gh-product="p1">
+         <ul>
+           <template data-each="standardList" data-with="variants.subscription">
+             <li class="row" data-field="sku"></li>
+           </template>
+         </ul>
+       </article>`,
+      {
+        variants: {
+          subscription: {
+            standardList: [{ sku: 'A-3' }, { sku: 'A-6' }],
+          },
+        },
+      },
+    );
+    const rows = Array.from(document.querySelectorAll('.row')).map((el) => el.textContent);
+    expect(rows).toEqual(['A-3', 'A-6']);
+  });
+
+  it('does nothing when there is no resource context yet', () => {
+    document.body.innerHTML = `<div id="card" data-with="anything">child</div>`;
+    applyBindings(document, { formatters, resources: new Map() });
+    expect((document.getElementById('card') as HTMLElement).style.display).not.toBe('none');
+  });
+});
