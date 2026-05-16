@@ -13,7 +13,7 @@ const TIERS = ['standard', 'myAccount'] as const;
  * the record; the list preserves the original order including duplicates.
  */
 export function enrichProduct(raw: HippoShopProductDTO): HippoShopProductDTO {
-  const variants = (raw as { variants?: Record<string, unknown> }).variants;
+  const variants = (raw as unknown as { variants?: Record<string, unknown> }).variants;
   if (!variants) return raw;
   for (const purchase of PURCHASE_TYPES) {
     const branch = variants[purchase] as Record<string, unknown> | undefined;
