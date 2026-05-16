@@ -11,7 +11,7 @@
  */
 
 import type { GhDataClient } from './client';
-import { applyBindings, collectResources, RESOURCE_ATTR, RESOURCE_KINDS } from './bindings';
+import { applyBindings, collectResources, RESOURCE_ATTR, RESOURCE_KINDS, type ResourceState } from './bindings';
 import { FormatRegistry } from './format';
 import { GhError } from './errors';
 import type { Logger } from './log';
@@ -27,6 +27,7 @@ export class GhRuntime {
   readonly formatters = new FormatRegistry();
   private readonly resources = new Map<string, unknown>();
   private readonly inFlight = new Map<string, Promise<void>>();
+  private readonly resourceStates = new Map<string, ResourceState>();
   private observer: MutationObserver | null = null;
   private rebindScheduled = false;
   private bindingsReadyFired = false;
@@ -45,12 +46,34 @@ export class GhRuntime {
    */
   async bind(root: ParentNode | Element = this.doc): Promise<void> {
     const refs = collectResources(root);
+    const target = root instanceof Document ? root : (root as Element);
+
     if (refs.length > 0) {
+      // Pre-fetch pass: mark all unloaded resources as 'loading' and apply bindings
+      // immediately so data-when="loading" elements can show their skeletons before
+      // the fetch settles.
+      let needsPrePass = false;
+      for (const ref of refs) {
+        const key = `${ref.kind}:${ref.slug}`;
+        if (!this.resources.has(key) && this.resourceStates.get(key) !== 'loading') {
+          this.resourceStates.set(key, 'loading');
+          needsPrePass = true;
+        }
+      }
+      if (needsPrePass) {
+        applyBindings(target, {
+          formatters: this.formatters,
+          resources: this.resources,
+          resourceStates: this.resourceStates,
+        });
+      }
       await Promise.all(refs.map(ref => this.loadOne(ref.kind, ref.slug)));
     }
-    applyBindings(root instanceof Document ? root : (root as Element), {
+
+    applyBindings(target, {
       formatters: this.formatters,
       resources: this.resources,
+      resourceStates: this.resourceStates,
     });
     if (!this.bindingsReadyFired) {
       this.bindingsReadyFired = true;
@@ -65,6 +88,7 @@ export class GhRuntime {
    */
   async refresh(): Promise<void> {
     this.resources.clear();
+    this.resourceStates.clear();
     this.opts.client.clearCache();
     await this.bind(this.doc);
   }
@@ -125,11 +149,14 @@ export class GhRuntime {
     if (this.resources.has(key)) return Promise.resolve();
     const inflight = this.inFlight.get(key);
     if (inflight) return inflight;
+    this.resourceStates.set(key, 'loading');
     const promise = (async () => {
       try {
         const data = await this.opts.client[kind](slug);
         this.resources.set(key, data);
+        this.resourceStates.set(key, 'loaded');
       } catch (err) {
+        this.resourceStates.set(key, 'failed');
         if (err instanceof GhError) {
           this.opts.logger.warn(`failed to load ${kind} "${slug}" — ${err.code}: ${err.message}`);
         } else {
