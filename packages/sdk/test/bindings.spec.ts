@@ -22,6 +22,40 @@ const PRODUCT = {
   },
 };
 
+const ENRICHED_PRODUCT = {
+  id: 'p2',
+  slug: 'enriched-product',
+  name: 'Enriched Product',
+  packaging: { singular: 'Bottle', plural: 'Bottles' },
+  image: 'https://cdn.example.com/ep.png',
+  reviews: { count: 10, average: 4.8, globalFiveStarReviews: 8 },
+  outOfStock: false,
+  variants: {
+    subscription: {
+      standard: [],
+      standardList: [
+        { sku: 'EP-SUB-3', price: 89.95, quantity: 3, packageType: 'bottle', savings: 15 },
+        { sku: 'EP-SUB-6', price: 169.95, quantity: 6, packageType: 'bottle', savings: 50 },
+      ],
+      standardByQuantity: {
+        '3': { sku: 'EP-SUB-3', price: 89.95, quantity: 3, packageType: 'bottle', savings: 15 },
+        '6': { sku: 'EP-SUB-6', price: 169.95, quantity: 6, packageType: 'bottle', savings: 50 },
+      },
+      myAccount: [],
+      myAccountList: [],
+      myAccountByQuantity: {},
+    },
+    oneTime: {
+      standard: [],
+      standardList: [],
+      standardByQuantity: {},
+      myAccount: [],
+      myAccountList: [],
+      myAccountByQuantity: {},
+    },
+  },
+};
+
 const FUNNEL = {
   slug: 'bio-complete-3-main',
   name: 'Bio Complete 3 — Main',
@@ -304,5 +338,43 @@ describe('applyBindings — loops (data-each on <template>)', () => {
     expect(links[0]!.querySelector('span')!.textContent).toBe('VSL');
     expect(links[1]!.getAttribute('data-slug')).toBe('order');
     expect(links[1]!.querySelector('span')!.textContent).toBe('Order Form');
+  });
+
+  it('resolves data-field via standardByQuantity by quantity key', () => {
+    setHtml(`
+      <article data-gh-product="enriched-product">
+        <span id="price" data-field="variants.subscription.standardByQuantity.3.price">$0.00</span>
+      </article>
+    `);
+    const resources = new Map<string, unknown>([['product:enriched-product', ENRICHED_PRODUCT]]);
+    applyBindings(document, { formatters: new FormatRegistry(), resources });
+    expect(document.getElementById('price')?.textContent).toBe('89.95');
+  });
+
+  it('iterates standardList via <template data-each>', () => {
+    setHtml(`
+      <section data-gh-product="enriched-product">
+        <template data-each="variants.subscription.standardList">
+          <li class="row" data-field="sku"></li>
+        </template>
+      </section>
+    `);
+    const resources = new Map<string, unknown>([['product:enriched-product', ENRICHED_PRODUCT]]);
+    applyBindings(document, { formatters: new FormatRegistry(), resources });
+    const rows = Array.from(document.querySelectorAll('.row')).map((el) => el.textContent);
+    expect(rows).toEqual(['EP-SUB-3', 'EP-SUB-6']);
+  });
+
+  it('hides element when quantity is missing via data-if', () => {
+    setHtml(`
+      <article data-gh-product="enriched-product">
+        <p id="nine" data-if="variants.subscription.standardByQuantity.9">9-pack available</p>
+        <p id="six" data-if="variants.subscription.standardByQuantity.6">6-pack available</p>
+      </article>
+    `);
+    const resources = new Map<string, unknown>([['product:enriched-product', ENRICHED_PRODUCT]]);
+    applyBindings(document, { formatters: new FormatRegistry(), resources });
+    expect((document.getElementById('nine') as HTMLElement).style.display).toBe('none');
+    expect((document.getElementById('six') as HTMLElement).style.display).not.toBe('none');
   });
 });
