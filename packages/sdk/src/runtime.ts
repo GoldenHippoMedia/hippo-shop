@@ -107,6 +107,8 @@ export class GhRuntime {
       'data-if',
       'data-if-not',
       'data-each',
+      'data-with',
+      'data-when',
     ];
     this.observer = new MutationObserver(mutations => {
       // Heuristic: ignore mutations caused by our own loop expansion to avoid
