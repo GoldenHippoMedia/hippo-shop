@@ -76,7 +76,6 @@ export interface HippoShopFunnelDTO {
   slug: string;                       // 'skin-quiz' — primary lookup key
   name: string;                       // public-facing name
   active: boolean;                    // mirrors internal `active`
-  entryUrl: string;                   // absolute https URL to the first step
   steps: HippoShopFunnelStepDTO[];       // ordered; inactive steps filtered out
 }
 
@@ -85,7 +84,6 @@ export interface HippoShopFunnelStepDTO {
   slug: string;                       // step slug, stable for analytics
   name: string;                       // public-facing step name
   kind: HippoShopStepKind;               // closed enum, mapped from internal pageType
-  url: string;                        // absolute https URL
 }
 
 export type HippoShopStepKind =
@@ -105,10 +103,14 @@ export type HippoShopStepKind =
 | `slug` | The lookup key. Already public via URLs. | — |
 | `name` | Display label. | Not internal-name; not Salesforce-side editorial name. |
 | `active` | Mirrors source. Lets consumers gracefully degrade if a funnel is off. | Honest to source; no fake state machine. |
-| `entryUrl` | The minimum a partner needs to send traffic. | — |
 | `steps` | Lets partners render a table of contents or progress indicator. | Excludes Salesforce IDs, A/B test variants, internal routing tokens. |
 | `step.stepNumber` | 1-based to match source. | Documented as 1-based; the SDK does not renumber. |
 | `step.kind` | Closed public enum, mapped from internal `pageType`. | See mapping below. |
+
+**Explicitly excluded from the funnel DTO:**
+
+- `entryUrl` — the funnel is identified by `slug`; the SDK is embedded on the partner page (which *is* the entry point), so a separate canonical entry URL has no consumer use.
+- `step.url` — step routing is internal funnel-app concern. Partners only need the step's `slug`, `kind`, and `stepNumber` to render a table of contents or progress indicator.
 
 **`pageType` → `kind` mapping:**
 
@@ -151,23 +153,50 @@ export interface HippoShopDestinationDTO {
   name: string;
   description: string | null;
   funnelSlug: string;                 // resolved default funnel
-  pricing: HippoShopPricingDTO;          // the price we display at this destination
+  pricing: HippoShopPricingDTO;          // the offer this destination resolves to
 }
 
 export interface HippoShopPricingDTO {
-  productSlug: string;                // the primary product the price is for
+  familyOrBundleId: string;           // Salesforce family ID — look up via /public/v1/product/:id
+  orderFormId: string;                // Salesforce order-form ID — the cart-actionable identifier
+  sku: string;                        // Human-readable SKU code (used for analytics + identification)
   packageQuantity: number;            // e.g. 1, 3, 6
   purchaseType: 'subscription' | 'one-time';
+  frequency: HippoShopFrequencyDTO | null;  // subscription cadence; null for one-time
   price: HippoShopPriceDTO;
-  rebillPrice: HippoShopPriceDTO | null; // only present for subscription
+  rebillPrice: HippoShopPriceDTO | null;    // null for one-time
+  outOfStock: boolean;
+  restrictedCountryCodes: string[];   // ISO-3166-1 alpha-2; empty when unrestricted
+  shipping: HippoShopShippingDTO;
+  bumpOffers: HippoShopBumpOfferDTO[]; // empty array when none configured
 }
 
 export interface HippoShopPriceDTO {
   amount: number;                     // 44.95
   currency: 'USD';
-  savings: number | null;             // strikethrough delta vs retail
+  savings: number | null;             // strikethrough delta vs retail; null when no savings to display
+}
+
+export interface HippoShopShippingDTO {
+  domestic: number;                   // USD; 0 = always free
+  international: number;              // USD; 0 = always free
+  freeShippingThreshold: number | null; // domestic free-shipping subtotal threshold; null if no promotion
+}
+
+export interface HippoShopBumpOfferDTO {
+  familyOrBundleId: string;
+  orderFormId: string;
+  sku: string;
+  productName: string;
+  unitOfMeasure: string;              // "Bottle", "Jar", "Bag", etc.
+  quantity: number;
+  price: HippoShopPriceDTO;
+  outOfStock: boolean;
+  restrictedCountryCodes: string[];
 }
 ```
+
+**Data-model context.** A destination resolves to one offer. An offer is a *specific price level* on a *SKU* (which itself is a *product family × package quantity* at a base price). The cart-actionable identifier is the **order form ID** — checkout takes a list of order forms — so that's what we expose, not a bare SKU SF ID. Family ID is the navigation key into the product catalog (`/public/v1/product/:id`). The `sku` string is the human-readable code used in analytics.
 
 **Field rationale:**
 
@@ -175,23 +204,32 @@ export interface HippoShopPriceDTO {
 |-------|------------|-------|
 | `slug` | The lookup key. Stable across environments. | — |
 | `name`, `description` | Partner-facing context (description optional, often unused). | Not the internal Salesforce notes. |
-| `funnelSlug` | Reference, not embedded data. | Partners call `gh.data.funnel(slug)` if they need full funnel info. Cache decoupled. |
-| `pricing` | The price the destination presents at its order form. | This is what marketing displays on landers — the "price at this funnel," not the catalog retail. |
-| `pricing.productSlug` | The primary product associated with the offer at this destination. | If partners need full product detail, they call `gh.data.product(slug)`. |
-| `pricing.price.savings` | Delta from retail, in dollars. Already shown on every brand site. | — |
+| `funnelSlug` | Reference, not embedded data. | Partners call `gh.data.funnel(slug)` if they need step structure. Cache decoupled. |
+| `pricing.familyOrBundleId` | Navigation key into the product catalog. | Use with `/public/v1/product/:id` to retrieve the full product family. |
+| `pricing.orderFormId` | Cart-actionable identifier. Checkout takes a list of order forms. | Opaque Salesforce ID; partners pass it through. |
+| `pricing.sku` | Human-readable SKU code (e.g. `BC3-SUB-6`). | Primary use is analytics; also useful for cart deep-links by SKU. |
+| `pricing.frequency` | Cadence for subscription destinations. | Null for one-time. Reuses `HippoShopFrequencyDTO` from the product DTO. |
+| `pricing.outOfStock` | Lets partners gracefully degrade. | OOS destinations still return 200; partners decide the UX. |
+| `pricing.restrictedCountryCodes` | Some offers aren't sold to specific markets. | Partners can geo-suppress at the landing-page level. |
+| `pricing.shipping` | Free-shipping callouts ("Free shipping on orders $45+") are standard landing-page copy. | Single resolved shape per destination's purchase type. |
+| `pricing.bumpOffers` | Bumps presented at checkout are part of the offer surface; partners may preview them on landers. | Empty array when none. Each carries enough info to render — including price, savings, OOS. |
+| `pricing.price.savings` | Delta from retail, in dollars. Already shown on every brand site. | Null when no savings (avoids rendering "Save $0.00"). |
 
 **Explicitly excluded:**
 
-- `id` (Salesforce destination record ID).
+- `id` (Salesforce destination record ID) — `slug` is the public lookup key.
 - `type` (`Pre-Purchase | Post-Purchase`) — Post-Purchase returns 404, so type is implicitly Pre-Purchase and the field is omitted.
 - `defaultFunnel` (full embedded funnel) — replaced by `funnelSlug` reference.
 - `splitTest` (entire object) — A/B testing infrastructure is not exposed externally. Reveals variant counts, traffic allocations (50/50 vs 90/10 tells you a lot about test maturity), `isControl` flags. Partners always see the default funnel.
+- `productSlug` — not available from the source data. Use `familyOrBundleId` to look the product up.
+- Per-purchaseDetails internal fields: `type`, `productId` (SKU SF ID; we expose `orderFormId` instead), `productName` (use the product DTO), `groupId`, `installmentDetails`, `bannerImage`, `checkoutType`, free-text `description` HTML, `shipping.freeShippingExclusionRule`, `shipping.enableFreeShippingReimbursement`, trial fields (`trial`, `subscriptionConversionPrice`, `postTrialSubscriptionPrice`, `offerSubscriptionConversion`).
+- Bump-offer internal fields: `type`, `productId`, `familyOrBundleId` is included but per-bump `groupId`, `includeInTrial` (trials not exposed in v1).
 
 **Behavioral rules:**
 
 - **Post-Purchase destinations return 404** from `/public/v1/destination/:slugOrId`.
 - **The destination is always resolved to its `defaultFunnel`**, regardless of split-test configuration. v1 does not perform variant assignment from external pages — that would corrupt test data, since external pages aren't in measured sessions. If variant-aware destination resolution is needed later, it's a separate, opt-in API method.
-- **`pricing` is derived from the destination's order form configuration.** The mapping logic is implemented in the commerce API and documented alongside the mapper.
+- **`pricing` is derived from the destination's main order form configuration.** `bumpOffers` mirrors the funnel-level bump array. `shipping` is the funnel's shipping rules resolved to a single shape for this destination's purchase type (the underlying source's `freeShippingExclusionRule` is collapsed away).
 
 ### 4.3 `HippoShopProductDTO`
 
@@ -202,7 +240,6 @@ export interface HippoShopProductDTO {
   id: string;                         // Salesforce family ID (a1H...) — already in client-side cart calls; safe to expose
   slug: string;
   name: string;                       // plain-text product name (e.g. "Bio Complete 3")
-  category: string;                   // e.g. 'Supplements'
   packaging: {
     singular: string;                 // 'Bottle'
     plural: string;                   // 'Bottles'
@@ -233,11 +270,11 @@ export interface HippoShopProductVariantDTO {
   variantId: string;                  // Salesforce variant ID (a0N...) — already in cart payloads
   sku: string;
   price: number;
-  rebillPrice: number;                // for subscriptions, the per-shipment charge
+  rebillPrice: number | null;         // per-shipment charge for subscriptions; null for one-time
   quantity: number;                   // pack count, e.g. 1, 3, 6
   packageType: string;                // 'Bottle', 'Jar', etc.
-  savings: number;                    // dollars; 0 means no savings
-  alternatePurchaseTypePrice: number; // counterpart price (sub vs one-time) for marketing comparison
+  savings: number | null;             // dollars; null when no savings apply (avoids rendering "Save $0.00")
+  alternatePurchaseTypePrice: number | null; // counterpart price (sub vs one-time); null when the alternate purchase type isn't offered
   defaultFrequency: HippoShopFrequencyDTO | null;  // null on one-time variants
 }
 
@@ -260,19 +297,20 @@ export interface HippoShopFrequencyDTO {
 | `id`, `productId`, `variantId` | Already exposed in every public website's cart calls. Partners may need them to deep-link into checkout. | Documented as Salesforce-derived; partners should treat them as opaque strings. |
 | `slug` | Lookup key, already public. | Preferred over `id` for lookups (works across UAT/prod). |
 | `name` | Plain-text product name from the top-level feed field. | Marketing-rich names with `<sup>` / `<em>` etc. live in `cms.displayName` and are deliberately not exposed in v1. Partners that need rich names can request later; we'll revisit the HTML-passthrough question then. |
-| `category` | Public, on every PLP. | Top-level `category` string only; `cms.categories[]` (with internal IDs) is excluded. |
 | `packaging` | Used in price displays ("3 Bottles for $X"). | — |
 | `image` | Primary product photo, served from the brand's CDN. Already public. | `cms.featuredImage` / `secondaryImage` deliberately excluded in v1 — those are marketing-CMS assets that may have stricter usage rights. Revisit if a partner scenario needs them. |
 | `reviews.count`, `.average`, `.globalFiveStarReviews` | All three exposed per explicit decision — `globalFiveStarReviews` is sometimes advertised on lower-rated products. | — |
 | `outOfStock` | Source: top-level `outOfStock` from the product feed. This is what funnels use today, so the public DTO matches. | `cms.cartOutOfStock` is not surfaced — funnel-relevant semantics take precedence. |
 | `variants` (all 4 quadrants: subscription/oneTime × standard/myAccount) | **MyAccount tier is exposed** to support funnel flows that grant MyAccount pricing to guest checkouts via session/param. | The SDK doesn't enforce when MyAccount pricing is "allowed" — that's a funnel-side concern. |
-| `variant.savings` | Already on the site. | Dollar amount, not percentage. |
-| `variant.alternatePurchaseTypePrice` | Used for "Subscribe and save $X" comparison copy. | Marketing-public concept. |
+| `variant.rebillPrice` | Per-shipment charge for subscriptions. | Null on one-time variants (rather than `0`) so consumers can branch cleanly. |
+| `variant.savings` | Already on the site. | Dollar amount, not percentage. Null when no savings apply — render skips a "Save $0.00" line. |
+| `variant.alternatePurchaseTypePrice` | Used for "Subscribe and save $X" comparison copy. | Marketing-public concept. Null when the alternate purchase type isn't offered for this package. |
 | `variant.defaultFrequency` (with both canonical and public fields) | **Both sets exposed**. Public for CTA copy ("1 bottle monthly!"), canonical for disclaimer/legal text ("charged $X every {interval} {scale}"). | Required by marketing pattern. |
 
 **Explicitly excluded:**
 
 - **All CMS-sourced display fields:** `cms.displayName`, `cms.description`, `cms.quote`, `cms.subHeading`, `cms.featuredImage`, `cms.secondaryImage`, `cms.gridDescription`, `cms.gridTagline`. These contain HTML markup (`<sup>`, `<em>`, etc.) and are excluded in v1 to keep the DTO pure plain-text. Revisit if a concrete partner scenario justifies an HTML-passthrough story (and clear consumer-side render/sanitize guidance).
+- `category` — not every product in the catalog has a category, so a `string` field would frequently be a meaningless placeholder. If partners need PLP-style grouping, we'll revisit with an explicit nullable shape or a dedicated category endpoint.
 - Top-level `description` — internal-feeling string (e.g. `"Gundry MD - Bio Complete 3"`), not useful for partner display. Plain-text marketing names are surfaced via top-level `name`.
 - `localeRetailPrice`, `localePrice`, `localeSavings`, `localeRebillPrice` — locale variants. v1 is US-only; revisit if international support is added.
 - `taxCode` — operational, not customer-facing.
@@ -340,14 +378,15 @@ A partner page wants to render a "claim this offer" card and link to the destina
 
 ```ts
 const dest = await window.gh.data.destination('d_oo_aff_os_qqq');
-// dest.pricing.price.amount     → "$44.95"
-// dest.pricing.rebillPrice      → "$44.95/month" (if subscription)
+// dest.pricing.price.amount     → 44.95
+// dest.pricing.rebillPrice      → { amount: 44.95, ... } when subscription, null otherwise
+// dest.pricing.frequency.label  → "Every Month"
+// dest.pricing.bumpOffers       → [ { productName, price, ... } ]
 // dest.funnelSlug                → 'skin-quiz'
-const funnel = await window.gh.data.funnel(dest.funnelSlug);
-// CTA href = funnel.entryUrl
+// CTA → partner-controlled URL built from dest.funnelSlug (e.g. /go/{funnelSlug})
 ```
 
-Uses `HippoShopDestinationDTO` + `HippoShopFunnelDTO`. Destination carries the displayed price; funnel reference is followed only if the partner wants step structure.
+Uses `HippoShopDestinationDTO`. The destination already carries everything a landing page needs to render an offer card — pricing, frequency, bump offers, shipping, OOS state. Partners only need to call `gh.data.funnel(slug)` separately if they want the step structure.
 
 ### Scenario C — GTM-injected widget on a partner site
 
@@ -356,11 +395,12 @@ A widget loaded via GTM on an affiliate's site wants to show a small "see the fu
 ```ts
 const funnel = await window.gh.data.funnel('skin-quiz');
 if (funnel.active) {
-  renderPrompt({ name: funnel.name, href: funnel.entryUrl });
+  renderPrompt({ name: funnel.name, slug: funnel.slug });
+  // Partner builds the deep-link href themselves, e.g. /go/{funnel.slug}
 }
 ```
 
-Uses `HippoShopFunnelDTO`. The `active` field lets the widget self-suppress on paused funnels — without it, the widget renders a dead link.
+Uses `HippoShopFunnelDTO`. The `active` field lets the widget self-suppress on paused funnels — without it, the widget renders a dead link. The funnel exposes a `slug` (and step list) but not a canonical entry URL — partners control the URL space they link into.
 
 ### Scenarios explicitly *not* supported in v1
 
@@ -432,7 +472,7 @@ These questions were raised during contract design and have been answered. Recor
 
 2. **`outOfStock` semantics.** Use the **top-level** `outOfStock` from the product feed, not `cms.cartOutOfStock`. This matches what funnels use today, so partners see the same OOS state the funnel app would. **Decision:** top-level only.
 
-3. **HTML in product display fields.** v1 ships **no HTML-bearing fields**. All CMS-sourced display strings (`displayName`, `description`, `quote`, `subHeading`, `featuredImage`) are excluded. The DTO carries only top-level plain-text `name`, `category`, `image`, and `packaging`. Revisit if a partner scenario justifies the HTML-passthrough story; that's a v1.x additive change, not a v2 break.
+3. **HTML in product display fields.** v1 ships **no HTML-bearing fields**. All CMS-sourced display strings (`displayName`, `description`, `quote`, `subHeading`, `featuredImage`) are excluded. The DTO carries only top-level plain-text `name`, `image`, and `packaging`. Revisit if a partner scenario justifies the HTML-passthrough story; that's a v1.x additive change, not a v2 break.
 
 4. **Old `/commerce/product/feed` migration.** Tracked as a separate ticket. The new `/public/v1/product/:slugOrId` will eventually replace external use of the legacy feed, and the legacy feed will be put behind auth for internal-only use. Not a blocker for SDK v1.
 
@@ -446,7 +486,7 @@ These questions were raised during contract design and have been answered. Recor
 
 Before commerce API work starts, the team should:
 
-- [ ] Confirm the destination → pricing derivation logic — specifically which fields on the internal destination/order-form structure feed the `productSlug`, `packageQuantity`, `purchaseType`, `price`, and `rebillPrice` outputs. This is the only piece of the contract whose internal source isn't fully documented above, and it will drive a few mapper-test cases.
+- [ ] Confirm the destination → pricing derivation logic — specifically which fields on the internal destination/order-form structure feed the `familyOrBundleId`, `orderFormId`, `sku`, `packageQuantity`, `purchaseType`, `frequency`, `price`, `rebillPrice`, `shipping`, and `bumpOffers` outputs. This is the only piece of the contract whose internal source isn't fully documented above, and it will drive a few mapper-test cases.
 - [ ] Verify the brand display-name → Salesforce brand-ID mapping is accessible from the commerce API (or trivial to populate). This is the tenancy enforcement boundary.
 - [ ] Decide whether the integration tests for §3 rule 4 (response shape verification) live alongside route handlers or in a separate contract-test suite. Either works; pick the one that fits the existing test conventions.
 

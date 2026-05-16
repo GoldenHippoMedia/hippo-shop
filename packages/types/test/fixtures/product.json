@@ -2,7 +2,6 @@
   "id": "prod_bio_complete_3",
   "slug": "bio-complete-3",
   "name": "Bio Complete 3",
-  "category": "Digestive Health",
   "packaging": {
     "singular": "Bottle",
     "plural": "Bottles"
@@ -65,10 +64,10 @@
           "variantId": "var_bc3_ot_1",
           "sku": "BC3-OT-1",
           "price": 69.95,
-          "rebillPrice": 0,
+          "rebillPrice": null,
           "quantity": 1,
           "packageType": "bottle",
-          "savings": 0,
+          "savings": null,
           "alternatePurchaseTypePrice": 49.95,
           "defaultFrequency": null
         }

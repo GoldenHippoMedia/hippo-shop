@@ -8,6 +8,8 @@ export type {
   HippoShopDestinationDTO,
   HippoShopPricingDTO,
   HippoShopPriceDTO,
+  HippoShopShippingDTO,
+  HippoShopBumpOfferDTO,
 } from './destination';
 
 export type {

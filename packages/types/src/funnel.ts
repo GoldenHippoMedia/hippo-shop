@@ -12,8 +12,6 @@ export interface HippoShopFunnelDTO {
   name: string;
   /** Whether the funnel itself is active. Inactive funnels return 404. */
   active: boolean;
-  /** Canonical entry URL for the funnel's first step. */
-  entryUrl: string;
   /** Ordered list of steps. Inactive steps are pre-filtered. */
   steps: HippoShopFunnelStepDTO[];
 }
@@ -27,8 +25,6 @@ export interface HippoShopFunnelStepDTO {
   name: string;
   /** Closed enum mapping from internal `pageType`. Unknown types are omitted server-side. */
   kind: HippoShopStepKind;
-  /** Canonical URL for this step. */
-  url: string;
 }
 
 /**

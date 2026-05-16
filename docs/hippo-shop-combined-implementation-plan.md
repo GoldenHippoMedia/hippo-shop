@@ -177,7 +177,6 @@ export interface HippoShopFunnelDTO {
   slug: string;
   name: string;
   active: boolean;
-  entryUrl: string;
   steps: HippoShopFunnelStepDTO[];
 }
 export interface HippoShopFunnelStepDTO {
@@ -185,7 +184,6 @@ export interface HippoShopFunnelStepDTO {
   slug: string;
   name: string;
   kind: HippoShopStepKind;
-  url: string;
 }
 export type HippoShopStepKind =
   | 'landing' | 'content' | 'order-form'
@@ -200,16 +198,39 @@ export interface HippoShopDestinationDTO {
   pricing: HippoShopPricingDTO;
 }
 export interface HippoShopPricingDTO {
-  productSlug: string;
+  familyOrBundleId: string;            // navigation key into /public/v1/product/:id
+  orderFormId: string;                 // cart-actionable identifier (Salesforce order-form ID)
+  sku: string;                         // human-readable SKU code
   packageQuantity: number;
   purchaseType: 'subscription' | 'one-time';
+  frequency: HippoShopFrequencyDTO | null;
   price: HippoShopPriceDTO;
   rebillPrice: HippoShopPriceDTO | null;
+  outOfStock: boolean;
+  restrictedCountryCodes: string[];
+  shipping: HippoShopShippingDTO;
+  bumpOffers: HippoShopBumpOfferDTO[];
 }
 export interface HippoShopPriceDTO {
   amount: number;
   currency: 'USD';
   savings: number | null;
+}
+export interface HippoShopShippingDTO {
+  domestic: number;
+  international: number;
+  freeShippingThreshold: number | null;
+}
+export interface HippoShopBumpOfferDTO {
+  familyOrBundleId: string;
+  orderFormId: string;
+  sku: string;
+  productName: string;
+  unitOfMeasure: string;
+  quantity: number;
+  price: HippoShopPriceDTO;
+  outOfStock: boolean;
+  restrictedCountryCodes: string[];
 }
 
 // packages/types/src/product.ts
@@ -217,7 +238,6 @@ export interface HippoShopProductDTO {
   id: string;
   slug: string;
   name: string;
-  category: string;
   packaging: { singular: string; plural: string };
   image: string;
   reviews: { count: number; average: number; globalFiveStarReviews: number };
@@ -233,11 +253,11 @@ export interface HippoShopProductVariantDTO {
   variantId: string;
   sku: string;
   price: number;
-  rebillPrice: number;
+  rebillPrice: number | null;
   quantity: number;
   packageType: string;
-  savings: number;
-  alternatePurchaseTypePrice: number;
+  savings: number | null;
+  alternatePurchaseTypePrice: number | null;
   defaultFrequency: HippoShopFrequencyDTO | null;
 }
 export interface HippoShopFrequencyDTO {
@@ -324,7 +344,7 @@ These are not exported from the package; they live in `test/` and are referenced
 
 ### 4.5 Testing
 
-`tsd` for compile-time assertions on the closed enums (`HippoShopStepKind`, `'USD'`, `'subscription' | 'one-time'`) and the null/non-null distinctions (`rebillPrice`, `defaultFrequency`). Five minutes per DTO. Plus a `tsc --noEmit` + ESM/CJS smoke check on every build.
+`tsd` for compile-time assertions on the closed enums (`HippoShopStepKind`, `'USD'`, `'subscription' | 'one-time'`) and the null/non-null distinctions (`rebillPrice`, `savings`, `alternatePurchaseTypePrice`, `frequency`, `defaultFrequency`). Five minutes per DTO. Plus a `tsc --noEmit` + ESM/CJS smoke check on every build.
 
 ---
 
@@ -458,7 +478,6 @@ export function toHippoShopProductDTO(p: InternalProduct): HippoShopProductDTO {
     id: p.id,
     slug: p.slug,
     name: p.name,
-    category: p.category,
     packaging: { singular: p.packaging.singular, plural: p.packaging.plural },
     image: p.image,
     reviews: {
@@ -743,7 +762,7 @@ Once a `<script src=".../sdk/v1/gh.js">` is in a partner's HTML, we do not contr
 
 These need answers before Phase 1 starts. None are blockers on the architecture — they're inputs that affect specific implementation details.
 
-1. **Destination → pricing derivation.** Where in the internal destination/order-form structure do `productSlug`, `packageQuantity`, `purchaseType`, `price`, `rebillPrice` come from? Commerce team needs to confirm this is implementable from existing data without significant new integration work.
+1. **Destination → pricing derivation.** Where in the internal destination/order-form structure do `familyOrBundleId`, `orderFormId`, `sku`, `packageQuantity`, `purchaseType`, `frequency`, `price`, `rebillPrice`, `shipping`, and `bumpOffers` come from? Commerce team needs to confirm this is implementable from existing data without significant new integration work.
 2. **Brand display-name → Salesforce ID mapping.** The commerce API needs a lookup from `"Gundry MD"` → internal brand ID for tenancy enforcement. Confirm this is accessible or trivial to populate.
 3. **Test funnel/destination/product on UAT.** Integration tests need stable seeded data on UAT. Commerce team identifies the test resources and their slugs.
 4. **Internal npm registry credentials.** Hippo Shop dev needs publish access to wherever `@goldenhippo/*` packages live today.

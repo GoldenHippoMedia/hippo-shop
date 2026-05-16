@@ -6,7 +6,6 @@ const PRODUCT = {
   id: 'p1',
   slug: 'bio-complete-3',
   name: 'Bio Complete 3',
-  category: 'Digestive Health',
   packaging: { singular: 'Bottle', plural: 'Bottles' },
   image: 'https://cdn.example.com/bc3.png',
   reviews: { count: 18432, average: 4.7, globalFiveStarReviews: 14210 },
@@ -27,10 +26,9 @@ const FUNNEL = {
   slug: 'bio-complete-3-main',
   name: 'Bio Complete 3 — Main',
   active: true,
-  entryUrl: 'https://example.com/bc3',
   steps: [
-    { stepNumber: 1, slug: 'vsl', name: 'VSL', kind: 'landing', url: '/vsl' },
-    { stepNumber: 2, slug: 'order', name: 'Order Form', kind: 'order-form', url: '/order' },
+    { stepNumber: 1, slug: 'vsl', name: 'VSL', kind: 'landing' },
+    { stepNumber: 2, slug: 'order', name: 'Order Form', kind: 'order-form' },
   ],
 };
 
@@ -79,12 +77,12 @@ describe('applyBindings — field + format', () => {
     setHtml(`
       <div data-gh-product="bio-complete-3">
         <h1 data-field="name">placeholder</h1>
-        <p data-field="category">placeholder</p>
+        <p data-field="packaging.singular">placeholder</p>
       </div>
     `);
     applyBindings(document, { formatters, resources });
     expect(document.querySelector('h1')!.textContent).toBe('Bio Complete 3');
-    expect(document.querySelector('p')!.textContent).toBe('Digestive Health');
+    expect(document.querySelector('p')!.textContent).toBe('Bottle');
   });
 
   it('applies a format spec', () => {
@@ -294,7 +292,7 @@ describe('applyBindings — loops (data-each on <template>)', () => {
       <ol id="steps" data-gh-funnel="bio-complete-3-main">
         <template data-each="steps">
           <li>
-            <a data-attr-href="url"><span data-field="name"></span></a>
+            <a data-attr-data-slug="slug"><span data-field="name"></span></a>
           </li>
         </template>
       </ol>
@@ -302,9 +300,9 @@ describe('applyBindings — loops (data-each on <template>)', () => {
     applyBindings(document, { formatters, resources });
     const links = document.querySelectorAll('#steps li a');
     expect(links).toHaveLength(2);
-    expect(links[0]!.getAttribute('href')).toBe('/vsl');
+    expect(links[0]!.getAttribute('data-slug')).toBe('vsl');
     expect(links[0]!.querySelector('span')!.textContent).toBe('VSL');
-    expect(links[1]!.getAttribute('href')).toBe('/order');
+    expect(links[1]!.getAttribute('data-slug')).toBe('order');
     expect(links[1]!.querySelector('span')!.textContent).toBe('Order Form');
   });
 });

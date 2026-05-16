@@ -4,6 +4,8 @@ import type {
   HippoShopStepKind,
   HippoShopDestinationDTO,
   HippoShopPriceDTO,
+  HippoShopShippingDTO,
+  HippoShopBumpOfferDTO,
   HippoShopProductVariantDTO,
   HippoShopFrequencyDTO,
   HippoShopErrorDTO,
@@ -26,14 +28,34 @@ expectError<HippoShopPriceDTO>({ amount: 1, currency: 'EUR', savings: null });
 expectError<HippoShopPriceDTO>({ amount: 1, currency: 'USD' });
 
 // --- pricing.rebillPrice is `HippoShopPriceDTO | null`, not optional ---
+const shipping: HippoShopShippingDTO = {
+  domestic: 4.95, international: 9.95, freeShippingThreshold: 50,
+};
 const dest: HippoShopDestinationDTO = {
   slug: 'd', name: 'd', description: null, funnelSlug: 'f',
   pricing: {
-    productSlug: 'p', packageQuantity: 1, purchaseType: 'one-time',
+    familyOrBundleId: 'fam-sf-id', orderFormId: 'of-sf-id', sku: 'SKU-1',
+    packageQuantity: 1, purchaseType: 'one-time',
+    frequency: null,
     price: usdPrice, rebillPrice: null,
+    outOfStock: false, restrictedCountryCodes: [],
+    shipping, bumpOffers: [],
   },
 };
 expectType<HippoShopPriceDTO | null>(dest.pricing.rebillPrice);
+expectType<HippoShopFrequencyDTO | null>(dest.pricing.frequency);
+expectType<number | null>(dest.pricing.shipping.freeShippingThreshold);
+expectType<HippoShopBumpOfferDTO[]>(dest.pricing.bumpOffers);
+
+// --- bumpOffers entries have a full price shape, not just an amount ---
+const bump: HippoShopBumpOfferDTO = {
+  familyOrBundleId: 'fam-sf-bump', orderFormId: 'of-sf-bump',
+  sku: 'BUMP-1', productName: 'Bump',
+  unitOfMeasure: 'Bag', quantity: 1,
+  price: { amount: 14.99, currency: 'USD', savings: 10 },
+  outOfStock: false, restrictedCountryCodes: [],
+};
+expectType<HippoShopPriceDTO>(bump.price);
 
 // --- purchaseType is a closed enum ---
 expectNotAssignable<HippoShopDestinationDTO['pricing']['purchaseType']>('lease');
@@ -41,17 +63,20 @@ expectNotAssignable<HippoShopDestinationDTO['pricing']['purchaseType']>('lease')
 // --- HippoShopProductVariantDTO.defaultFrequency is `HippoShopFrequencyDTO | null` ---
 const variant: HippoShopProductVariantDTO = {
   productId: 'p', variantId: 'v', sku: 's',
-  price: 0, rebillPrice: 0, quantity: 1, packageType: 'bottle',
-  savings: 0, alternatePurchaseTypePrice: 0,
+  price: 0, rebillPrice: null, quantity: 1, packageType: 'bottle',
+  savings: null, alternatePurchaseTypePrice: null,
   defaultFrequency: null,
 };
 expectType<HippoShopFrequencyDTO | null>(variant.defaultFrequency);
+expectType<number | null>(variant.rebillPrice);
+expectType<number | null>(variant.savings);
+expectType<number | null>(variant.alternatePurchaseTypePrice);
 
 // --- Funnel steps are `kind: HippoShopStepKind`, not arbitrary strings ---
 const funnel: HippoShopFunnelDTO = {
-  slug: 'f', name: 'F', active: true, entryUrl: 'https://example.com',
+  slug: 'f', name: 'F', active: true,
   steps: [
-    { stepNumber: 1, slug: 's1', name: 'S1', kind: 'landing', url: 'https://example.com/1' },
+    { stepNumber: 1, slug: 's1', name: 'S1', kind: 'landing' },
   ],
 };
 expectType<HippoShopStepKind>(funnel.steps[0]!.kind);

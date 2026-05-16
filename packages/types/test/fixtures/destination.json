@@ -4,9 +4,19 @@
   "description": "Six-bottle subscription with the deepest discount and free shipping.",
   "funnelSlug": "bio-complete-3-main",
   "pricing": {
-    "productSlug": "bio-complete-3",
+    "familyOrBundleId": "a190m000000pjSDAAY",
+    "orderFormId": "a0C0m000002Qaf4EAC",
+    "sku": "BC3-SUB-6",
     "packageQuantity": 6,
     "purchaseType": "subscription",
+    "frequency": {
+      "interval": 3,
+      "scale": "month",
+      "publicInterval": 90,
+      "publicScale": "day",
+      "value": "90-day",
+      "label": "Every 90 Days"
+    },
     "price": {
       "amount": 199.74,
       "currency": "USD",
@@ -16,6 +26,30 @@
       "amount": 199.74,
       "currency": "USD",
       "savings": 359.76
-    }
+    },
+    "outOfStock": false,
+    "restrictedCountryCodes": [],
+    "shipping": {
+      "domestic": 0,
+      "international": 9.95,
+      "freeShippingThreshold": 45
+    },
+    "bumpOffers": [
+      {
+        "familyOrBundleId": "a190m000000pjSFAAY",
+        "orderFormId": "a0C0m000002SJF9EAO",
+        "sku": "UPNBISONx1",
+        "productName": "Nutra Bites Bison Liver Dog Treats",
+        "unitOfMeasure": "Bag",
+        "quantity": 1,
+        "price": {
+          "amount": 14.99,
+          "currency": "USD",
+          "savings": 10.00
+        },
+        "outOfStock": false,
+        "restrictedCountryCodes": []
+      }
+    ]
   }
 }

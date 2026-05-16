@@ -6,7 +6,6 @@ export interface HippoShopProductDTO {
   id: string;
   slug: string;
   name: string;
-  category: string;
   packaging: {
     singular: string;
     plural: string;
@@ -37,12 +36,17 @@ export interface HippoShopProductVariantDTO {
   variantId: string;
   sku: string;
   price: number;
-  rebillPrice: number;
+  /** Subscription rebill price. Null for one-time variants. */
+  rebillPrice: number | null;
   quantity: number;
   packageType: string;
-  savings: number;
-  /** Price for the same package under the *other* purchase type (subscription↔one-time). */
-  alternatePurchaseTypePrice: number;
+  /** Savings vs. a documented baseline, or null when no savings apply (avoids rendering "Save $0.00"). */
+  savings: number | null;
+  /**
+   * Price for the same package under the *other* purchase type (subscription↔one-time).
+   * Null when the alternate purchase type is not offered for this package.
+   */
+  alternatePurchaseTypePrice: number | null;
   /** Subscription frequency. Null for one-time variants. */
   defaultFrequency: HippoShopFrequencyDTO | null;
 }
