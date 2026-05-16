@@ -256,12 +256,24 @@ export interface HippoShopProductDTO {
 
 export interface HippoShopProductVariantsDTO {
   subscription: {
+    /** @deprecated removed in v3.0.0 — use standardList / standardByQuantity */
     standard: HippoShopProductVariantDTO[];
+    /** @deprecated removed in v3.0.0 — use myAccountList / myAccountByQuantity */
     myAccount: HippoShopProductVariantDTO[];  // public for guest-checkout MyAccount-price flows
+    standardList: HippoShopProductVariantDTO[];                  // ordered, same content as `standard`; use with <template data-each>
+    standardByQuantity: Record<string, HippoShopProductVariantDTO>;  // keyed by stringified quantity (e.g. '3', '6'); missing keys → undefined
+    myAccountList: HippoShopProductVariantDTO[];
+    myAccountByQuantity: Record<string, HippoShopProductVariantDTO>;
   };
   oneTime: {
+    /** @deprecated removed in v3.0.0 — use standardList / standardByQuantity */
     standard: HippoShopProductVariantDTO[];
+    /** @deprecated removed in v3.0.0 — use myAccountList / myAccountByQuantity */
     myAccount: HippoShopProductVariantDTO[];  // public for guest-checkout MyAccount-price flows
+    standardList: HippoShopProductVariantDTO[];
+    standardByQuantity: Record<string, HippoShopProductVariantDTO>;
+    myAccountList: HippoShopProductVariantDTO[];
+    myAccountByQuantity: Record<string, HippoShopProductVariantDTO>;
   };
 }
 
@@ -289,6 +301,14 @@ export interface HippoShopFrequencyDTO {
   label: string;                      // 'Every Month', 'Every 3 Months', ...
 }
 ```
+
+**Variant access shape.** Each price level under `variants.<purchase>.<tier>` is exposed in three parallel forms so consumers can pick whichever fits their access pattern:
+
+- `<tier>List` — ordered array, suitable for iteration (e.g. `<template data-each="variants.subscription.standardList">`).
+- `<tier>ByQuantity` — record keyed by stringified quantity (`'3'`, `'6'`, …) for direct lookup. Missing keys resolve to `undefined`.
+- `<tier>` — the original array form. **Deprecated**, removed in v3.0.0. Marked `@deprecated` in the published TypeScript types.
+
+**The wire format is unchanged.** The commerce API serves only the deprecated array shape (`standard`, `myAccount`); the SDK derives the `List` and `ByQuantity` siblings client-side when shaping the response into `HippoShopProductDTO`. Consumers reading the JSON directly (without the SDK) only see the arrays. The contract sibling fields exist so the typed surface partners write against is forward-compatible with the v3.0.0 array removal.
 
 **Field rationale & decisions:**
 
@@ -365,8 +385,8 @@ A static lander wants to display the current Bio Complete 3 price without hardco
         data-brand="Gundry MD"></script>
 
 <div class="price-block">
-  <span data-gh-product="bio-complete-3" data-field="variants.subscription.standard.0.price">…</span>
-  <span class="strike" data-gh-product="bio-complete-3" data-field="variants.oneTime.standard.0.price">…</span>
+  <span data-gh-product="bio-complete-3" data-field="variants.subscription.standardByQuantity.6.price">…</span>
+  <span class="strike" data-gh-product="bio-complete-3" data-field="variants.oneTime.standardByQuantity.6.price">…</span>
 </div>
 ```
 
