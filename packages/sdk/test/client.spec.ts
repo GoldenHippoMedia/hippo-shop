@@ -28,7 +28,7 @@ describe('GhDataClient', () => {
     vi.restoreAllMocks();
   });
 
-  it('GETs the funnel route with brand + bearer headers', async () => {
+  it('GETs the funnel route with key + brand headers', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response('{"slug":"x"}', { status: 200 }),
     );
@@ -40,8 +40,9 @@ describe('GhDataClient', () => {
       'https://api-prod.goldenhippo.io/public/v1/funnel/bio-complete-3-main',
     );
     const headers = (init as RequestInit).headers as Record<string, string>;
-    expect(headers['Authorization']).toBe('Bearer gh_pk_test_consumer_abc123');
+    expect(headers['X-GH-Key']).toBe('gh_pk_test_consumer_abc123');
     expect(headers['X-GH-Brand']).toBe('Gundry MD');
+    expect(headers['Authorization']).toBeUndefined();
   });
 
   it('URL-encodes the slug', async () => {

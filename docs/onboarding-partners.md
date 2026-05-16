@@ -45,7 +45,7 @@
    - From an allowed origin, run:
      ```bash
      curl -i \
-       -H "Authorization: Bearer gh_pk_..." \
+       -H "X-GH-Key: gh_pk_..." \
        -H "X-GH-Brand: Gundry MD" \
        -H "Origin: https://www.example.com" \
        "https://api-prod.goldenhippo.io/public/v1/product/<known-slug>"

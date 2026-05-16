@@ -17,7 +17,7 @@ const describeIf = KEY ? describe : describe.skip;
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     headers: {
-      Authorization: `Bearer ${KEY}`,
+      'X-GH-Key': KEY as string,
       'X-GH-Brand': BRAND,
       Accept: 'application/json',
     },

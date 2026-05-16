@@ -63,7 +63,7 @@ export class GhDataClient {
       res = await fetch(url, {
         method: 'GET',
         headers: {
-          Authorization: `Bearer ${this.config.key}`,
+          'X-GH-Key': this.config.key,
           'X-GH-Brand': this.config.brand,
           Accept: 'application/json',
         },

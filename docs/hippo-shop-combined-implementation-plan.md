@@ -513,7 +513,7 @@ Routes:
 ### 7.2 Plugins on `hippo-shop-public-v1`
 
 ```
-- key-auth                  # Authorization: Bearer gh_pk_... or ?key=
+- key-auth                  # X-GH-Key: gh_pk_...
 - cors                      # origins per consumer, exact-match enforcement
 - rate-limiting             # per-consumer, tier-based
 - proxy-cache               # TTL: funnel 60s, destination 60s, product 120s

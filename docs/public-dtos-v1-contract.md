@@ -393,7 +393,7 @@ Single Kong service backing all three routes. Single consumer model. Same plugin
 Service: sdk-public-v1
   Upstream:  commerce-api → /public/v1/*
   Plugins:
-    - key-auth          (key as Authorization: Bearer gh_pk_... or ?key=)
+    - key-auth          (key as X-GH-Key: gh_pk_...)
     - cors              (origins per consumer, exact-match enforcement)
     - rate-limiting     (per consumer, tier-based)
     - proxy-cache       (TTL: funnel 60s, destination 60s, product 120s)
