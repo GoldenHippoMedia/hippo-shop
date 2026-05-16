@@ -9,15 +9,54 @@
       body { max-width: 48rem; margin: 2rem auto; padding: 0 1rem; }
       header { margin-bottom: 1.5rem; }
       .card {
+        border: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
+        border-radius: 12px;
+      }
+      .card img { width: 100%; border-radius: 8px; background: color-mix(in srgb, CanvasText 8%, transparent); }
+      .card-loaded {
         display: grid;
         grid-template-columns: 160px 1fr;
         gap: 1.25rem;
-        border: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
-        border-radius: 12px;
         padding: 1.25rem;
         align-items: start;
       }
-      .card img { width: 100%; border-radius: 8px; background: color-mix(in srgb, CanvasText 8%, transparent); }
+      .card-skeleton {
+        display: grid;
+        grid-template-columns: 160px 1fr;
+        gap: 1.25rem;
+        padding: 1.25rem;
+      }
+      .card-skeleton .skel-img {
+        width: 100%;
+        aspect-ratio: 1;
+        border-radius: 8px;
+        background: color-mix(in srgb, CanvasText 12%, transparent);
+        animation: pulse 1.4s ease-in-out infinite;
+      }
+      .card-skeleton .skel-text {
+        display: flex;
+        flex-direction: column;
+        gap: 0.6rem;
+        padding-top: 0.5rem;
+      }
+      .card-skeleton .skel-line {
+        height: 0.9rem;
+        border-radius: 4px;
+        background: color-mix(in srgb, CanvasText 12%, transparent);
+        animation: pulse 1.4s ease-in-out infinite;
+      }
+      .card-skeleton .skel-line.short { width: 40%; }
+      .card-skeleton .skel-line.wide  { width: 80%; }
+      @keyframes pulse {
+        0%, 100% { opacity: 0.6; }
+        50%      { opacity: 1; }
+      }
+      .card-failed {
+        padding: 1.25rem;
+        color: #991b1b;
+        background: #fee2e2;
+        border-radius: 12px;
+      }
       .price { font-size: 1.75rem; font-weight: 600; margin: 0.25rem 0 0.1rem; }
       .cadence { font-size: 0.9rem; margin: 0 0 0.35rem; color: color-mix(in srgb, CanvasText 55%, transparent); }
       .alt-price {
@@ -113,6 +152,20 @@
     </script>
 
     <article class="card" data-gh-product="bio-complete-3">
+      <div data-when="loading" class="card-skeleton" aria-busy="true">
+        <div class="skel-img"></div>
+        <div class="skel-text">
+          <div class="skel-line"></div>
+          <div class="skel-line short"></div>
+          <div class="skel-line wide"></div>
+        </div>
+      </div>
+
+      <div data-when="failed" class="card-failed" role="alert">
+        <p>We couldn't load this product right now.</p>
+      </div>
+
+      <div data-when="loaded" class="card-loaded">
       <img
         data-attr-src="image"
         data-attr-alt="name"
@@ -186,6 +239,7 @@
           Buy 6 bottles —
           <span data-field="variants.subscription.standardByQuantity.6.price" data-format="currency:USD:en-US">$0.00</span>
         </a>
+      </div>
       </div>
     </article>
 
