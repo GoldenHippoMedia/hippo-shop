@@ -22,14 +22,55 @@ export interface HippoShopProductDTO {
 
 export interface HippoShopProductVariantsDTO {
   subscription: {
+    /**
+     * @deprecated Use `standardList` for iteration or `standardByQuantity` for direct lookup.
+     * Will be removed in v3.0.0.
+     */
     standard: HippoShopProductVariantDTO[];
+    /** Ordered list for iteration (same content as the deprecated `standard`). */
+    standardList: HippoShopProductVariantDTO[];
+    /** Variants keyed by `quantity` as a string. Missing quantities are absent (no `null` entries). */
+    standardByQuantity: HippoShopProductVariantsByQuantityDTO;
+
+    /**
+     * @deprecated Use `myAccountList` for iteration or `myAccountByQuantity` for direct lookup.
+     * Will be removed in v3.0.0.
+     */
     myAccount: HippoShopProductVariantDTO[];
+    /** Ordered list for iteration (same content as the deprecated `myAccount`). */
+    myAccountList: HippoShopProductVariantDTO[];
+    /** Variants keyed by `quantity` as a string. Missing quantities are absent. */
+    myAccountByQuantity: HippoShopProductVariantsByQuantityDTO;
   };
   oneTime: {
+    /**
+     * @deprecated Use `standardList` for iteration or `standardByQuantity` for direct lookup.
+     * Will be removed in v3.0.0.
+     */
     standard: HippoShopProductVariantDTO[];
+    /** Ordered list for iteration (same content as the deprecated `standard`). */
+    standardList: HippoShopProductVariantDTO[];
+    /** Variants keyed by `quantity` as a string. Missing quantities are absent. */
+    standardByQuantity: HippoShopProductVariantsByQuantityDTO;
+
+    /**
+     * @deprecated Use `myAccountList` for iteration or `myAccountByQuantity` for direct lookup.
+     * Will be removed in v3.0.0.
+     */
     myAccount: HippoShopProductVariantDTO[];
+    /** Ordered list for iteration (same content as the deprecated `myAccount`). */
+    myAccountList: HippoShopProductVariantDTO[];
+    /** Variants keyed by `quantity` as a string. Missing quantities are absent. */
+    myAccountByQuantity: HippoShopProductVariantsByQuantityDTO;
   };
 }
+
+/**
+ * Variants indexed by their `quantity` value as a string key (e.g. `'3'`, `'6'`).
+ * Only quantities that exist for the price level are present — missing keys
+ * naturally resolve to `undefined` via path lookup or property access.
+ */
+export type HippoShopProductVariantsByQuantityDTO = Record<string, HippoShopProductVariantDTO>;
 
 export interface HippoShopProductVariantDTO {
   productId: string;
