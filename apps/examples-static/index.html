@@ -1,0 +1,552 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hippo Shop SDK — live demos</title>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400..700;1,400..700&family=Red+Hat+Text:ital,wght@0,300..700;1,300..700&display=swap');
+
+      :root {
+        /* Gundry Blue */
+        --blue-50:#F3F7FF; --blue-100:#E0E9FF; --blue-200:#C2D4FF; --blue-300:#9DB8FF;
+        --blue-400:#6B91FF; --blue-500:#4569DF; --blue-600:#2945B8; --blue-700:#233B92;
+        --blue-800:#1A2C6A; --blue-900:#101D49;
+
+        /* Vitality Lime */
+        --lime-50:#F4F9E8; --lime-100:#E5EFCB; --lime-300:#AEC947;
+        --lime-400:#C2E329; --lime-500:#6B7F00; --lime-600:#536300; --lime-700:#3F4C00;
+
+        /* Neutrals */
+        --gray-50:#f9fafb; --gray-100:#f3f4f6; --gray-200:#e5e7eb; --gray-300:#d1d5db;
+        --gray-400:#9ca3af; --gray-500:#6b7280; --gray-600:#4b5563; --gray-700:#374151;
+        --gray-900:#111827;
+
+        --green-600:#16a34a;
+
+        --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+        --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+        --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.08), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+
+        --font-serif: 'Lora', Georgia, serif;
+        --font-sans:  'Red Hat Text', Inter, -apple-system, BlinkMacSystemFont, sans-serif;
+      }
+
+      *, *::before, *::after { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: var(--font-sans);
+        font-size: 16px;
+        line-height: 1.55;
+        color: var(--gray-900);
+        background: #fff;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+      h1, h2, h3 { font-family: var(--font-serif); font-weight: 600; margin: 0; letter-spacing: -0.01em; }
+      p { margin: 0; }
+      a { color: var(--blue-600); }
+      a:hover { color: var(--blue-700); }
+
+      .page { max-width: 820px; margin: 56px auto 96px; padding: 0 20px; }
+
+      /* ---------- Hero ---------- */
+
+      header.hero { margin-bottom: 48px; }
+      .eyebrow {
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--blue-600);
+        margin-bottom: 12px;
+      }
+      h1 {
+        font-size: 38px;
+        line-height: 1.15;
+      }
+      .lede {
+        font-family: var(--font-sans);
+        font-size: 16px;
+        color: var(--gray-600);
+        margin-top: 16px;
+        max-width: 640px;
+      }
+
+      /* ---------- Section headings ---------- */
+
+      .section { margin-top: 56px; }
+      .section-eyebrow {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--gray-500);
+        margin-bottom: 8px;
+      }
+      h2 {
+        font-size: 24px;
+        line-height: 1.2;
+        margin-bottom: 8px;
+      }
+      .section-lede {
+        font-size: 14px;
+        color: var(--gray-600);
+        margin-bottom: 24px;
+        max-width: 600px;
+      }
+
+      /* ---------- Demo cards ---------- */
+
+      .demo-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 16px;
+      }
+      @media (min-width: 720px) {
+        .demo-grid { grid-template-columns: 1fr 1fr; }
+      }
+
+      .demo-card {
+        background: #fff;
+        border: 1px solid var(--gray-200);
+        border-radius: 14px;
+        padding: 22px 22px 20px;
+        box-shadow: var(--shadow-xs);
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+      }
+      .demo-card:hover {
+        border-color: var(--blue-200);
+        box-shadow: var(--shadow-sm);
+      }
+      .demo-card .card-eyebrow {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--blue-600);
+      }
+      .demo-card h3 {
+        font-size: 22px;
+        line-height: 1.2;
+      }
+      .demo-card .summary {
+        font-size: 14px;
+        color: var(--gray-700);
+        line-height: 1.55;
+      }
+      .demo-card ul {
+        list-style: none;
+        margin: 6px 0 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        font-size: 13px;
+        color: var(--gray-700);
+      }
+      .demo-card ul li {
+        position: relative;
+        padding-left: 18px;
+        line-height: 1.5;
+      }
+      .demo-card ul li::before {
+        content: '›';
+        position: absolute;
+        left: 4px;
+        top: -1px;
+        color: var(--lime-500);
+        font-weight: 700;
+        font-size: 14px;
+      }
+      .demo-card code {
+        background: var(--gray-100);
+        padding: 1px 5px;
+        border-radius: 4px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px;
+        color: var(--gray-700);
+      }
+      .demo-card .view {
+        margin-top: auto;
+        padding-top: 14px;
+      }
+      .demo-card .view a {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--blue-600);
+        text-decoration: none;
+      }
+      .demo-card .view a:hover { color: var(--blue-700); }
+      .demo-card .view a::after {
+        content: '→';
+        font-size: 14px;
+        transition: transform 160ms ease;
+      }
+      .demo-card .view a:hover::after { transform: translateX(2px); }
+
+      /* ---------- Feature matrix ---------- */
+
+      .matrix-wrap {
+        border: 1px solid var(--gray-200);
+        border-radius: 14px;
+        overflow: hidden;
+        box-shadow: var(--shadow-xs);
+      }
+      .matrix {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+      .matrix thead th {
+        background: var(--blue-50);
+        font-family: var(--font-sans);
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--blue-700);
+        padding: 12px 10px;
+        text-align: center;
+        border-bottom: 1px solid var(--blue-100);
+        vertical-align: middle;
+      }
+      .matrix thead th:first-child {
+        text-align: left;
+        padding-left: 18px;
+        color: var(--gray-700);
+        background: var(--gray-50);
+        border-bottom: 1px solid var(--gray-200);
+        min-width: 220px;
+      }
+      .matrix tbody td {
+        padding: 10px 10px;
+        border-bottom: 1px solid var(--gray-100);
+        text-align: center;
+        vertical-align: middle;
+        color: var(--gray-700);
+      }
+      .matrix tbody td:first-child {
+        text-align: left;
+        padding-left: 18px;
+        color: var(--gray-900);
+        font-weight: 500;
+        background: var(--gray-50);
+        border-right: 1px solid var(--gray-200);
+      }
+      .matrix tbody tr:last-child td { border-bottom: none; }
+      .matrix tbody tr:hover td { background: var(--blue-50); }
+      .matrix tbody tr:hover td:first-child { background: var(--blue-100); }
+      .matrix code {
+        background: var(--gray-100);
+        padding: 1px 5px;
+        border-radius: 4px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 11.5px;
+        color: var(--gray-700);
+        font-weight: 400;
+      }
+      .matrix tbody tr:hover td:first-child code { background: #fff; }
+      .check {
+        color: var(--blue-600);
+        font-weight: 700;
+        font-size: 15px;
+        line-height: 1;
+      }
+      .dash {
+        color: var(--gray-300);
+        font-weight: 400;
+      }
+
+      @media (max-width: 640px) {
+        .matrix { font-size: 12px; }
+        .matrix thead th:first-child { min-width: 140px; }
+        .matrix tbody td, .matrix thead th { padding: 8px 6px; }
+        .matrix tbody td:first-child { padding-left: 12px; }
+        .matrix thead th:first-child { padding-left: 12px; }
+      }
+
+      /* ---------- Footer ---------- */
+
+      footer.foot {
+        margin-top: 64px;
+        padding-top: 24px;
+        border-top: 1px solid var(--gray-200);
+        font-size: 13px;
+        color: var(--gray-500);
+        line-height: 1.7;
+      }
+      footer.foot code {
+        background: var(--gray-100);
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px;
+        color: var(--gray-700);
+      }
+      footer.foot p + p { margin-top: 10px; }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <header class="hero">
+        <p class="eyebrow">Hippo Shop SDK</p>
+        <h1>Live demos of declarative product binding</h1>
+        <p class="lede">
+          These four pages render production-quality cards using only HTML data
+          attributes — no JavaScript per page. Each one focuses on a different
+          slice of the SDK so you can compose pieces into your own design.
+        </p>
+      </header>
+
+      <section class="section">
+        <p class="section-eyebrow">The demos</p>
+        <h2>Four pages, four slices of the SDK</h2>
+        <p class="section-lede">
+          Open any file directly in a browser — no build step, no bundler. Each
+          demo loads the SDK from <code>api-uat.goldenhippo.io</code> with a
+          public test key.
+        </p>
+
+        <div class="demo-grid">
+          <article class="demo-card">
+            <p class="card-eyebrow">Demo 01</p>
+            <h3>Product pricing</h3>
+            <p class="summary">
+              A single, polished product card with the SDK's advanced features.
+            </p>
+            <ul>
+              <li>Custom formatter registration via <code>window.gh.format.register</code></li>
+              <li>Three review fields including <code>reviews.globalFiveStarReviews</code></li>
+              <li><code>data-attr-href</code>, <code>data-attr-aria-label</code>, and <code>data-attr-data-product-id</code> on the CTA</li>
+              <li>Subscription cadence + "or one-time" comparison via <code>alternatePurchaseTypePrice</code></li>
+            </ul>
+            <p class="view"><a href="product-pricing.html">View demo</a></p>
+          </article>
+
+          <article class="demo-card">
+            <p class="card-eyebrow">Demo 02</p>
+            <h3>Variant grid</h3>
+            <p class="summary">
+              Subscription, one-time, and My Account tiers from a single product fetch.
+            </p>
+            <ul>
+              <li><code>&lt;template data-each="standardList"&gt;</code> for iteration</li>
+              <li>Direct lookup via <code>standardByQuantity.&lt;qty&gt;</code> for featured packages</li>
+              <li><code>bool</code> formatter for in-stock pill, with paired <code>data-attr-data-stock</code></li>
+              <li><code>data-if</code> cascading so sections hide when their data is empty</li>
+            </ul>
+            <p class="view"><a href="variant-grid.html">View demo</a></p>
+          </article>
+
+          <article class="demo-card">
+            <p class="card-eyebrow">Demo 03</p>
+            <h3>Funnel steps</h3>
+            <p class="summary">
+              Render a funnel's step list with formatter range + programmatic refresh.
+            </p>
+            <ul>
+              <li><code>&lt;template data-each="steps"&gt;</code> over the funnel</li>
+              <li><code>uppercase</code> formatter for step kinds</li>
+              <li><code>data-attr-data-kind</code> for CSS color-coding, with per-attribute format short-circuit</li>
+              <li><code>gh:data-ready</code> listener + a Refresh button calling <code>window.gh.refresh()</code></li>
+            </ul>
+            <p class="view"><a href="funnel-steps.html">View demo</a></p>
+          </article>
+
+          <article class="demo-card">
+            <p class="card-eyebrow">Demo 04</p>
+            <h3>Destination offer selector</h3>
+            <p class="summary">
+              Six destinations on one page, with tabs, bump offers, and shipping.
+            </p>
+            <ul>
+              <li>Multiple <code>data-gh-destination</code> cards batched in one fetch</li>
+              <li><code>gh:data-ready</code> event replaces 200ms CTA polling</li>
+              <li><code>&lt;template data-each="pricing.bumpOffers"&gt;</code> for checkout add-ons</li>
+              <li><code>data-attr-href="funnelSlug"</code> per row so the CTA is fully declarative</li>
+            </ul>
+            <p class="view"><a href="destination-detail.html">View demo</a></p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section">
+        <p class="section-eyebrow">Capability map</p>
+        <h2>Feature matrix</h2>
+        <p class="section-lede">
+          Use this as a quick index — find the capability you want to copy, then
+          jump to whichever demo exercises it most clearly.
+        </p>
+
+        <div class="matrix-wrap">
+          <table class="matrix">
+            <thead>
+              <tr>
+                <th scope="col">SDK capability</th>
+                <th scope="col">Product<br />pricing</th>
+                <th scope="col">Variant<br />grid</th>
+                <th scope="col">Funnel<br />steps</th>
+                <th scope="col">Destination<br />detail</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Resource binding (<code>data-gh-product</code> / <code>-funnel</code> / <code>-destination</code>)</td>
+                <td><span class="check">✓</span></td>
+                <td><span class="check">✓</span></td>
+                <td><span class="check">✓</span></td>
+                <td><span class="check">✓</span></td>
+              </tr>
+              <tr>
+                <td><code>data-field</code> (text replacement)</td>
+                <td><span class="check">✓</span></td>
+                <td><span class="check">✓</span></td>
+                <td><span class="check">✓</span></td>
+                <td><span class="check">✓</span></td>
+              </tr>
+              <tr>
+                <td><code>&lt;template data-each&gt;</code> (iteration)</td>
+                <td><span class="check">✓</span></td>
+                <td><span class="check">✓</span></td>
+                <td><span class="check">✓</span></td>
+                <td><span class="check">✓</span></td>
+              </tr>
+              <tr>
+                <td><code>data-if</code> / <code>data-if-not</code> (conditional render)</td>
+                <td><span class="check">✓</span></td>
+                <td><span class="check">✓</span></td>
+                <td><span class="dash">—</span></td>
+                <td><span class="check">✓</span></td>
+              </tr>
+              <tr>
+                <td><code>data-attr-&lt;NAME&gt;</code> (attribute binding)</td>
+                <td><span class="check">✓</span></td>
+                <td><span class="check">✓</span></td>
+                <td><span class="check">✓</span></td>
+                <td><span class="check">✓</span></td>
+              </tr>
+              <tr>
+                <td><code>data-attr-format-&lt;NAME&gt;</code> (per-attribute formatter)</td>
+                <td><span class="dash">—</span></td>
+                <td><span class="check">✓</span></td>
+                <td><span class="check">✓</span></td>
+                <td><span class="dash">—</span></td>
+              </tr>
+              <tr>
+                <td><code>currency</code> formatter</td>
+                <td><span class="check">✓</span></td>
+                <td><span class="check">✓</span></td>
+                <td><span class="dash">—</span></td>
+                <td><span class="check">✓</span></td>
+              </tr>
+              <tr>
+                <td><code>number</code> formatter</td>
+                <td><span class="check">✓</span></td>
+                <td><span class="dash">—</span></td>
+                <td><span class="dash">—</span></td>
+                <td><span class="dash">—</span></td>
+              </tr>
+              <tr>
+                <td><code>bool</code> formatter</td>
+                <td><span class="dash">—</span></td>
+                <td><span class="check">✓</span></td>
+                <td><span class="check">✓</span></td>
+                <td><span class="dash">—</span></td>
+              </tr>
+              <tr>
+                <td><code>uppercase</code> formatter</td>
+                <td><span class="dash">—</span></td>
+                <td><span class="dash">—</span></td>
+                <td><span class="check">✓</span></td>
+                <td><span class="dash">—</span></td>
+              </tr>
+              <tr>
+                <td>Custom formatter registration</td>
+                <td><span class="check">✓</span></td>
+                <td><span class="dash">—</span></td>
+                <td><span class="dash">—</span></td>
+                <td><span class="dash">—</span></td>
+              </tr>
+              <tr>
+                <td><code>gh:data-ready</code> event</td>
+                <td><span class="check">✓</span></td>
+                <td><span class="dash">—</span></td>
+                <td><span class="check">✓</span></td>
+                <td><span class="check">✓</span></td>
+              </tr>
+              <tr>
+                <td><code>gh.refresh()</code> API</td>
+                <td><span class="check">✓</span></td>
+                <td><span class="dash">—</span></td>
+                <td><span class="check">✓</span></td>
+                <td><span class="check">✓</span></td>
+              </tr>
+              <tr>
+                <td>Quantity-keyed variant lookup (<code>standardByQuantity</code>)</td>
+                <td><span class="check">✓</span></td>
+                <td><span class="check">✓</span></td>
+                <td><span class="dash">—</span></td>
+                <td><span class="dash">—</span></td>
+              </tr>
+              <tr>
+                <td>Iteration over variants (<code>standardList</code>)</td>
+                <td><span class="check">✓</span></td>
+                <td><span class="check">✓</span></td>
+                <td><span class="dash">—</span></td>
+                <td><span class="dash">—</span></td>
+              </tr>
+              <tr>
+                <td>One-time + <code>alternatePurchaseTypePrice</code> comparison</td>
+                <td><span class="check">✓</span></td>
+                <td><span class="check">✓</span></td>
+                <td><span class="dash">—</span></td>
+                <td><span class="dash">—</span></td>
+              </tr>
+              <tr>
+                <td>Bump-offer rendering</td>
+                <td><span class="dash">—</span></td>
+                <td><span class="dash">—</span></td>
+                <td><span class="dash">—</span></td>
+                <td><span class="check">✓</span></td>
+              </tr>
+              <tr>
+                <td>Subscription cadence (<code>frequency.label</code>)</td>
+                <td><span class="check">✓</span></td>
+                <td><span class="check">✓</span></td>
+                <td><span class="dash">—</span></td>
+                <td><span class="check">✓</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <footer class="foot">
+        <p>
+          The SDK ships as <code>@goldenhippo/hippo-shop-sdk</code> — see the
+          <a href="../../README.md">root README</a> for installation, the data
+          model, and the full attribute reference.
+        </p>
+        <p>
+          The publishable key embedded in each demo's
+          <code>&lt;script&gt;</code> tag
+          (<code>gh_pk_test_all_…</code>) is a public, scoped test/UAT key —
+          it's intentionally checked in and safe to ship in client HTML.
+        </p>
+        <p>
+          Every demo is a single self-contained HTML file: open it directly in
+          a browser, no build step required.
+        </p>
+      </footer>
+    </main>
+  </body>
+</html>
