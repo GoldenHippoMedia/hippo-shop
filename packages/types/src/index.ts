@@ -15,6 +15,7 @@ export type {
 export type {
   HippoShopProductDTO,
   HippoShopProductVariantsDTO,
+  HippoShopProductVariantsByQuantityDTO,
   HippoShopProductVariantDTO,
   HippoShopFrequencyDTO,
 } from './product';
