@@ -60,14 +60,20 @@
           </span>
         </p>
 
+        <!--
+          Variant paths:
+            variants.subscription.standardByQuantity.<qty>   — direct lookup by quantity
+            variants.subscription.standardList               — array for <template data-each>
+            variants.subscription.standard                   — deprecated, removed in v3.0.0
+        -->
         <p class="price">
-          <span data-field="variants.subscription.standard.0.price" data-format="currency:USD:en-US">
+          <span data-field="variants.subscription.standardByQuantity.6.price" data-format="currency:USD:en-US">
             $0.00
           </span>
         </p>
 
-        <p class="savings" data-if="variants.subscription.standard.0.savings">
-          Save <span data-field="variants.subscription.standard.0.savings" data-format="currency:USD:en-US">$0.00</span>
+        <p class="savings" data-if="variants.subscription.standardByQuantity.6.savings">
+          Save <span data-field="variants.subscription.standardByQuantity.6.savings" data-format="currency:USD:en-US">$0.00</span>
           vs. one-time
         </p>
 
