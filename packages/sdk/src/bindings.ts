@@ -10,6 +10,7 @@
  *   data-gh-destination="slug"    Sets the destination context.
  *   data-gh-funnel="slug"         Sets the funnel context.
  *   data-with="path.to.object"    Narrows the binding scope for descendants; hides on miss.
+ *   data-when="loaded|loading|failed"  Shows only when the closest resource is in that state.
  *   data-field="path.to.value"    Replaces textContent with the resolved value.
  *   data-format="name[:arg]"      Applies a formatter to the field/attr value.
  *   data-attr-<NAME>="path"       Sets the <NAME> attribute (NOT for on* event attrs).
@@ -133,8 +134,18 @@ function walk(el: Element, ctx: BindContext | null, opts: ApplyBindingsOptions):
     break;
   }
 
-  // data-when intentionally inserted by Task 6 between this point and the
-  // hasData gate below. Do NOT add it in this task.
+  // data-when checks the closest resource ancestor's lifecycle state.
+  // Cheap state check before any path resolution; fires whether or not
+  // the resource has loaded yet so partners can show skeletons immediately.
+  const whenState = el.getAttribute('data-when');
+  if (whenState !== null) {
+    if (!nextCtx?.resourceKey) return; // No resource ancestor → leave alone (consistent with data-if).
+    const states = opts.resourceStates;
+    const actual = states?.get(nextCtx.resourceKey) ?? 'loading';
+    const shouldShow = actual === whenState;
+    setHidden(el, !shouldShow);
+    if (!shouldShow) return;
+  }
 
   // hasData gate — bindings that operate on the bound data only run when
   // data is actually present. During loading (data === undefined), we still
