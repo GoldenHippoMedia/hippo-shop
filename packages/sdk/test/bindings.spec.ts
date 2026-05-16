@@ -149,6 +149,53 @@ describe('applyBindings — attribute bindings', () => {
     applyBindings(document, { formatters, resources });
     expect(document.getElementById('b')!.getAttribute('onclick')).toBeNull();
   });
+
+  it('drops javascript:/vbscript:/data: URLs on url-bearing attributes', () => {
+    const hostile = {
+      slug: 'evil',
+      js: 'javascript:alert(1)',
+      // Browsers strip tab/LF/CR while parsing the scheme; we must catch that too.
+      jsObfuscated: 'java\tscript:alert(1)',
+      jsLeading: '  \t javascript:alert(1)',
+      vb: 'VbScript:msgbox(1)',
+      dataHtml: 'data:text/html,<script>alert(1)</script>',
+      safeRel: '/order-form',
+      safeHttps: 'https://example.com/x',
+    };
+    const res = new Map<string, unknown>([['product:evil', hostile]]);
+    setHtml(`
+      <div data-gh-product="evil">
+        <a id="a1" data-attr-href="js">x</a>
+        <a id="a2" data-attr-href="jsObfuscated">x</a>
+        <a id="a3" data-attr-href="jsLeading">x</a>
+        <a id="a4" data-attr-href="vb">x</a>
+        <iframe id="f1" data-attr-src="dataHtml"></iframe>
+        <a id="ok1" data-attr-href="safeRel">x</a>
+        <a id="ok2" data-attr-href="safeHttps">x</a>
+      </div>
+    `);
+    applyBindings(document, { formatters, resources: res });
+    expect(document.getElementById('a1')!.getAttribute('href')).toBeNull();
+    expect(document.getElementById('a2')!.getAttribute('href')).toBeNull();
+    expect(document.getElementById('a3')!.getAttribute('href')).toBeNull();
+    expect(document.getElementById('a4')!.getAttribute('href')).toBeNull();
+    expect(document.getElementById('f1')!.getAttribute('src')).toBeNull();
+    expect(document.getElementById('ok1')!.getAttribute('href')).toBe('/order-form');
+    expect(document.getElementById('ok2')!.getAttribute('href')).toBe('https://example.com/x');
+  });
+
+  it('refuses to bind iframe srcdoc (raw HTML island)', () => {
+    const res = new Map<string, unknown>([
+      ['product:evil', { slug: 'evil', html: '<img src=x onerror=alert(1)>' }],
+    ]);
+    setHtml(`
+      <div data-gh-product="evil">
+        <iframe id="f" data-attr-srcdoc="html"></iframe>
+      </div>
+    `);
+    applyBindings(document, { formatters, resources: res });
+    expect(document.getElementById('f')!.getAttribute('srcdoc')).toBeNull();
+  });
 });
 
 describe('applyBindings — conditionals', () => {

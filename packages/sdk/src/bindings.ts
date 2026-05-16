@@ -161,6 +161,34 @@ function applyFieldBinding(el: Element, ctx: BindContext): void {
   el.textContent = ctx.formatters.apply(value, fmt);
 }
 
+// Attributes whose value the browser resolves as a URL. If the value starts
+// with a script-bearing scheme (javascript:, vbscript:, data:) it executes in
+// the host page's origin, so we scheme-check before binding.
+const URL_ATTRS = new Set([
+  'href',
+  'xlink:href',
+  'src',
+  'action',
+  'formaction',
+  'data',
+  'ping',
+  'poster',
+  'background',
+  'cite',
+  'longdesc',
+  'usemap',
+  'manifest',
+]);
+
+function isSafeUrl(value: string): boolean {
+  // Browsers strip ASCII whitespace/control chars at the start of a URL and
+  // tab/LF/CR anywhere in the scheme prefix when resolving — `java\tscript:…`
+  // is treated as `javascript:`. Mirror that normalization before checking.
+  // eslint-disable-next-line no-control-regex
+  const cleaned = value.replace(/^[\s\x00-\x1f]+/, '').replace(/[\t\n\r]/g, '');
+  return !/^(javascript|vbscript|data):/i.test(cleaned);
+}
+
 function applyAttrBindings(el: Element, ctx: BindContext): void {
   const attrs = el.attributes;
   // Iterate in reverse since we may not be modifying, but stable in either direction.
@@ -169,11 +197,15 @@ function applyAttrBindings(el: Element, ctx: BindContext): void {
     if (!attr) continue;
     if (!attr.name.startsWith('data-attr-')) continue;
     const target = attr.name.slice('data-attr-'.length);
-    if (!target || target.toLowerCase().startsWith('on')) continue; // Never bind event handlers.
+    if (!target) continue;
+    const lcTarget = target.toLowerCase();
+    if (lcTarget.startsWith('on')) continue; // Never bind event handlers.
+    if (lcTarget === 'srcdoc') continue; // <iframe srcdoc> is a raw HTML island.
     const value = getByPath(ctx.data, attr.value);
     if (value === undefined || value === null) continue;
     const fmtSpec = el.getAttribute(`data-attr-format-${target}`) ?? el.getAttribute('data-format');
     const formatted = ctx.formatters.apply(value, fmtSpec);
+    if (URL_ATTRS.has(lcTarget) && !isSafeUrl(formatted)) continue;
     el.setAttribute(target, formatted);
   }
 }
