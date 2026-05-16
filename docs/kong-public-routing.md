@@ -151,7 +151,7 @@ Credentials hang off Consumers. See [`onboarding-partners.md`](./onboarding-part
 |---|---|---|
 | `rename.headers` | `X-GH-Brand:X-Brand` | The SDK sends the partner-facing name; the existing Commerce API expects `X-Brand`. Kong bridges so neither side has to change |
 
-**Pending:** an upstream credential injection (`add.headers: Authorization:Bearer {vault://env/COMMERCE_INTERNAL_TOKEN}` or similar) will be added to this same plugin instance once the Commerce API trust model is finalized. One plugin instance, both edits.
+The Commerce API trusts Kong's own request directly — no separately-injected credential header. Consumer identity is forwarded by `key-auth` via the standard `X-Consumer-Id` / `X-Consumer-Username` headers if the Commerce API ever needs to attribute requests.
 
 ## 5. proxy-cache
 
@@ -270,11 +270,9 @@ See [`onboarding-partners.md`](./onboarding-partners.md). The route + plugin sta
 
 1. **Per-consumer origin enforcement.** Today the route-level cors `origins` list is the union of all allowed origins. Any consumer with a valid key can call from any allowed origin. For tighter enforcement when consumer count grows past a handful, add a small pre-function plugin (priority just below `request-transformer`) that compares the authenticated consumer's tags (`origin:<url>`) against the inbound `Origin` header and `kong.response.exit(403)` on mismatch.
 
-2. **Upstream credential injection.** A static shared secret will be added to the existing `request-transformer` plugin as an `add.headers` entry, sourced from Kong Vault (`{vault://env/COMMERCE_INTERNAL_TOKEN}`). This is a bootstrap measure — long-term, the Commerce API should consume the `X-Consumer-Id` / `X-Consumer-Username` headers Kong already forwards.
+2. **Memory-strategy cache purge.** Single Admin API DELETE only purges the dyno serving the request. Documented in [`incident-response.md`](./incident-response.md). Switching to `redis` strategy resolves this.
 
-3. **Memory-strategy cache purge.** Single Admin API DELETE only purges the dyno serving the request. Documented in [`incident-response.md`](./incident-response.md). Switching to `redis` strategy resolves this.
-
-4. **Sentinel `CUSTOM_PLUGINS` is Heroku-only.** The plugin allowlist lives in Heroku config, not in `kong.conf`. A local run of the Sentinel image without `CUSTOM_PLUGINS` set will exit hard (intentional safety net). Optional follow-up: bake a default in `kong.conf` and let the env var override.
+3. **Sentinel `CUSTOM_PLUGINS` is Heroku-only.** The plugin allowlist lives in Heroku config, not in `kong.conf`. A local run of the Sentinel image without `CUSTOM_PLUGINS` set will exit hard (intentional safety net). Optional follow-up: bake a default in `kong.conf` and let the env var override.
 
 ## Cross-references
 
