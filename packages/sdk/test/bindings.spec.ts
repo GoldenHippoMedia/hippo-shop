@@ -508,3 +508,109 @@ describe('applyBindings — data-with', () => {
     expect((document.getElementById('card') as HTMLElement).style.display).not.toBe('none');
   });
 });
+
+describe('applyBindings — data-when', () => {
+  const formatters = new FormatRegistry();
+
+  function setup(
+    html: string,
+    states: Record<string, 'loading' | 'loaded' | 'failed'> = {},
+    data?: unknown,
+  ): void {
+    document.body.innerHTML = html;
+    const resources = new Map<string, unknown>();
+    if (data !== undefined) resources.set('product:p1', data);
+    applyBindings(document, {
+      formatters,
+      resources,
+      resourceStates: new Map(Object.entries(states)),
+    });
+  }
+
+  it('shows data-when="loaded" only when the resource is loaded', () => {
+    setup(
+      `<article data-gh-product="p1">
+         <div id="content" data-when="loaded"><span data-field="name"></span></div>
+       </article>`,
+      { 'product:p1': 'loaded' },
+      { name: 'Bio Complete 3' },
+    );
+    expect((document.getElementById('content') as HTMLElement).style.display).not.toBe('none');
+  });
+
+  it('hides data-when="loaded" while loading', () => {
+    setup(
+      `<article data-gh-product="p1">
+         <div id="content" data-when="loaded">x</div>
+       </article>`,
+      { 'product:p1': 'loading' },
+    );
+    expect((document.getElementById('content') as HTMLElement).style.display).toBe('none');
+  });
+
+  it('shows data-when="loading" while loading and hides when loaded', () => {
+    setup(
+      `<article data-gh-product="p1">
+         <div id="skel" data-when="loading">Loading…</div>
+       </article>`,
+      { 'product:p1': 'loading' },
+    );
+    expect((document.getElementById('skel') as HTMLElement).style.display).not.toBe('none');
+
+    // Now re-bind with state changed to loaded.
+    document.body.innerHTML = `<article data-gh-product="p1">
+      <div id="skel" data-when="loading">Loading…</div></article>`;
+    applyBindings(document, {
+      formatters,
+      resources: new Map([['product:p1', { name: 'X' }]]),
+      resourceStates: new Map([['product:p1', 'loaded']]),
+    });
+    expect((document.getElementById('skel') as HTMLElement).style.display).toBe('none');
+  });
+
+  it('shows data-when="failed" only after a failed fetch', () => {
+    setup(
+      `<article data-gh-product="p1">
+         <div id="err" data-when="failed">Couldn't load.</div>
+       </article>`,
+      { 'product:p1': 'failed' },
+    );
+    expect((document.getElementById('err') as HTMLElement).style.display).not.toBe('none');
+  });
+
+  it('defaults absent state to "loading" so skeletons show before any fetch attempt', () => {
+    setup(
+      `<article data-gh-product="p1">
+         <div id="skel" data-when="loading">Loading…</div>
+         <div id="content" data-when="loaded">content</div>
+       </article>`,
+      {}, // no state set
+    );
+    expect((document.getElementById('skel') as HTMLElement).style.display).not.toBe('none');
+    expect((document.getElementById('content') as HTMLElement).style.display).toBe('none');
+  });
+
+  it('stacks with data-with: scope only narrows when state matches', () => {
+    setup(
+      `<article data-gh-product="p1">
+         <div id="card" data-when="loaded" data-with="variants.subscription.standardByQuantity.6">
+           <span id="p" data-field="price">PLACEHOLDER</span>
+         </div>
+       </article>`,
+      { 'product:p1': 'loading' },
+    );
+    // Loading state: data-when hides the element; data-with never runs.
+    expect((document.getElementById('card') as HTMLElement).style.display).toBe('none');
+    expect(document.getElementById('p')?.textContent).toBe('PLACEHOLDER');
+  });
+
+  it('leaves the element alone when there is no resource ancestor', () => {
+    document.body.innerHTML = `<div id="orphan" data-when="loaded">x</div>`;
+    applyBindings(document, {
+      formatters,
+      resources: new Map(),
+      resourceStates: new Map(),
+    });
+    expect((document.getElementById('orphan') as HTMLElement).style.display).not.toBe('none');
+  });
+});
