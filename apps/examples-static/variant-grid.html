@@ -134,8 +134,9 @@
       <h3>Featured packages</h3>
       <p class="section-hint">
         Direct lookup via <code>variants.subscription.standardByQuantity.&lt;qty&gt;</code> —
-        each card is wrapped in <code>data-if</code> on the lookup so it disappears
-        cleanly when that quantity isn't offered.
+        each card uses <code>data-with</code> to narrow the binding scope, so descendants
+        bind to relative fields (<code>price</code>, <code>savings</code>) and the whole
+        card disappears cleanly when that quantity isn't offered.
       </p>
 
       <div class="grid">
