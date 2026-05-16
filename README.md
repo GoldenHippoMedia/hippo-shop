@@ -28,7 +28,7 @@ The fast path — no install, just HTML:
 
 <article data-gh-product="some-product-slug">
   <h2 data-field="name">Loading…</h2>
-  <span data-field="variants.subscription.standard.0.price"
+  <span data-field="variants.subscription.standardByQuantity.6.price"
         data-format="currency:USD"></span>
 </article>
 ```
