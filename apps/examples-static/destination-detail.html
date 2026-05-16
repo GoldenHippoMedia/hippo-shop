@@ -243,6 +243,74 @@
         .ribbon { width: 60px; font-size: 9px; padding: 6px 8px 6px 12px; }
       }
 
+      /* ----------- offer meta (shipping + rebill) ----------- */
+
+      .offer-meta {
+        grid-column: 1 / -1;
+        margin-top: 8px;
+        padding-top: 8px;
+        border-top: 1px dashed var(--blue-100);
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 14px;
+        font-family: var(--font-sans);
+        font-size: 12px;
+        color: var(--gray-600);
+        line-height: 1.5;
+      }
+      .offer-meta .meta-label { color: var(--gray-500); }
+      .offer-meta .meta-rebill { color: var(--blue-700); font-weight: 600; }
+
+      /* ----------- bump offers ----------- */
+
+      .bumps {
+        grid-column: 1 / -1;
+        margin-top: 8px;
+        padding: 10px 12px;
+        background: var(--blue-50);
+        border: 1px dashed var(--blue-200);
+        border-radius: 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .offer.is-selected .bumps {
+        background: var(--gray-50);
+        border-color: var(--gray-200);
+      }
+      .bumps-label {
+        font-family: var(--font-sans);
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--gray-500);
+        margin-bottom: 2px;
+      }
+      .bump {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-family: var(--font-sans);
+        font-size: 13px;
+        color: var(--gray-700);
+        cursor: pointer;
+      }
+      .bump input[type="checkbox"] {
+        accent-color: var(--blue-600);
+        flex-shrink: 0;
+        margin: 0;
+      }
+      .bump-name { font-weight: 600; color: var(--gray-900); }
+      .bump-qty { color: var(--gray-500); font-size: 12px; }
+      .bump-price {
+        margin-left: auto;
+        font-weight: 700;
+        color: var(--gray-900);
+        font-variant-numeric: tabular-nums;
+      }
+      .bump-savings { color: var(--green-600); font-size: 12px; font-weight: 600; }
+
       /* ----------- CTA + footer ----------- */
 
       .cta-block { margin-top: 24px; }
@@ -325,7 +393,7 @@
       <div class="offers">
         <!-- Subscribe & Save panel -->
         <div class="offer-panel is-active" id="panel-sub" role="tabpanel" aria-labelledby="tab-sub">
-          <article class="offer" data-gh-destination="d_mctwellness_1unitsub_mf_240210">
+          <article class="offer" data-gh-destination="d_mctwellness_1unitsub_mf_240210" data-attr-href="funnelSlug">
             <span class="radio" aria-hidden="true"></span>
             <div class="body">
               <span class="qty"><span data-field="pricing.packageQuantity">—</span> Bottle</span>
@@ -337,9 +405,34 @@
                 <div class="cadence" data-field="pricing.frequency.label">Every Month</div>
               </div>
             </div>
+            <div class="offer-meta">
+              <span data-if-not="pricing.shipping.domestic">Free U.S. Shipping</span>
+              <span data-if="pricing.shipping.domestic">
+                <span class="meta-label">Shipping</span>
+                <span data-field="pricing.shipping.domestic" data-format="currency:USD:en-US">$0.00</span>
+              </span>
+              <span class="meta-rebill" data-if="pricing.rebillPrice">
+                Then <span data-field="pricing.rebillPrice.amount" data-format="currency:USD:en-US">$0.00</span>
+                <span data-field="pricing.frequency.label">monthly</span>
+              </span>
+            </div>
+            <div class="bumps" data-if="pricing.bumpOffers.0">
+              <span class="bumps-label">Add to your order</span>
+              <template data-each="pricing.bumpOffers">
+                <label class="bump">
+                  <input type="checkbox" data-attr-aria-label="productName" />
+                  <span class="bump-name" data-field="productName">Add-on</span>
+                  <span class="bump-qty">(<span data-field="quantity">—</span> <span data-field="unitOfMeasure">unit</span>)</span>
+                  <span class="bump-price" data-field="price.amount" data-format="currency:USD:en-US">$0.00</span>
+                  <span class="bump-savings" data-if="price.savings">
+                    save <span data-field="price.savings" data-format="currency:USD:en-US">$0</span>
+                  </span>
+                </label>
+              </template>
+            </div>
           </article>
 
-          <article class="offer is-selected" data-gh-destination="d_mctwellness_3unitsub_mf_240210">
+          <article class="offer is-selected" data-gh-destination="d_mctwellness_3unitsub_mf_240210" data-attr-href="funnelSlug">
             <span class="radio" aria-hidden="true"></span>
             <div class="body">
               <span class="qty"><span data-field="pricing.packageQuantity">—</span> Bottles</span>
@@ -352,9 +445,34 @@
               </div>
             </div>
             <span class="ribbon"><span>Best</span><span>Seller</span></span>
+            <div class="offer-meta">
+              <span data-if-not="pricing.shipping.domestic">Free U.S. Shipping</span>
+              <span data-if="pricing.shipping.domestic">
+                <span class="meta-label">Shipping</span>
+                <span data-field="pricing.shipping.domestic" data-format="currency:USD:en-US">$0.00</span>
+              </span>
+              <span class="meta-rebill" data-if="pricing.rebillPrice">
+                Then <span data-field="pricing.rebillPrice.amount" data-format="currency:USD:en-US">$0.00</span>
+                <span data-field="pricing.frequency.label">every 3 months</span>
+              </span>
+            </div>
+            <div class="bumps" data-if="pricing.bumpOffers.0">
+              <span class="bumps-label">Add to your order</span>
+              <template data-each="pricing.bumpOffers">
+                <label class="bump">
+                  <input type="checkbox" data-attr-aria-label="productName" />
+                  <span class="bump-name" data-field="productName">Add-on</span>
+                  <span class="bump-qty">(<span data-field="quantity">—</span> <span data-field="unitOfMeasure">unit</span>)</span>
+                  <span class="bump-price" data-field="price.amount" data-format="currency:USD:en-US">$0.00</span>
+                  <span class="bump-savings" data-if="price.savings">
+                    save <span data-field="price.savings" data-format="currency:USD:en-US">$0</span>
+                  </span>
+                </label>
+              </template>
+            </div>
           </article>
 
-          <article class="offer" data-gh-destination="d_mctwellness_6unitsub_mf_240210">
+          <article class="offer" data-gh-destination="d_mctwellness_6unitsub_mf_240210" data-attr-href="funnelSlug">
             <span class="radio" aria-hidden="true"></span>
             <div class="body">
               <span class="qty"><span data-field="pricing.packageQuantity">—</span> Bottles</span>
@@ -367,12 +485,37 @@
               </div>
             </div>
             <span class="ribbon"><span>Best</span><span>Value</span></span>
+            <div class="offer-meta">
+              <span data-if-not="pricing.shipping.domestic">Free U.S. Shipping</span>
+              <span data-if="pricing.shipping.domestic">
+                <span class="meta-label">Shipping</span>
+                <span data-field="pricing.shipping.domestic" data-format="currency:USD:en-US">$0.00</span>
+              </span>
+              <span class="meta-rebill" data-if="pricing.rebillPrice">
+                Then <span data-field="pricing.rebillPrice.amount" data-format="currency:USD:en-US">$0.00</span>
+                <span data-field="pricing.frequency.label">every 6 months</span>
+              </span>
+            </div>
+            <div class="bumps" data-if="pricing.bumpOffers.0">
+              <span class="bumps-label">Add to your order</span>
+              <template data-each="pricing.bumpOffers">
+                <label class="bump">
+                  <input type="checkbox" data-attr-aria-label="productName" />
+                  <span class="bump-name" data-field="productName">Add-on</span>
+                  <span class="bump-qty">(<span data-field="quantity">—</span> <span data-field="unitOfMeasure">unit</span>)</span>
+                  <span class="bump-price" data-field="price.amount" data-format="currency:USD:en-US">$0.00</span>
+                  <span class="bump-savings" data-if="price.savings">
+                    save <span data-field="price.savings" data-format="currency:USD:en-US">$0</span>
+                  </span>
+                </label>
+              </template>
+            </div>
           </article>
         </div>
 
         <!-- Single Purchase panel -->
         <div class="offer-panel" id="panel-single" role="tabpanel" aria-labelledby="tab-single" hidden>
-          <article class="offer" data-gh-destination="d_mctwellness_1unit_mf_221006">
+          <article class="offer" data-gh-destination="d_mctwellness_1unit_mf_221006" data-attr-href="funnelSlug">
             <span class="radio" aria-hidden="true"></span>
             <div class="body">
               <span class="qty"><span data-field="pricing.packageQuantity">—</span> Bottle</span>
@@ -384,9 +527,30 @@
                 <div class="cadence">One-Time</div>
               </div>
             </div>
+            <div class="offer-meta">
+              <span data-if-not="pricing.shipping.domestic">Free U.S. Shipping</span>
+              <span data-if="pricing.shipping.domestic">
+                <span class="meta-label">Shipping</span>
+                <span data-field="pricing.shipping.domestic" data-format="currency:USD:en-US">$0.00</span>
+              </span>
+            </div>
+            <div class="bumps" data-if="pricing.bumpOffers.0">
+              <span class="bumps-label">Add to your order</span>
+              <template data-each="pricing.bumpOffers">
+                <label class="bump">
+                  <input type="checkbox" data-attr-aria-label="productName" />
+                  <span class="bump-name" data-field="productName">Add-on</span>
+                  <span class="bump-qty">(<span data-field="quantity">—</span> <span data-field="unitOfMeasure">unit</span>)</span>
+                  <span class="bump-price" data-field="price.amount" data-format="currency:USD:en-US">$0.00</span>
+                  <span class="bump-savings" data-if="price.savings">
+                    save <span data-field="price.savings" data-format="currency:USD:en-US">$0</span>
+                  </span>
+                </label>
+              </template>
+            </div>
           </article>
 
-          <article class="offer is-selected" data-gh-destination="d_mctwellness_3unit_mf_240210">
+          <article class="offer is-selected" data-gh-destination="d_mctwellness_3unit_mf_240210" data-attr-href="funnelSlug">
             <span class="radio" aria-hidden="true"></span>
             <div class="body">
               <span class="qty"><span data-field="pricing.packageQuantity">—</span> Bottles</span>
@@ -398,9 +562,30 @@
                 <div class="cadence">One-Time</div>
               </div>
             </div>
+            <div class="offer-meta">
+              <span data-if-not="pricing.shipping.domestic">Free U.S. Shipping</span>
+              <span data-if="pricing.shipping.domestic">
+                <span class="meta-label">Shipping</span>
+                <span data-field="pricing.shipping.domestic" data-format="currency:USD:en-US">$0.00</span>
+              </span>
+            </div>
+            <div class="bumps" data-if="pricing.bumpOffers.0">
+              <span class="bumps-label">Add to your order</span>
+              <template data-each="pricing.bumpOffers">
+                <label class="bump">
+                  <input type="checkbox" data-attr-aria-label="productName" />
+                  <span class="bump-name" data-field="productName">Add-on</span>
+                  <span class="bump-qty">(<span data-field="quantity">—</span> <span data-field="unitOfMeasure">unit</span>)</span>
+                  <span class="bump-price" data-field="price.amount" data-format="currency:USD:en-US">$0.00</span>
+                  <span class="bump-savings" data-if="price.savings">
+                    save <span data-field="price.savings" data-format="currency:USD:en-US">$0</span>
+                  </span>
+                </label>
+              </template>
+            </div>
           </article>
 
-          <article class="offer" data-gh-destination="d_mctwellness_6unit_mf_240210">
+          <article class="offer" data-gh-destination="d_mctwellness_6unit_mf_240210" data-attr-href="funnelSlug">
             <span class="radio" aria-hidden="true"></span>
             <div class="body">
               <span class="qty"><span data-field="pricing.packageQuantity">—</span> Bottles</span>
@@ -413,6 +598,27 @@
               </div>
             </div>
             <span class="ribbon"><span>Best</span><span>Value</span></span>
+            <div class="offer-meta">
+              <span data-if-not="pricing.shipping.domestic">Free U.S. Shipping</span>
+              <span data-if="pricing.shipping.domestic">
+                <span class="meta-label">Shipping</span>
+                <span data-field="pricing.shipping.domestic" data-format="currency:USD:en-US">$0.00</span>
+              </span>
+            </div>
+            <div class="bumps" data-if="pricing.bumpOffers.0">
+              <span class="bumps-label">Add to your order</span>
+              <template data-each="pricing.bumpOffers">
+                <label class="bump">
+                  <input type="checkbox" data-attr-aria-label="productName" />
+                  <span class="bump-name" data-field="productName">Add-on</span>
+                  <span class="bump-qty">(<span data-field="quantity">—</span> <span data-field="unitOfMeasure">unit</span>)</span>
+                  <span class="bump-price" data-field="price.amount" data-format="currency:USD:en-US">$0.00</span>
+                  <span class="bump-savings" data-if="price.savings">
+                    save <span data-field="price.savings" data-format="currency:USD:en-US">$0</span>
+                  </span>
+                </label>
+              </template>
+            </div>
           </article>
         </div>
       </div>
@@ -432,9 +638,13 @@
       <p class="sdk-note">
         Every row is plain HTML with a <code>data-gh-destination</code> slug. The Hippo Shop SDK
         resolves all six destinations in one batch and fills <code>pricing.price.amount</code>,
-        <code>pricing.price.savings</code>, <code>pricing.frequency.label</code>, and
-        <code>funnelSlug</code> into the markup. Tab and selection state are handled by a tiny
-        page-side script (below) — no SDK state required.
+        <code>pricing.price.savings</code>, <code>pricing.frequency.label</code>,
+        <code>pricing.shipping.domestic</code>, <code>pricing.rebillPrice.amount</code>, and the
+        <code>funnelSlug</code> (via <code>data-attr-href</code>) into the markup. Each card
+        also renders its <code>pricing.bumpOffers</code> through a
+        <code>&lt;template data-each&gt;</code> block. The page-side script listens for
+        <code>gh:data-ready</code> to mirror the selected price into the CTA — no busy-wait
+        required. Tab and row-selection state remain plain DOM.
       </p>
     </main>
 
@@ -463,10 +673,13 @@
           if (!selected) return;
           const priceText = selected.querySelector('.price')?.textContent?.trim();
           if (priceText && priceText !== '$0.00') ctaPrice.textContent = priceText;
-          // The SDK has filled href on a per-row basis if any row carried data-attr-href;
-          // here we mirror the funnel slug as a query-free href hook for the partner page.
-          const slug = selected.getAttribute('data-gh-destination') || '#';
-          cta.setAttribute('href', '#' + slug);
+          // Each <article class="offer"> carries data-attr-href="funnelSlug", so the SDK
+          // fills its `href` attribute with the resolved funnel slug. Mirror it onto the
+          // CTA, falling back to a fragment of the destination slug if the SDK hasn't
+          // filled it yet.
+          const funnelHref = selected.getAttribute('href');
+          const slug = selected.getAttribute('data-gh-destination') || '';
+          cta.setAttribute('href', funnelHref || ('#' + slug));
         }
 
         // Tab switching
@@ -498,14 +711,20 @@
           });
         });
 
-        // Sync once on initial load, and again after the SDK has had a chance to
-        // populate the DOM. We re-check on a short delay since the SDK fetches data async.
+        // Sync once on initial load (renders the static fallbacks), then react to the
+        // SDK's `gh:data-ready` event. The SDK boots, fetches destinations, and applies
+        // bindings — once that fires we re-sync. A short-lived MutationObserver catches
+        // the actual DOM writes (which happen on a microtask after the event), then
+        // self-disconnects since prices don't change again unless gh.refresh() is called.
         syncCtaFromSelected();
-        const startedAt = Date.now();
-        const poll = setInterval(function () {
+        window.addEventListener('gh:data-ready', function () {
           syncCtaFromSelected();
-          if (ctaPrice.textContent !== '$0.00' || Date.now() - startedAt > 5000) clearInterval(poll);
-        }, 200);
+          const observer = new MutationObserver(syncCtaFromSelected);
+          document.querySelectorAll('.offer .price').forEach(function (el) {
+            observer.observe(el, { childList: true, characterData: true, subtree: true });
+          });
+          setTimeout(function () { observer.disconnect(); }, 5000);
+        }, { once: true });
       })();
     </script>
   </body>
