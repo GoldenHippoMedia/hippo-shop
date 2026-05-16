@@ -9,6 +9,7 @@
  *   data-gh-product="slug"        Sets the product context for the element + descendants.
  *   data-gh-destination="slug"    Sets the destination context.
  *   data-gh-funnel="slug"         Sets the funnel context.
+ *   data-with="path.to.object"    Narrows the binding scope for descendants; hides on miss.
  *   data-field="path.to.value"    Replaces textContent with the resolved value.
  *   data-format="name[:arg]"      Applies a formatter to the field/attr value.
  *   data-attr-<NAME>="path"       Sets the <NAME> attribute (NOT for on* event attrs).
@@ -115,6 +116,23 @@ function walk(el: Element, ctx: BindContext | null, opts: ApplyBindingsOptions):
     }
     nextCtx = { data, formatters: opts.formatters };
     break;
+  }
+
+  // data-with narrows scope before any other attribute on this element
+  // evaluates. If the path resolves to null/undefined, hide the subtree —
+  // partner-facing version of "if this lookup found nothing, don't render
+  // dependent content". Evaluates after resource acquisition so the
+  // narrowed scope can be relative to the resource's root.
+  const withPath = el.getAttribute('data-with');
+  if (withPath !== null) {
+    if (!nextCtx) return; // No data → can't evaluate; leave alone (matches data-if).
+    const scoped = getByPath(nextCtx.data, withPath);
+    if (scoped == null) {
+      setHidden(el, true);
+      return;
+    }
+    setHidden(el, false);
+    nextCtx = { data: scoped, formatters: nextCtx.formatters };
   }
 
   // Conditionals first so we can skip the subtree if hidden.
