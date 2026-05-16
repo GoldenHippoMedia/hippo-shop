@@ -76,11 +76,27 @@ export function collectResources(root: ParentNode | Element): ResourceRef[] {
 interface BindContext {
   data: unknown;
   formatters: FormatRegistry;
+  /**
+   * Cache key (e.g. `"product:bio-complete-3"`) for the closest resource
+   * ancestor. Carried so `data-when` can look up the resource's lifecycle
+   * state without re-walking the DOM.
+   */
+  resourceKey?: string;
 }
+
+export type ResourceState = 'loading' | 'loaded' | 'failed';
 
 export interface ApplyBindingsOptions {
   formatters: FormatRegistry;
   resources: Map<string, unknown>;
+  /**
+   * Per-resource lifecycle state, keyed identically to `resources`
+   * (e.g. `"product:bio-complete-3"`). Optional — when omitted, all
+   * resources are treated as having no known state, which means
+   * `data-when="loading"` shows by default for elements with a resource
+   * ancestor.
+   */
+  resourceStates?: Map<string, ResourceState>;
 }
 
 /**
@@ -103,68 +119,73 @@ export function applyBindings(root: Element | Document, opts: ApplyBindingsOptio
 }
 
 function walk(el: Element, ctx: BindContext | null, opts: ApplyBindingsOptions): void {
-  // Acquire context if this element specifies a resource. We resolve in a fixed order
-  // so an element using two attrs (rare) picks a deterministic winner.
+  // Acquire context if this element specifies a resource. We resolve in a fixed
+  // order so an element using two attrs (rare) picks a deterministic winner.
+  // Always record the key so data-when can resolve state, even when data is
+  // still undefined (resource not yet loaded).
   let nextCtx = ctx;
   for (const kind of RESOURCE_KINDS) {
     const slug = el.getAttribute(RESOURCE_ATTR[kind]);
     if (!slug) continue;
-    const data = opts.resources.get(`${kind}:${slug}`);
-    if (data === undefined) {
-      // Resource not loaded — defer the subtree until a later bind pass.
-      return;
-    }
-    nextCtx = { data, formatters: opts.formatters };
+    const key = `${kind}:${slug}`;
+    const data = opts.resources.get(key);
+    nextCtx = { data, formatters: opts.formatters, resourceKey: key };
     break;
   }
 
-  // data-with narrows scope before any other attribute on this element
-  // evaluates. If the path resolves to null/undefined, hide the subtree —
-  // partner-facing version of "if this lookup found nothing, don't render
-  // dependent content". Evaluates after resource acquisition so the
-  // narrowed scope can be relative to the resource's root.
-  const withPath = el.getAttribute('data-with');
-  if (withPath !== null) {
-    if (!nextCtx) return; // No data → can't evaluate; leave alone (matches data-if).
-    const scoped = getByPath(nextCtx.data, withPath);
-    if (scoped == null) {
-      setHidden(el, true);
+  // data-when intentionally inserted by Task 6 between this point and the
+  // hasData gate below. Do NOT add it in this task.
+
+  // hasData gate — bindings that operate on the bound data only run when
+  // data is actually present. During loading (data === undefined), we still
+  // recurse into children so descendants with their own resource contexts
+  // get processed, but data-with / data-if / data-each / data-field / data-attr-*
+  // are skipped to preserve the pre-2.2 "untouched during loading" behavior.
+  const hasData = nextCtx != null && nextCtx.data !== undefined;
+
+  if (hasData) {
+    // data-with narrows scope before any other attribute on this element
+    // evaluates. If the path resolves to null/undefined, hide the subtree.
+    const withPath = el.getAttribute('data-with');
+    if (withPath !== null) {
+      const scoped = getByPath(nextCtx!.data, withPath);
+      if (scoped == null) {
+        setHidden(el, true);
+        return;
+      }
+      setHidden(el, false);
+      nextCtx = nextCtx!.resourceKey !== undefined
+        ? { data: scoped, formatters: nextCtx!.formatters, resourceKey: nextCtx!.resourceKey }
+        : { data: scoped, formatters: nextCtx!.formatters };
+    }
+
+    // Conditionals first so we can skip the subtree if hidden.
+    const ifPath = el.getAttribute('data-if');
+    if (ifPath !== null) {
+      const v = getByPath(nextCtx!.data, ifPath);
+      setHidden(el, !v);
+      if (!v) return;
+    }
+    const ifNotPath = el.getAttribute('data-if-not');
+    if (ifNotPath !== null) {
+      const v = getByPath(nextCtx!.data, ifNotPath);
+      setHidden(el, Boolean(v));
+      if (v) return;
+    }
+
+    // Loop expansion. <template data-each="path"> clones its content per item.
+    if (el instanceof HTMLTemplateElement && el.hasAttribute('data-each')) {
+      expandLoop(el, nextCtx!, opts);
       return;
     }
-    setHidden(el, false);
-    nextCtx = { data: scoped, formatters: nextCtx.formatters };
-  }
 
-  // Conditionals first so we can skip the subtree if hidden.
-  const ifPath = el.getAttribute('data-if');
-  if (ifPath !== null) {
-    if (!nextCtx) return; // No data → can't evaluate; leave alone.
-    const v = getByPath(nextCtx.data, ifPath);
-    setHidden(el, !v);
-    if (!v) return;
-  }
-  const ifNotPath = el.getAttribute('data-if-not');
-  if (ifNotPath !== null) {
-    if (!nextCtx) return;
-    const v = getByPath(nextCtx.data, ifNotPath);
-    setHidden(el, Boolean(v));
-    if (v) return;
-  }
-
-  // Loop expansion. <template data-each="path"> clones its content per item.
-  if (el instanceof HTMLTemplateElement && el.hasAttribute('data-each')) {
-    if (nextCtx) expandLoop(el, nextCtx, opts);
-    return;
-  }
-
-  // Field and attribute bindings on this element.
-  if (nextCtx) {
-    applyFieldBinding(el, nextCtx);
-    applyAttrBindings(el, nextCtx);
+    // Field and attribute bindings on this element.
+    applyFieldBinding(el, nextCtx!);
+    applyAttrBindings(el, nextCtx!);
   }
 
   // Recurse into children. Templates are not entered (their content is in
-  // template.content, processed only when expanded).
+  // template.content, processed only when expanded via the hasData branch above).
   if (!(el instanceof HTMLTemplateElement)) {
     for (const child of Array.from(el.children)) walk(child, nextCtx, opts);
   }
