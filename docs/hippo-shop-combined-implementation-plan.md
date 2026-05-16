@@ -147,11 +147,11 @@ Kong at `api-prod.goldenhippo.io` is the only trust boundary. Everything past Ko
 **Six guardrails, none invented from scratch:**
 
 1. **Publishable key auth** — Kong `key-auth`. Per-consumer `gh_pk_*` keys. Publishable, not secret; enforcement comes from origin allowlists and rate limits.
-2. **Origin allowlist** — Kong `cors` plugin. Each consumer is tied to a specific set of `Origin` headers. Forged keys from unauthorized origins are rejected at the edge.
+2. **Origin allowlist** — Kong `cors` plugin. For v1 the allowlist is a route-level superset of every onboarded partner's origins (per-consumer CORS plugin overrides don't apply in Kong OSS because browser preflights are anonymous). Per-consumer enforcement is deferred to a small pre-function plugin that compares the authenticated consumer's `origin:*` tags against the inbound `Origin`; see [`kong-public-routing.md`](./kong-public-routing.md). For v1, the superset enforced at the edge is the boundary.
 3. **Per-key rate limiting** — Kong `rate-limiting`, tier-based per consumer. Revoke or downgrade a partner via Kong Admin UI in seconds.
 4. **Brand-bound tenancy** — `data-brand="Gundry MD"` at init, validated server-side. Cross-brand requests return 404 (same as "doesn't exist") so partners can't enumerate resources they don't own.
 5. **Public DTO segregation** — every handler under `/public/v1/` uses dedicated DTO types and mappers. An integration test verifies handlers return only the public type's keys.
-6. **Defense-in-depth field strip** — Kong `response-transformer` strips a denylist of internal field names. If a mapper bug ever leaks an internal field, Kong catches it before the network.
+6. **Defense-in-depth field strip** — Kong `response-transformer` strips a denylist of internal field names. If a mapper bug ever leaks an internal field, Kong catches it before the network. OSS limitation: top-level JSON keys only — nested-field enforcement is the commerce repo's integration tests (per §3.2 rule 4), which are the stronger guarantee anyway.
 
 **No PII. No writes. No analytics ingestion. No identity. The SDK is dumb-pipe by design.** If a future scenario needs any of those, it gets its own purpose-built surface — not a flag here.
 
@@ -513,13 +513,15 @@ Routes:
 ### 7.2 Plugins on `hippo-shop-public-v1`
 
 ```
+- cors                      # route-level origin superset; preflight + browser headers
 - key-auth                  # X-GH-Key: gh_pk_...
-- cors                      # origins per consumer, exact-match enforcement
-- rate-limiting             # per-consumer, tier-based
-- proxy-cache               # TTL: funnel 60s, destination 60s, product 120s
-- response-transformer      # defense-in-depth field denylist
-- request-validator         # origin must match consumer's allowlist
+- rate-limiting             # per-consumer, tier-based (60/min standard, 300/min elevated)
+- request-transformer       # rename X-GH-Brand → X-Brand for upstream
+- proxy-cache               # TTL: 60s default; honors upstream Cache-Control
+- response-transformer      # defense-in-depth header + top-level JSON denylist
 ```
+
+Operational details — Sentinel `CUSTOM_PLUGINS` allowlist, plugin priorities, full configuration values, smoke tests, known limitations — live in [`kong-public-routing.md`](./kong-public-routing.md). The original plan referenced `request-validator` for per-consumer origin enforcement; that plugin is Enterprise-only and is replaced for v1 by route-level cors enforcement plus a deferred pre-function (see the new doc).
 
 ### 7.3 Plugins on `hippo-shop-sdk-delivery`
 
@@ -756,9 +758,9 @@ These need answers before Phase 1 starts. None are blockers on the architecture 
 - [ ] `@goldenhippo/hippo-shop-types@1.0.0` published to the internal registry, conforms to the DTO contract, ships fixtures, passes `tsd`.
 - [ ] `@goldenhippo/hippo-shop-sdk@1.0.0` published, bundle ≤ 8 KB gzipped, deployed to Cloudflare Pages, served via Kong at `api-prod.goldenhippo.io/sdk/v1/gh.js`.
 - [ ] Commerce API ships `/public/v1/funnel/:slugOrId`, `/public/v1/destination/:slugOrId`, `/public/v1/product/:slugOrId` on prod, conforming to the published types, with integration tests verifying shape.
-- [ ] Kong service `hippo-shop-public-v1` configured with key-auth, cors, rate-limiting, proxy-cache, response-transformer, request-validator on both UAT and prod.
+- [ ] Kong service `hippo-shop-public-v1` configured with cors, key-auth, rate-limiting, request-transformer, proxy-cache, and response-transformer on both UAT and prod, per [`kong-public-routing.md`](./kong-public-routing.md).
 - [ ] At least one internal Golden Hippo property using the SDK in production.
-- [ ] `docs/dto-contract-v1.md`, `docs/onboarding-partners.md`, `docs/incident-response.md` all merged in the monorepo.
+- [ ] `docs/dto-contract-v1.md`, `docs/kong-public-routing.md`, `docs/onboarding-partners.md`, `docs/incident-response.md` all merged in the monorepo.
 - [ ] CI green on monorepo and commerce repo. Bundle size guard active.
 - [ ] At least one cache-purge drill executed and documented.
 

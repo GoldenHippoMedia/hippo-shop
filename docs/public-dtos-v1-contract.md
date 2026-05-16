@@ -390,19 +390,21 @@ If a partner asks for any of the above, the answer is "v1 doesn't support that, 
 Single Kong service backing all three routes. Single consumer model. Same plugin stack applied at the service level.
 
 ```
-Service: sdk-public-v1
+Service: hippo-shop-public-v1
   Upstream:  commerce-api → /public/v1/*
-  Plugins:
-    - key-auth          (key as X-GH-Key: gh_pk_...)
-    - cors              (origins per consumer, exact-match enforcement)
-    - rate-limiting     (per consumer, tier-based)
-    - proxy-cache       (TTL: funnel 60s, destination 60s, product 120s)
-    - response-transformer  (defense-in-depth field denylist)
-    - request-validator (origin must match consumer's allowlist)
+  Plugins (priority order):
+    - cors                  (preflight + browser headers; route-level origin superset)
+    - key-auth              (key as X-GH-Key: gh_pk_...)
+    - rate-limiting         (per consumer; 60/min standard, 300/min elevated)
+    - request-transformer   (rename X-GH-Brand → X-Brand for upstream)
+    - proxy-cache           (60s default; honors upstream Cache-Control)
+    - response-transformer  (defense-in-depth header + top-level JSON denylist)
+
+Operational details: docs/kong-public-routing.md
 
 Consumer model:
   Each partner-property = one Kong consumer.
-  Consumer carries: brand binding, origin allowlist, rate tier.
+  Consumer carries: brand binding, origin allowlist (as tags + route-level cors entry), rate tier.
 
 Routes:
   GET /public/v1/funnel/:slugOrId
@@ -418,7 +420,7 @@ SDK script delivery:
 
 **Cache invalidation:** TTL-based for v1. If a price change needs immediate propagation, the commerce API can call Kong's admin API to purge `proxy-cache` keys. Documented as a runbook, not automated.
 
-**Defense in depth:** `response-transformer` strips a denylist of internal field-name patterns (e.g. `taxCode`, `*Id` keys not on the allow-set, `outOfStockEmailList`, `restockEta`) so that if a mapper bug ever leaks an internal field, Kong catches it before it reaches the network.
+**Defense in depth:** `response-transformer` strips a denylist of internal field names so that if a mapper bug ever leaks an internal field, Kong catches it before it reaches the network. **Kong OSS limitation:** the plugin operates on top-level JSON keys only; nested-field enforcement is the commerce repo's integration tests (§3.2 rule 4 — every handler's response must match the published DTO and contain only its keys), which are the stronger guarantee. See [`kong-public-routing.md`](./kong-public-routing.md) for the configuration.
 
 ---
 

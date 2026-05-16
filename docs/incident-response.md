@@ -2,9 +2,11 @@
 
 Hippo Shop sits between Kong and the commerce API. Most incidents resolve at the gateway in seconds; bundle issues take a Cloudflare redeploy. This document covers the four scenarios we have actually run drills for.
 
+Routing setup the runbooks below assume: [`kong-public-routing.md`](./kong-public-routing.md).
+
 ## 1. Purge the edge cache
 
-Kong `proxy-cache` is TTL-based (funnel 60s, destination 60s, product 120s). If a price change needs immediate propagation:
+Kong `proxy-cache` honors the upstream `Cache-Control` header with a 60s fallback when none is set. If a price change needs immediate propagation:
 
 ```bash
 # Single key
@@ -19,6 +21,12 @@ curl -X DELETE \
 ```
 
 Wait 10 seconds, hit the route from an allowed origin, confirm new payload.
+
+**Multi-dyno caveat.** The route runs `proxy-cache` with the `memory` strategy, which means counters and cached responses are **per-dyno** — each gateway dyno has its own cache. A single Admin API DELETE only purges the dyno that handled that admin request; partners hitting a different dyno may still see the stale entry until its TTL expires. Three options when this matters:
+
+1. **Accept the TTL window** (60s default). Usually faster than orchestrating a fan-out.
+2. **Restart the gateway dyno set** (`heroku ps:restart -a <gateway-app>`) — purges *all* dynos' caches at the cost of a brief cold-cache period.
+3. **Switch `proxy-cache.config.strategy` to `redis`** if sub-60s propagation becomes a recurring need. One-time config change; no schema migration.
 
 ## 2. Revoke a partner key
 

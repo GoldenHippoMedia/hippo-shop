@@ -52,6 +52,7 @@ docs/
   incident-response.md
   release-process.md
   cloudflare-deploy.md
+  kong-public-routing.md
 ```
 
 ## Boundaries

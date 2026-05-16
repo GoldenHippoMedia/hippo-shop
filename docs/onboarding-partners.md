@@ -4,6 +4,8 @@
 > No external partner keys should be issued until partner-relations has
 > approved the partner.
 
+This doc covers the **per-partner** workflow. The **one-time** route + plugin setup (the cors, key-auth, rate-limiting, request-transformer, proxy-cache, response-transformer stack) lives in [`kong-public-routing.md`](./kong-public-routing.md).
+
 ## Prerequisites
 
 - Access to the Kong Admin UI (ask platform).
@@ -25,20 +27,21 @@
    - The key is **publishable** — it will live in plain text on partner pages. Treat it like a Stripe `pk_*`, not a secret.
    - Record the key in the partner-relations vault.
 
-3. **Configure CORS.**
-   - Kong Admin UI → Services → `hippo-shop-public-v1` → Routes → Plugins → CORS.
-   - Per-consumer override → add the partner's exact origins:
+3. **Add the partner's origins to the route-level CORS allowlist.**
+   - Kong Admin UI → Routes → `hippo-shop-public-v1` → Plugins → CORS.
+   - Append the partner's exact origins to `config.origins`:
      - `https://www.example.com`
      - `https://staging.example.com`
    - Wildcards are not permitted. Add each subdomain explicitly.
+   - Also tag the **consumer** (not the plugin) with one tag per origin: `origin:https://www.example.com`, `origin:https://staging.example.com`. The tags don't enforce anything today, but they're the input shape the future per-consumer origin pre-function will key off (see [`kong-public-routing.md`](./kong-public-routing.md) → "Known limitations").
+   - **Per-consumer CORS plugin overrides don't work in OSS Kong** — browser preflights are anonymous, so Kong can't identify the consumer on `OPTIONS`. Today the route-level superset is the enforcement boundary.
 
 4. **Set the rate-limit tier.**
-   - Plugins → Rate Limiting → per-consumer override.
-   - Standard tier: 60 req/min per consumer.
-   - Elevated tier: 300 req/min — requires partner-relations sign-off.
+   - Standard tier (default): nothing to do — the route-level `rate-limiting` plugin already applies 60 req/min per consumer.
+   - Elevated tier (requires partner-relations sign-off): attach a **consumer-scoped** `rate-limiting` plugin to this consumer with `minute: 300`, `limit_by: consumer`, `policy: local`. This shadows the route-level instance for this consumer only.
 
 5. **Assign the brand binding.**
-   - The brand is enforced server-side by the commerce API on every `/public/v1/*` request via the `X-GH-Brand` header.
+   - The SDK sends `X-GH-Brand`; Kong's `request-transformer` plugin renames it to `X-Brand` before the request reaches the Commerce API, which enforces brand tenancy on `X-Brand`. Neither side reads `X-GH-Brand` directly; the rename happens at the gateway.
    - Add `brand:<brand-slug>` to the consumer's tags so it shows up in dashboards.
 
 6. **Verify.**
