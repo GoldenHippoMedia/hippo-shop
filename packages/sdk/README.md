@@ -128,6 +128,57 @@ Loops can be nested inside loops — bind paths resolve against the nearest encl
 
 ---
 
+## Declarative scope (`data-with`)
+
+Wrap any element in `data-with="path.to.object"` to narrow the binding scope for it and its descendants. If the path doesn't resolve, the element hides via `style.display = 'none'` and the subtree is skipped — no JS, no placeholder leak.
+
+Use it whenever you'd otherwise repeat a long path on every nested binding:
+
+```html
+<article data-with="variants.subscription.standardByQuantity.6">
+  <p class="qty"><span data-field="quantity"></span></p>
+  <p class="price"><span data-field="price" data-format="currency:USD:en-US"></span></p>
+  <p data-if="savings">Save <span data-field="savings" data-format="currency:USD:en-US"></span></p>
+</article>
+```
+
+If the catalog doesn't carry a 6-pack, the entire `<article>` hides.
+
+## Resource lifecycle (`data-when`)
+
+`data-when` shows an element only when its closest resource ancestor is in the named lifecycle state:
+
+- `loaded` — the resource fetch succeeded.
+- `loading` — the fetch is in flight, or the page just mounted and a fetch is queued.
+- `failed` — the fetch settled without populating the resource (404, network error, brand mismatch).
+
+```html
+<article data-gh-product="bio-complete-3">
+  <div data-when="loading" class="skeleton" aria-busy="true">…</div>
+  <div data-when="failed" class="error" role="alert">Couldn't load this product.</div>
+  <div data-when="loaded">
+    <h2 data-field="name"></h2>
+    <img data-attr-src="image" data-attr-alt="name" />
+  </div>
+</article>
+```
+
+The runtime now binds twice per pass: once with unloaded resources marked `'loading'` (skeletons appear before the network round-trip), then again after fetches settle. `gh:bindings-ready` continues to fire once, after the post-fetch pass.
+
+## Evaluation order
+
+When multiple binding attributes appear on the same element, they evaluate in this order:
+
+1. Resource context attributes (`data-gh-product`, `data-gh-destination`, `data-gh-funnel`).
+2. `data-when` — cheap state check; if mismatched, the element hides and the subtree is skipped.
+3. `data-with` — narrows scope; if the path doesn't resolve, the element hides.
+4. `data-if` / `data-if-not` — evaluated against the narrowed scope.
+5. `<template data-each>` — iterates; clones use the narrowed scope as their parent context.
+6. `data-field`, `data-attr-<NAME>` — field/attribute writes, against the narrowed scope.
+7. Recurse into children.
+
+---
+
 ## Programmatic API
 
 Everything the declarative layer does is also available on `window.gh`:
