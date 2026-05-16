@@ -45,6 +45,15 @@ describe('parseScriptConfig', () => {
     expect(parseScriptConfig(s).debug).toBe(true);
   });
 
+  it('accepts a hyphenated brand segment', () => {
+    const s = makeScript({
+      key: 'gh_pk_internal_beverly-hills-md_a1b2c3',
+      brand: 'Beverly Hills MD',
+      src: goodSrc,
+    });
+    expect(parseScriptConfig(s).key).toBe('gh_pk_internal_beverly-hills-md_a1b2c3');
+  });
+
   it('rejects a malformed key', () => {
     const s = makeScript({ key: 'pk_test_123', brand: 'Gundry MD', src: goodSrc });
     expect(() => parseScriptConfig(s)).toThrow(ConfigError);

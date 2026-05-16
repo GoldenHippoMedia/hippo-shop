@@ -378,7 +378,7 @@ export class GhError extends Error {
 ### 5.5 Boot sequence
 
 1. Find the `<script>` tag via `document.currentScript` (fallback: scan for `script[data-key][data-brand]` matching `/sdk/v1/gh.js`).
-2. Validate `data-key` against `/^gh_pk_[a-z0-9_]+_[a-f0-9]+$/`.
+2. Validate `data-key` against `/^gh_pk_[a-z0-9_-]+_[a-f0-9]+$/`.
 3. Validate `data-brand` is non-empty (API enforces actual validity).
 4. Derive API base URL from the script's own `src.origin`. Validate against allowed-hosts list (prod, UAT, local-dev patterns).
 5. Construct `GhDataClient` singleton.

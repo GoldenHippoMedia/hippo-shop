@@ -22,8 +22,9 @@ This doc covers the **per-partner** workflow. The **one-time** route + plugin se
    - Tags: `brand:<brand-slug>`, `partner`.
 
 2. **Create the publishable key.**
-   - Open the consumer → Credentials → Key Auth → Add credential.
-   - Key format: `gh_pk_<consumer-slug>_<random-hex>` (e.g. `gh_pk_netlify_gundry_a1b2c3d4`).
+   - Generate the key string locally with `node scripts/make-key.mjs` (or `node scripts/make-key.mjs <consumer> "<brand>"` to skip prompts). The script enforces the SDK's `KEY_PATTERN`, slugifies the brand (spaces → `-`), and appends 16 bytes of hex randomness.
+   - Key format: `gh_pk_<consumer-slug>_<brand-slug>_<random-hex>` (e.g. `gh_pk_netlify_beverly-hills-md_a1b2c3d4…`). Kong's `key-auth` plugin auto-generates base62 strings by default, so you must paste the script's output into the `key` field when adding the credential rather than letting Kong pick.
+   - Open the consumer → Credentials → Key Auth → Add credential, paste the generated string into `key`.
    - The key is **publishable** — it will live in plain text on partner pages. Treat it like a Stripe `pk_*`, not a secret.
    - Record the key in the partner-relations vault.
 

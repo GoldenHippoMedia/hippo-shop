@@ -11,7 +11,7 @@ export interface GhConfig {
   apiBaseUrl: string;
 }
 
-const KEY_PATTERN = /^gh_pk_[a-z0-9_]+_[a-f0-9]+$/;
+const KEY_PATTERN = /^gh_pk_[a-z0-9_-]+_[a-f0-9]+$/;
 
 const PROD_HOST = 'api-prod.goldenhippo.io';
 const UAT_HOST = 'api-uat.goldenhippo.io';
@@ -24,7 +24,7 @@ export function parseScriptConfig(script: HTMLScriptElement): GhConfig {
 
   if (!KEY_PATTERN.test(key)) {
     throw new ConfigError(
-      `data-key must match /^gh_pk_<consumer>_<random>$/ — got: ${truncate(key)}`,
+      `data-key must match /^gh_pk_[a-z0-9_-]+_<hex>$/ — got: ${truncate(key)}`,
     );
   }
   if (!brand.trim()) {
