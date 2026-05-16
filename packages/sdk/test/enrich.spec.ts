@@ -145,4 +145,27 @@ describe('enrichProduct', () => {
     expect(product.variants.oneTime.standardByQuantity['3']?.sku).toBe('O-S-3');
     expect(product.variants.oneTime.myAccountByQuantity['4']?.sku).toBe('O-M-4');
   });
+
+  it('returns the input unchanged when variants are missing or partial', () => {
+    // Missing variants entirely.
+    const noVariants = { id: 'x', slug: 'x', name: '', packaging: { singular: '', plural: '' },
+      image: '', reviews: { count: 0, average: 0, globalFiveStarReviews: 0 }, outOfStock: false,
+    } as unknown as HippoShopProductDTO;
+    expect(() => enrichProduct(noVariants)).not.toThrow();
+    expect((noVariants as unknown as { variants?: unknown }).variants).toBeUndefined();
+
+    // Missing one purchase branch.
+    const onlySubscription = {
+      id: 'x', slug: 'x', name: '', packaging: { singular: '', plural: '' },
+      image: '', reviews: { count: 0, average: 0, globalFiveStarReviews: 0 }, outOfStock: false,
+      variants: {
+        subscription: { standard: [], myAccount: [] },
+        // oneTime is intentionally omitted
+      },
+    } as unknown as HippoShopProductDTO;
+    expect(() => enrichProduct(onlySubscription)).not.toThrow();
+    // Subscription branch was enriched; oneTime is untouched.
+    expect(onlySubscription.variants.subscription.standardByQuantity).toEqual({});
+    expect((onlySubscription.variants as unknown as Record<string, unknown>)['oneTime']).toBeUndefined();
+  });
 });

@@ -13,12 +13,15 @@ const TIERS = ['standard', 'myAccount'] as const;
  * the record; the list preserves the original order including duplicates.
  */
 export function enrichProduct(raw: HippoShopProductDTO): HippoShopProductDTO {
+  const variants = (raw as { variants?: Record<string, unknown> }).variants;
+  if (!variants) return raw;
   for (const purchase of PURCHASE_TYPES) {
+    const branch = variants[purchase] as Record<string, unknown> | undefined;
+    if (!branch) continue;
     for (const tier of TIERS) {
-      const branch = raw.variants[purchase] as Record<string, unknown>;
       const arr = branch[tier];
-      // Defensive: tolerate a missing/malformed branch without throwing — the
-      // SDK is a thin pass-through and we'd rather degrade than blow up.
+      // Tolerate a malformed branch — the SDK is a thin pass-through and we'd
+      // rather degrade than blow up if the server omits a price level.
       const list = Array.isArray(arr) ? arr : [];
       branch[`${tier}List`] = list;
       branch[`${tier}ByQuantity`] = Object.fromEntries(
