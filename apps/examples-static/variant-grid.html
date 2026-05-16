@@ -32,12 +32,12 @@
     <section data-gh-product="bio-complete-3">
       <h2 data-field="name">Product</h2>
 
-      <p data-if-not="variants.subscription.standard" class="empty">
+      <p data-if-not="variants.subscription.standardList" class="empty">
         No subscription tiers available right now.
       </p>
 
       <div class="grid">
-        <template data-each="variants.subscription.standard">
+        <template data-each="variants.subscription.standardList">
           <article class="tier">
             <p class="qty"><span data-field="quantity">—</span></p>
             <p class="package"><span data-field="packageType">bottle</span>s</p>
