@@ -48,7 +48,7 @@ Drop one `<script>` and write your HTML:
   </p>
 
   <p class="price">
-    <span data-field="variants.subscription.standard.0.price"
+    <span data-field="variants.subscription.standardByQuantity.6.price"
           data-format="currency:USD"></span>
   </p>
 
@@ -86,7 +86,9 @@ The API base URL is derived from the script's `src` host. Allowed hosts: `api-pr
 | `data-if-not="path"` | Any element | Hides the element if the path resolves to a truthy value. |
 | `data-each="path"` | `<template>` only | Clones the template's content once per item in the array. |
 
-Paths are dot-separated; array indices are numeric segments: `variants.subscription.standard.0.price`.
+Paths are dot-separated. Variant lookups use the quantity as the key (e.g. `variants.subscription.standardByQuantity.6.price`); for iteration use `<template data-each="variants.subscription.standardList">`. Numeric path segments still work as array indices for any other array field.
+
+> **Deprecation:** the array form `variants.<purchase>.<tier>` (e.g. `variants.subscription.standard.0.price`) is deprecated and will be removed in v3.0.0. Use `<tier>List` for iteration and `<tier>ByQuantity` for direct lookup by quantity instead.
 
 ### Formatters
 
@@ -112,7 +114,7 @@ window.gh.format.register('shouty', (v) => String(v).toUpperCase() + '!');
 
 ```html
 <ul data-gh-product="bio-complete-3">
-  <template data-each="variants.subscription.standard">
+  <template data-each="variants.subscription.standardList">
     <li>
       <strong data-field="quantity"></strong>
       × <span data-field="packageType"></span>:
