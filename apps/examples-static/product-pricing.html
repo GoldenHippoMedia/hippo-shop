@@ -18,8 +18,18 @@
         align-items: start;
       }
       .card img { width: 100%; border-radius: 8px; background: color-mix(in srgb, CanvasText 8%, transparent); }
-      .price { font-size: 1.75rem; font-weight: 600; margin: 0.25rem 0; }
-      .savings { color: #047857; font-weight: 600; }
+      .price { font-size: 1.75rem; font-weight: 600; margin: 0.25rem 0 0.1rem; }
+      .cadence { font-size: 0.9rem; margin: 0 0 0.35rem; color: color-mix(in srgb, CanvasText 55%, transparent); }
+      .alt-price {
+        display: inline-block;
+        font-size: 0.85rem;
+        padding: 0.1rem 0.5rem;
+        border-radius: 6px;
+        background: color-mix(in srgb, CanvasText 6%, transparent);
+        color: color-mix(in srgb, CanvasText 70%, transparent);
+        margin: 0 0 0.4rem;
+      }
+      .savings { color: #047857; font-weight: 600; margin: 0.25rem 0 0.75rem; }
       .muted { color: color-mix(in srgb, CanvasText 60%, transparent); }
       .badge {
         display: inline-block;
@@ -30,17 +40,77 @@
         background: #fee2e2;
         color: #991b1b;
       }
-      .reviews { color: #d97706; font-weight: 600; }
+      .reviews-row { margin: 0.25rem 0 0.1rem; }
+      .reviews-row .stars { color: #d97706; font-weight: 600; }
+      .reviews-row .count { color: color-mix(in srgb, CanvasText 65%, transparent); margin-left: 0.25rem; }
+      .reviews-global {
+        font-size: 0.8rem;
+        color: color-mix(in srgb, CanvasText 55%, transparent);
+        margin: 0 0 0.5rem;
+      }
+      .cta {
+        display: inline-block;
+        margin-top: 0.5rem;
+        padding: 0.65rem 1.1rem;
+        border-radius: 8px;
+        background: #047857;
+        color: #ffffff;
+        text-decoration: none;
+        font-weight: 600;
+        transition: background-color 120ms ease;
+      }
+      .cta:hover, .cta:focus-visible { background: #065f46; }
+      .cta:focus-visible { outline: 2px solid #10b981; outline-offset: 2px; }
+      .how {
+        margin-top: 2rem;
+        padding: 1rem 1.25rem;
+        border: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
+        border-radius: 10px;
+        background: color-mix(in srgb, CanvasText 4%, transparent);
+      }
+      .how h2 { margin: 0 0 0.5rem; font-size: 1.1rem; }
+      .how dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.4rem 1rem; margin: 0; }
+      .how dt { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85rem; white-space: nowrap; }
+      .how dd { margin: 0; color: color-mix(in srgb, CanvasText 70%, transparent); font-size: 0.9rem; }
     </style>
   </head>
   <body>
     <header>
       <h1>Product pricing — declarative bindings</h1>
       <p class="muted">
-        The entire card below is markup. No JavaScript was written for this page —
-        the SDK reads <code>data-gh-product</code> and resolves the fields itself.
+        This page is 100% declarative <em>except</em> a single 12-line script that
+        registers a custom <code>saveBlurb</code> formatter. Every value below comes
+        from one product fetch — the SDK dedupes identical reads across the page.
+        Bindings update in place when <code>window.gh.refresh()</code> is called,
+        which is how a newly registered formatter takes effect without a reload.
       </p>
     </header>
+
+    <!--
+      Custom formatters can be registered any time after the SDK fires gh:data-ready.
+      We then call gh.refresh() to re-evaluate any bindings that reference the new
+      formatter. This script is intentionally placed BEFORE the SDK loader so the
+      listener is attached before the event has any chance to fire.
+    -->
+    <script>
+      window.addEventListener('gh:data-ready', () => {
+        if (!window.gh?.format?.register) return;
+        window.gh.format.register('saveBlurb', (value, currency) => {
+          const n = typeof value === 'number' ? value : Number(value);
+          if (!Number.isFinite(n)) return '';
+          try {
+            return 'Save ' + new Intl.NumberFormat(undefined, {
+              style: 'currency',
+              currency: currency || 'USD',
+              maximumFractionDigits: 0,
+            }).format(n);
+          } catch {
+            return 'Save $' + Math.round(n);
+          }
+        });
+        if (typeof window.gh.refresh === 'function') window.gh.refresh();
+      }, { once: true });
+    </script>
 
     <article class="card" data-gh-product="bio-complete-3">
       <img
@@ -51,13 +121,24 @@
       />
 
       <div>
+        <p data-if="outOfStock">
+          <span class="badge">Out of stock</span>
+        </p>
+
         <h2 data-field="name">Product name</h2>
 
-        <p class="reviews">
-          <span data-field="reviews.average" data-format="number:1">—</span>★
-          <span class="muted">
+        <p class="reviews-row">
+          <span class="stars">
+            <span data-field="reviews.average" data-format="number:1">—</span>★
+          </span>
+          <span class="count">
             (<span data-field="reviews.count" data-format="number:0">—</span> reviews)
           </span>
+        </p>
+        <p class="reviews-global" data-if="reviews.globalFiveStarReviews">
+          Including
+          <span data-field="reviews.globalFiveStarReviews" data-format="number:0">—</span>
+          five-star reviews across all Golden Hippo brands
         </p>
 
         <!--
@@ -72,16 +153,67 @@
           </span>
         </p>
 
+        <p class="cadence" data-if="variants.subscription.standardByQuantity.6.defaultFrequency">
+          <span data-field="variants.subscription.standardByQuantity.6.defaultFrequency.label">Every 30 Days</span>
+        </p>
+
+        <p class="alt-price" data-if="variants.subscription.standardByQuantity.6.alternatePurchaseTypePrice">
+          or one-time at
+          <span data-field="variants.subscription.standardByQuantity.6.alternatePurchaseTypePrice" data-format="currency:USD:en-US">$0.00</span>
+        </p>
+
         <p class="savings" data-if="variants.subscription.standardByQuantity.6.savings">
-          Save <span data-field="variants.subscription.standardByQuantity.6.savings" data-format="currency:USD:en-US">$0.00</span>
+          <span data-field="variants.subscription.standardByQuantity.6.savings" data-format="saveBlurb:USD">Save $0</span>
           vs. one-time
         </p>
 
-        <p data-if="outOfStock">
-          <span class="badge">Out of stock</span>
-        </p>
+        <!--
+          The CTA exercises three data-attr-<NAME> bindings:
+            - href: partners typically prefix with a route like "/products/<slug>",
+              but the SDK happily sets the bare slug too — this is illustrative.
+            - aria-label: accessibility, sourced from product name.
+            - data-product-id: analytics hook. The CSS doesn't style this; the
+              value is that analytics tooling can read `data-product-id` directly
+              from the rendered DOM.
+        -->
+        <a
+          class="cta"
+          href="#"
+          data-attr-href="slug"
+          data-attr-aria-label="name"
+          data-attr-data-product-id="id"
+        >
+          Buy 6 bottles —
+          <span data-field="variants.subscription.standardByQuantity.6.price" data-format="currency:USD:en-US">$0.00</span>
+        </a>
       </div>
     </article>
+
+    <section class="how">
+      <h2>How this works</h2>
+      <dl>
+        <dt>data-field="reviews.globalFiveStarReviews"</dt>
+        <dd>Cross-brand 5-star count — real DTO field that most demos overlook.</dd>
+
+        <dt>data-format="number:1"</dt>
+        <dd>Built-in numeric formatter; the argument is fraction-digit count.</dd>
+
+        <dt>data-format="saveBlurb:USD"</dt>
+        <dd>Custom formatter registered via <code>window.gh.format.register</code>.</dd>
+
+        <dt>data-attr-href="slug"</dt>
+        <dd>Per-attribute binding — sets <code>href</code> from the product slug.</dd>
+
+        <dt>data-attr-data-product-id="id"</dt>
+        <dd>Sets a <code>data-*</code> attribute on the CTA for analytics tooling.</dd>
+
+        <dt>data-if="variants.subscription.standardByQuantity.6.alternatePurchaseTypePrice"</dt>
+        <dd>Hides the "or one-time at $X" line cleanly when the alternate price is null.</dd>
+
+        <dt>data-field="…6.defaultFrequency.label"</dt>
+        <dd>Subscription cadence pulled straight off the variant's frequency object.</dd>
+      </dl>
+    </section>
 
     <script
       src="https://api-uat.goldenhippo.io/sdk/v1/gh.js"
