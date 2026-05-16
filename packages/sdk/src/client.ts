@@ -7,6 +7,7 @@ import type {
 import type { GhConfig } from './config';
 import { GhError, type GhErrorCode } from './errors';
 import { RequestCache } from './cache';
+import { enrichProduct } from './enrich';
 import type { Logger } from './log';
 
 type Resource = 'funnel' | 'destination' | 'product';
@@ -53,7 +54,11 @@ export class GhDataClient {
     const url = `${this.config.apiBaseUrl}/public/v1/${resource}/${encodeURIComponent(slugOrId)}`;
     this.logger.debug('GET', url);
 
-    const promise = this.fetchJson<T>(url);
+    const promise = this.fetchJson<T>(url).then((raw) =>
+      resource === 'product'
+        ? (enrichProduct(raw as unknown as HippoShopProductDTO) as unknown as T)
+        : raw,
+    );
     return this.cache.set(cacheKey, promise);
   }
 

@@ -14,7 +14,10 @@ const CONFIG: GhConfig = {
 const PRODUCT = {
   slug: 'bio-complete-3',
   name: 'Bio Complete 3',
-  variants: { subscription: { standard: [{ price: 49.95 }] } },
+  variants: {
+    subscription: { standard: [{ price: 49.95 }], myAccount: [] },
+    oneTime: { standard: [], myAccount: [] },
+  },
 };
 
 function freshClient(): GhDataClient {
