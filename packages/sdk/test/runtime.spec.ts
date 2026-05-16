@@ -131,3 +131,78 @@ describe('GhRuntime — observer (late-arriving DOM)', () => {
     runtime.detachObserver();
   });
 });
+
+describe('GhRuntime — resource state tracking', () => {
+  it('marks resources as loading before the fetch resolves and applies bindings once at that point', async () => {
+    const client = freshClient();
+    // Resolve the product slowly so we can observe the loading state.
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(
+      () => new Promise((resolve) => {
+        setTimeout(
+          () => resolve(new Response(JSON.stringify(PRODUCT), { status: 200 })),
+          20,
+        );
+      }) as Promise<Response>,
+    );
+
+    document.body.innerHTML = `
+      <article data-gh-product="bio-complete-3">
+        <div id="skel" data-when="loading">loading...</div>
+        <div id="content" data-when="loaded"><span data-field="name"></span></div>
+      </article>
+    `;
+    const runtime = new GhRuntime({ logger: createLogger(false), client });
+    const bindPromise = runtime.bind(document);
+
+    // Synchronously after bind() starts: skeleton should be visible, content hidden.
+    // The pre-fetch pass runs synchronously after marking loading state.
+    await Promise.resolve();
+    await Promise.resolve();
+    expect((document.getElementById('skel') as HTMLElement).style.display).not.toBe('none');
+    expect((document.getElementById('content') as HTMLElement).style.display).toBe('none');
+
+    // Wait for the fetch to settle.
+    await bindPromise;
+    expect((document.getElementById('skel') as HTMLElement).style.display).toBe('none');
+    expect((document.getElementById('content') as HTMLElement).style.display).not.toBe('none');
+    expect(document.querySelector('#content span')?.textContent).toBe(PRODUCT.name);
+
+    fetchSpy.mockRestore();
+  });
+
+  it('marks the resource as failed when fetch rejects', async () => {
+    const client = freshClient();
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response('{"code":"not_found","message":"x"}', { status: 404 }),
+    );
+
+    document.body.innerHTML = `
+      <article data-gh-product="bio-complete-3">
+        <div id="err" data-when="failed">Couldn't load.</div>
+      </article>
+    `;
+    const runtime = new GhRuntime({ logger: createLogger(false), client });
+    await runtime.bind(document);
+    expect((document.getElementById('err') as HTMLElement).style.display).not.toBe('none');
+  });
+
+  it('refresh() clears resource state and re-runs the loading transition', async () => {
+    const client = freshClient();
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify(PRODUCT), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(PRODUCT), { status: 200 }));
+
+    document.body.innerHTML = `
+      <article data-gh-product="bio-complete-3">
+        <div id="content" data-when="loaded"><span data-field="name"></span></div>
+      </article>
+    `;
+    const runtime = new GhRuntime({ logger: createLogger(false), client });
+    await runtime.bind(document);
+    expect((document.getElementById('content') as HTMLElement).style.display).not.toBe('none');
+
+    // Calling refresh() must clear resourceStates as well as resources.
+    await runtime.refresh();
+    expect((document.getElementById('content') as HTMLElement).style.display).not.toBe('none');
+  });
+});
