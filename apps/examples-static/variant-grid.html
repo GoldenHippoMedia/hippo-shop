@@ -7,6 +7,19 @@
     <style>
       :root { color-scheme: light dark; font: 16px/1.5 ui-sans-serif, system-ui, sans-serif; }
       body { max-width: 64rem; margin: 2rem auto; padding: 0 1rem; }
+      h1 { margin-bottom: 0.25rem; }
+      h3 {
+        margin: 2rem 0 0.25rem;
+        font-size: 1.05rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: color-mix(in srgb, CanvasText 70%, transparent);
+      }
+      h3 + .section-hint {
+        margin: 0 0 1rem;
+        font-size: 0.85rem;
+        color: color-mix(in srgb, CanvasText 55%, transparent);
+      }
       .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; }
       .tier {
         border: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
@@ -14,23 +27,82 @@
         padding: 1.25rem;
         text-align: center;
       }
+      .tier.featured {
+        border-color: color-mix(in srgb, #2563eb 55%, transparent);
+        box-shadow: 0 0 0 1px color-mix(in srgb, #2563eb 25%, transparent) inset;
+      }
       .qty { font-size: 2rem; font-weight: 700; margin: 0; }
       .package { color: color-mix(in srgb, CanvasText 60%, transparent); margin: 0; }
       .price { font-size: 1.5rem; font-weight: 600; margin: 0.75rem 0 0.25rem; }
+      .cadence {
+        margin: 0;
+        font-size: 0.8rem;
+        color: color-mix(in srgb, CanvasText 55%, transparent);
+      }
       .savings { color: #047857; font-weight: 600; font-size: 0.9rem; }
+      .compare { color: #047857; font-weight: 600; font-size: 0.85rem; margin: 0.5rem 0 0; }
       .empty { color: color-mix(in srgb, CanvasText 60%, transparent); font-style: italic; }
       .muted { color: color-mix(in srgb, CanvasText 60%, transparent); }
+      .stock {
+        display: inline-flex;
+        align-items: center;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        padding: 0.2rem 0.6rem;
+        border-radius: 999px;
+        background: color-mix(in srgb, CanvasText 15%, transparent);
+        color: color-mix(in srgb, CanvasText 70%, transparent);
+        margin-bottom: 1rem;
+      }
+      .stock[data-stock="in"] {
+        background: color-mix(in srgb, #16a34a 20%, transparent);
+        color: #15803d;
+      }
+      .stock[data-stock="out"] {
+        background: color-mix(in srgb, #dc2626 20%, transparent);
+        color: #b91c1c;
+      }
+      .onetime-row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 0.75rem;
+      }
+      .onetime-row .tier { padding: 1rem; }
+      .footer { margin-top: 2.5rem; }
+      .footer p { margin: 0 0 0.75rem; }
     </style>
   </head>
   <body>
     <h1>Choose your subscription</h1>
-    <p class="muted">
-      One <code>data-gh-product</code> sets the context for every tier card below.
-      The <code>&lt;template data-each="..."&gt;</code> clones itself per variant.
-    </p>
 
     <section data-gh-product="bio-complete-3">
       <h2 data-field="name">Product</h2>
+
+      <!--
+        Stock pill: `data-field` writes the human label via the `bool` formatter,
+        while `data-attr-data-stock` mirrors the same field into a `data-stock`
+        attribute with its own format string, letting CSS target `[data-stock="in"]`
+        / `[data-stock="out"]` without any JavaScript.
+      -->
+      <span
+        class="stock"
+        data-field="outOfStock"
+        data-format="bool:Out of stock:In stock"
+        data-attr-data-stock="outOfStock"
+        data-attr-format-data-stock="bool:out:in"
+      >…</span>
+
+      <p class="muted">
+        One <code>data-gh-product</code> sets the context for every tier card below.
+        The <code>&lt;template data-each="..."&gt;</code> clones itself per variant.
+      </p>
+
+      <h3>All packages</h3>
+      <p class="section-hint">
+        Iteration via <code>&lt;template data-each="variants.subscription.standardList"&gt;</code>.
+      </p>
 
       <p data-if-not="variants.subscription.standardList" class="empty">
         No subscription tiers available right now.
@@ -38,17 +110,208 @@
 
       <div class="grid">
         <template data-each="variants.subscription.standardList">
-          <article class="tier">
+          <!--
+            Each cloned card carries an `aria-label` sourced from the variant SKU
+            so assistive tech announces a unique identifier per card. `data-attr-*`
+            binds any HTML attribute to a field on the current data scope.
+          -->
+          <article class="tier" data-attr-aria-label="sku">
             <p class="qty"><span data-field="quantity">—</span></p>
             <p class="package"><span data-field="packageType">bottle</span>s</p>
             <p class="price">
               <span data-field="price" data-format="currency:USD:en-US">$0.00</span>
+            </p>
+            <p class="cadence" data-if="defaultFrequency">
+              Renews <span data-field="defaultFrequency.label">—</span>
             </p>
             <p class="savings" data-if="savings">
               Save <span data-field="savings" data-format="currency:USD:en-US">$0</span>
             </p>
           </article>
         </template>
+      </div>
+
+      <h3>Featured packages</h3>
+      <p class="section-hint">
+        Direct lookup via <code>variants.subscription.standardByQuantity.&lt;qty&gt;</code> —
+        each card is wrapped in <code>data-if</code> on the lookup so it disappears
+        cleanly when that quantity isn't offered.
+      </p>
+
+      <div class="grid">
+        <article class="tier featured" data-if="variants.subscription.standardByQuantity.1">
+          <p class="qty">1</p>
+          <p class="package">
+            <span data-field="variants.subscription.standardByQuantity.1.packageType">bottle</span>
+          </p>
+          <p class="price">
+            <span
+              data-field="variants.subscription.standardByQuantity.1.price"
+              data-format="currency:USD:en-US"
+            >$0.00</span>
+          </p>
+          <p class="cadence" data-if="variants.subscription.standardByQuantity.1.defaultFrequency">
+            Renews
+            <span data-field="variants.subscription.standardByQuantity.1.defaultFrequency.label">—</span>
+          </p>
+          <p class="savings" data-if="variants.subscription.standardByQuantity.1.savings">
+            Save
+            <span
+              data-field="variants.subscription.standardByQuantity.1.savings"
+              data-format="currency:USD:en-US"
+            >$0</span>
+          </p>
+        </article>
+
+        <article class="tier featured" data-if="variants.subscription.standardByQuantity.3">
+          <p class="qty">3</p>
+          <p class="package">
+            <span data-field="variants.subscription.standardByQuantity.3.packageType">bottle</span>s
+          </p>
+          <p class="price">
+            <span
+              data-field="variants.subscription.standardByQuantity.3.price"
+              data-format="currency:USD:en-US"
+            >$0.00</span>
+          </p>
+          <p class="cadence" data-if="variants.subscription.standardByQuantity.3.defaultFrequency">
+            Renews
+            <span data-field="variants.subscription.standardByQuantity.3.defaultFrequency.label">—</span>
+          </p>
+          <p class="savings" data-if="variants.subscription.standardByQuantity.3.savings">
+            Save
+            <span
+              data-field="variants.subscription.standardByQuantity.3.savings"
+              data-format="currency:USD:en-US"
+            >$0</span>
+          </p>
+        </article>
+
+        <article class="tier featured" data-if="variants.subscription.standardByQuantity.6">
+          <p class="qty">6</p>
+          <p class="package">
+            <span data-field="variants.subscription.standardByQuantity.6.packageType">bottle</span>s
+          </p>
+          <p class="price">
+            <span
+              data-field="variants.subscription.standardByQuantity.6.price"
+              data-format="currency:USD:en-US"
+            >$0.00</span>
+          </p>
+          <p class="cadence" data-if="variants.subscription.standardByQuantity.6.defaultFrequency">
+            Renews
+            <span data-field="variants.subscription.standardByQuantity.6.defaultFrequency.label">—</span>
+          </p>
+          <p class="savings" data-if="variants.subscription.standardByQuantity.6.savings">
+            Save
+            <span
+              data-field="variants.subscription.standardByQuantity.6.savings"
+              data-format="currency:USD:en-US"
+            >$0</span>
+          </p>
+        </article>
+      </div>
+
+      <!--
+        One-time row. The whole section is wrapped in `data-if` on the first
+        list element so it disappears cleanly when the product offers no
+        one-time variants. (Empty arrays are truthy as objects — `.0` is the
+        idiomatic "non-empty" check.)
+      -->
+      <div data-if="variants.oneTime.standardList.0">
+        <h3>One-time purchase</h3>
+        <p class="section-hint">
+          Each variant exposes <code>alternatePurchaseTypePrice</code> — the price for
+          the same package under the <em>opposite</em> purchase type — so we can show
+          a subscribe-and-save callout without a second query.
+        </p>
+
+        <div class="onetime-row">
+          <template data-each="variants.oneTime.standardList">
+            <article class="tier" data-attr-aria-label="sku">
+              <p class="qty"><span data-field="quantity">—</span></p>
+              <p class="package"><span data-field="packageType">bottle</span>s</p>
+              <p class="price">
+                <span data-field="price" data-format="currency:USD:en-US">$0.00</span>
+              </p>
+              <p class="compare" data-if="alternatePurchaseTypePrice">
+                Subscribe and pay
+                <span data-field="alternatePurchaseTypePrice" data-format="currency:USD:en-US">$0.00</span>
+              </p>
+            </article>
+          </template>
+        </div>
+      </div>
+
+      <!--
+        My Account ("repeat customer") pricing. Same iteration-vs-lookup contrast
+        as the subscription block above, but wrapped in `data-if` on the first
+        list element so the entire section vanishes for products that don't
+        offer my-account pricing (most products won't).
+      -->
+      <div data-if="variants.subscription.myAccountList.0">
+        <h3>Repeat customer pricing</h3>
+        <p class="section-hint">
+          Same patterns again — a <code>standardList</code>-style loop alongside
+          a single <code>myAccountByQuantity.6</code> direct lookup.
+        </p>
+
+        <div class="grid">
+          <template data-each="variants.subscription.myAccountList">
+            <article class="tier" data-attr-aria-label="sku">
+              <p class="qty"><span data-field="quantity">—</span></p>
+              <p class="package"><span data-field="packageType">bottle</span>s</p>
+              <p class="price">
+                <span data-field="price" data-format="currency:USD:en-US">$0.00</span>
+              </p>
+              <p class="cadence" data-if="defaultFrequency">
+                Renews <span data-field="defaultFrequency.label">—</span>
+              </p>
+              <p class="savings" data-if="savings">
+                Save <span data-field="savings" data-format="currency:USD:en-US">$0</span>
+              </p>
+            </article>
+          </template>
+
+          <article class="tier featured" data-if="variants.subscription.myAccountByQuantity.6">
+            <p class="qty">6</p>
+            <p class="package">
+              <span data-field="variants.subscription.myAccountByQuantity.6.packageType">bottle</span>s
+            </p>
+            <p class="price">
+              <span
+                data-field="variants.subscription.myAccountByQuantity.6.price"
+                data-format="currency:USD:en-US"
+              >$0.00</span>
+            </p>
+            <p class="cadence" data-if="variants.subscription.myAccountByQuantity.6.defaultFrequency">
+              Renews
+              <span data-field="variants.subscription.myAccountByQuantity.6.defaultFrequency.label">—</span>
+            </p>
+            <p class="savings" data-if="variants.subscription.myAccountByQuantity.6.savings">
+              Save
+              <span
+                data-field="variants.subscription.myAccountByQuantity.6.savings"
+                data-format="currency:USD:en-US"
+              >$0</span>
+            </p>
+          </article>
+        </div>
+      </div>
+
+      <div class="footer">
+        <p class="muted">
+          Two ways to reach a variant: <code>standardList</code> is the ordered array
+          you iterate with <code>&lt;template data-each&gt;</code>, while
+          <code>standardByQuantity.&lt;qty&gt;</code> is a direct keyed lookup for
+          the cases where you know exactly which package you want to bind.
+        </p>
+        <p class="muted">
+          Every section root carries a <code>data-if</code> guard — wrap any block
+          in <code>data-if="path.to.data"</code> and it cleanly hides when the data
+          isn't there, no JavaScript required. Empty arrays are truthy as objects,
+          so use <code>list.0</code> to mean "list has at least one entry".
+        </p>
       </div>
     </section>
 
