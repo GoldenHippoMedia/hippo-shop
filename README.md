@@ -35,6 +35,33 @@ The fast path — no install, just HTML:
 
 See [`packages/sdk/README.md`](./packages/sdk/README.md) for the full attribute and formatter reference.
 
+### Accessing product variants by quantity
+
+A product's variant tree now supports direct lookup by `quantity` alongside iteration:
+
+- `variants.<purchase>.<tier>ByQuantity['3']` — variant for the 3-pack, or `undefined` if no 3-pack exists.
+- `variants.<purchase>.<tier>List` — ordered array, suitable for `<template data-each>`.
+- `variants.<purchase>.<tier>` — **deprecated** array shape, removed in v3.0.0.
+
+Where `<purchase>` is `subscription` or `oneTime` and `<tier>` is `standard` or `myAccount`.
+
+In HTML bindings:
+
+```html
+<span data-field="variants.subscription.standardByQuantity.6.price"
+      data-format="currency:USD:en-US">$0.00</span>
+```
+
+In JavaScript:
+
+```js
+const product = await window.gh.data.product('bio-complete-3');
+const sixPack = product.variants.subscription.standardByQuantity['6'];
+if (sixPack) renderPrice(sixPack.price);
+```
+
+Missing quantities resolve to `undefined`; `data-field` leaves the placeholder text in place and `data-if` hides the element.
+
 ## Repository layout
 
 ```
