@@ -16,7 +16,7 @@ Both share the same auth, caching, and brand-scoped access rules enforced by the
 ## Contents
 
 - [Installation](#installation)
-- [Quickstart — declarative](#quickstart--declarative)
+- [Quickstart — declarative](#quickstart-declarative)
 - [How it works](#how-it-works)
 - [Script tag config](#script-tag-config)
 - [Declarative attributes](#declarative-attributes)
@@ -32,7 +32,7 @@ Both share the same auth, caching, and brand-scoped access rules enforced by the
 - [HTTP](#http)
 - [Errors](#errors)
 - [Safety](#safety)
-- [Advanced — TypeScript / NPM consumers](#advanced--typescript--npm-consumers)
+- [Advanced — TypeScript / NPM consumers](#advanced-typescript-npm-consumers)
 - [Size budget](#size-budget)
 - [Provenance](#provenance)
 - [License](#license)
