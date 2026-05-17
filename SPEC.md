@@ -15,7 +15,7 @@ Golden Hippo's internal teams building landing pages, sales funnels, and support
 - **Declarative bindings** — `data-gh-*`, `data-field`, `data-format`, `data-with`, `data-when`, and related attributes — that read DTOs into HTML without JavaScript.
 - **Programmatic API** at `window.gh.data` for `funnel`, `destination`, and `product` lookups when declarative bindings are not enough.
 - **Brand-scoped isolation** — every request is scoped to one brand by the `data-brand` attribute and the access key. Cross-brand reads return 404.
-- **Access-key gating** — only origins explicitly allow-listed for a key may use the API. 401 from Kong on unknown keys; 403 from CORS for unknown origins.
+- **Access-key gating** — unknown or revoked keys are rejected at the edge (401 from Kong). CORS origins are allow-listed at the route level today; per-key origin pinning is on the roadmap.
 - **SLSA-provenanced npm releases** for both packages via npm Trusted Publishers.
 - **URL stability** for the CDN-hosted SDK: `https://api-prod.goldenhippo.io/sdk/v1/gh.js` is the stable entry point; major-version upgrades will use a new URL path.
 
