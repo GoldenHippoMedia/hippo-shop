@@ -15,6 +15,15 @@ Typed, key-authenticated, brand-scoped public surface for Golden Hippo data — 
 
 Both are published with [SLSA provenance](https://slsa.dev/spec/v1.0/provenance) via npm Trusted Publishers.
 
+
+## Contract and roadmap
+
+- [`SPEC.md`](./SPEC.md) — what Hippo Shop promises (repo-level contract)
+- [`packages/sdk/SPEC.md`](./packages/sdk/SPEC.md) — SDK public contract
+- [`packages/types/SPEC.md`](./packages/types/SPEC.md) — DTO contract
+- [`ROADMAP.md`](./ROADMAP.md) — backlog of bugs, ideas, and planned work
+
+
 ## Quickstart
 
 Drop one `<script>` tag and write your HTML — no install required:
@@ -85,7 +94,7 @@ Loading skeletons render immediately on page load; the SDK swaps in real values 
 
 ---
 
-*Working on Hippo Shop itself? See the [development wiki](https://github.com/GoldenHippoMedia/hippo-shop/wiki) for setup, repository layout, and release process.*
+*Working on Hippo Shop itself? See the [release process](./docs/ops/release-process.md), [incident response runbook](./docs/ops/incident-response.md), and [architecture docs](./docs/architecture/) for setup, repository layout, and operational guidance.*
 
 ## License
 
