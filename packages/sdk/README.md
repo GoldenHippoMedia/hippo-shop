@@ -676,30 +676,73 @@ If the error response body includes an explicit `retryAfterMs`, that value takes
 
 ## Errors
 
-The programmatic API rejects with `GhError`:
+The programmatic API (`gh.data.funnel`, `gh.data.destination`, `gh.data.product`) rejects with a `GhError`:
 
 ```ts
 class GhError extends Error {
-  readonly code:
-    | 'not_found' | 'rate_limited' | 'forbidden'
-    | 'bad_request' | 'network' | 'bad_config' | 'server';
+  readonly code: GhErrorCode;
   readonly retryAfterMs: number | null;
   readonly cause: unknown;
 }
+
+type GhErrorCode =
+  | 'not_found'
+  | 'rate_limited'
+  | 'forbidden'
+  | 'bad_request'
+  | 'network'
+  | 'bad_config'
+  | 'server';
 ```
 
-`not_found` is deliberately ambiguous between "doesn't exist" and "you're not authorized" — partners cannot enumerate resources they don't own.
+### Error code reference
 
-Declarative bindings degrade gracefully: a failed fetch logs a warning and leaves placeholder text in place. Pages don't break because one slug is wrong.
+| Code | Meaning | Common cause |
+|------|---------|--------------|
+| `not_found` | 404 from the API | Slug doesn't exist for your brand, or you're not authorized to see it. The two are deliberately indistinguishable — partners cannot enumerate resources they don't own. |
+| `rate_limited` | 429 from the API | Too many requests. Honour `retryAfterMs` before retrying. |
+| `forbidden` | 401 or 403 from the API | Missing / invalid `data-key`, or the key/brand combination doesn't authorize this resource. |
+| `bad_request` | Other 4xx from the API | Malformed slug, unknown resource type, or a programmatic call with an empty argument. |
+| `network` | Fetch rejected before getting a response | DNS, CORS, offline. Check the `cause` for the underlying `TypeError`. |
+| `bad_config` | Thrown during boot | Bad `data-key` format, missing `data-brand`, script loaded from a disallowed host. Surfaces in the console, not as a rejected promise. |
+| `server` | 5xx from the API, or a response that wasn't valid JSON | Retry with backoff. |
+
+`retryAfterMs` is populated for `rate_limited` errors and any other response that carried a `Retry-After` header — see [HTTP](#http).
+
+### Declarative degradation
+
+Declarative bindings degrade gracefully — a failed fetch logs a warning to the console and leaves placeholder text in place. The page does not break because one slug is wrong. To show an explicit error message, use `data-when="failed"` (see [Resource lifecycle](#resource-lifecycle-data-when)).
 
 ---
 
 ## Safety
 
-- All field values are rendered with `textContent`, never `innerHTML` — partner data cannot inject markup.
-- `data-attr-on*` is silently refused — event handlers can never be wired from data.
-- The SDK is read-only by design. No writes, no analytics ingestion, no PII.
-- Cross-brand requests return 404 from the API.
+The SDK is read-only by design. It sends no analytics, no PII, and never executes data as code.
+
+### textContent only
+
+All field values are rendered via `textContent`, never `innerHTML`. Partner data can never inject markup, scripts, or styles. This is the single most important guarantee in the SDK.
+
+### Refused attributes
+
+The following `data-attr-<NAME>` targets are silently refused:
+
+- `data-attr-on*` — every event-handler attribute (`onclick`, `onerror`, `onmouseover`, etc.). Event handlers are never wired from data.
+- `data-attr-srcdoc` — `<iframe srcdoc>` is a raw HTML island; binding it would defeat the textContent-only rule.
+
+### URL attribute allowlist and scheme normalization
+
+A defined set of attributes are recognized as URL-bearing. Before the SDK writes one, the resolved value is checked for unsafe schemes:
+
+`href`, `xlink:href`, `src`, `action`, `formaction`, `data`, `ping`, `poster`, `background`, `cite`, `longdesc`, `usemap`, `manifest`
+
+Values whose scheme prefix is `javascript:`, `vbscript:`, or `data:` are silently refused — the attribute is left unset. The scheme check normalizes the value first by stripping leading whitespace and ASCII control characters, then removing any tab / linefeed / carriage return characters before checking the prefix. This mirrors how browsers themselves resolve URLs, so `java\tscript:foo` (which a browser would treat as `javascript:`) cannot sneak past.
+
+### Cross-brand 404
+
+A request for a resource that belongs to a different brand returns 404 from the API, indistinguishable from a non-existent resource. There is no enumeration vector.
+
+---
 
 ## Size budget
 
