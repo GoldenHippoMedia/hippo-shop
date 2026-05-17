@@ -114,7 +114,7 @@
         -->
         <p class="step-meta">
           Step <span data-field="steps.2.stepNumber">3</span> of
-          <span data-field="steps.0.stepNumber">5</span><!-- replaced below by JS -->
+          <span id="total-steps">5</span>
           ·
           <span data-field="steps.2.kind">content</span>
         </p>
@@ -171,6 +171,7 @@
       // sibling clones, and (b) the funnel resource is cached.
       window.addEventListener('gh:bindings-ready', async () => {
         const funnel = await window.gh.data.funnel('demo_mct_cms_survey_260427');
+        document.getElementById('total-steps').textContent = funnel.steps.length;
 
         // Mark progress segments. The clones live alongside the <template> in
         // document order, each carrying data-gh-loop-clone (an SDK marker).
