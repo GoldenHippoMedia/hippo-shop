@@ -23,6 +23,11 @@ Both are published with [SLSA provenance](https://slsa.dev/spec/v1.0/provenance)
 - [`packages/types/SPEC.md`](./packages/types/SPEC.md) — DTO contract
 - [`ROADMAP.md`](./ROADMAP.md) — backlog of bugs, ideas, and planned work
 
+## About this version
+
+v3 is the first release of Hippo Shop intended for use by other internal Golden Hippo teams. v1.x and v2.x were internal iterations during development; they remain on npm but are no longer maintained.
+
+If you're starting fresh, install the latest. If you've been on v1.x or v2.x, the only migration is replacing reads of `variants.<purchase>.standard` and `variants.<purchase>.myAccount` arrays with `<tier>List` (for iteration) or `<tier>ByQuantity` (for direct lookup).
 
 ## Quickstart
 
@@ -48,7 +53,6 @@ A product's variant tree supports direct lookup by `quantity` alongside iteratio
 
 - `variants.<purchase>.<tier>ByQuantity['3']` — variant for the 3-pack, or `undefined` if no 3-pack exists.
 - `variants.<purchase>.<tier>List` — ordered array, suitable for `<template data-each>`.
-- `variants.<purchase>.<tier>` — **deprecated** array shape, removed in v3.0.0.
 
 Where `<purchase>` is `subscription` or `oneTime` and `<tier>` is `standard` or `myAccount`.
 
