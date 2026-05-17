@@ -780,7 +780,7 @@ import type { GhConfig, GhErrorCode, ResourceState } from '@goldenhippo/hippo-sh
 | `parseScriptConfig(scriptEl)` | function | Validate a `<script>` element's `data-*` config and produce a `GhConfig`. Throws on invalid input. |
 | `builtinFormatters` | `Record<string, Formatter>` | The raw built-in formatter map. Useful for constructing a custom `FormatRegistry`. |
 | `FormatRegistry` | class | The class behind `window.gh.format`. Instantiate one if you need an isolated registry that doesn't share state with the global. |
-| `GhDataClient` | class | The HTTP client (`funnel` / `destination` / `product` methods). Construct with a `GhConfig` + `Logger` to talk to the API without the binding layer. |
+| `GhDataClient` | class | The HTTP client (`funnel` / `destination` / `product` methods). Construct with a `GhConfig` to talk to the API without the binding layer. (Constructor also accepts an optional logger object with `debug` / `warn` / `error` methods.) |
 | `GhRuntime` | class | The high-level orchestrator: ties a `GhDataClient` to the binding pass and manages the resource + lifecycle caches. |
 | `GhError` | class | The error class thrown by all data methods. |
 | `GhConfig` | type | The parsed config produced by `parseScriptConfig`. |
