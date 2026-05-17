@@ -1,11 +1,11 @@
 # Kong public-v1 routing
 
-How the public `/public/v1/*` route is wired in Kong — the service, the route, the six plugins, and the order they run in. Companion to [`cloudflare-deploy.md`](./cloudflare-deploy.md) (which covers the `/sdk/v1/gh.js` delivery path) and [`onboarding-partners.md`](./onboarding-partners.md) (which covers per-consumer setup).
+How the public `/public/v1/*` route is wired in Kong — the service, the route, the six plugins, and the order they run in. Companion to [`cloudflare-deploy.md`](./cloudflare-deploy.md), which covers the `/sdk/v1/gh.js` delivery path.
 
 ## At a glance
 
 ```
-Partner page                  Kong (api-{uat,prod}.goldenhippo.io)         Commerce API (private)
+Embedding page                Kong (api-{uat,prod}.goldenhippo.io)         Commerce API (private)
 ────────────────────────  ─────────────────────────────────────────────  ────────────────────────
 GET /public/v1/product/x  ─►  Route /public/v1 matches                  ─►  GET /public/v1/product/x
 X-GH-Key: gh_pk_…             1.  cors           preflight + headers        X-Brand: Gundry MD
@@ -99,13 +99,13 @@ RESPONSE phase  (lower priority first):
 Two consequences worth internalizing:
 
 1. **cors decorates cached responses correctly.** The cache stores a CORS-agnostic body; cors response-phase appends the right `Access-Control-Allow-Origin` per request. You do not need to vary the cache key by `Origin`.
-2. **Cache hits still count toward rate limits.** rate-limiting (access phase) runs before proxy-cache, so a partner repeatedly hitting a hot cached URL spends quota. That's intentional — protects upstream from runaway clients.
+2. **Cache hits still count toward rate limits.** rate-limiting (access phase) runs before proxy-cache, so a consumer repeatedly hitting a hot cached URL spends quota. That's intentional — protects upstream from runaway clients.
 
 ## 1. cors
 
 | Field | Value | Why |
 |---|---|---|
-| `origins` | Explicit list — every origin any consumer uses (no wildcards, per `onboarding-partners.md`) | Required for browser preflight to succeed |
+| `origins` | Explicit list — every origin any consumer uses (no wildcards) | Required for browser preflight to succeed |
 | `methods` | `GET, OPTIONS` | OPTIONS is mandatory; `GET` is the only verb we serve |
 | `headers` | `X-GH-Key, X-GH-Brand, Accept, Content-Type` | **Must include `X-GH-Key`** — preflight checks it against the allowlist |
 | `exposed_headers` | `Retry-After` | The SDK reads this on 429s. Without exposing it, `res.headers.get('Retry-After')` returns `null` in browser JS |
@@ -124,32 +124,32 @@ Two consequences worth internalizing:
 | `key_in_header` | `true` | |
 | `key_in_query` | `false` | Keep keys out of access logs and Referer leaks |
 | `key_in_body` | `false` | GET-only |
-| `hide_credentials` | `true` | Strip `X-GH-Key` before forwarding upstream — the Commerce API has no business seeing partner keys |
+| `hide_credentials` | `true` | Strip `X-GH-Key` before forwarding upstream — the Commerce API has no business seeing consumer keys |
 | `anonymous` | *empty* | Missing/invalid key → `401`, no fall-through |
 | `run_on_preflight` | **`false`** | **Critical.** Browser preflights carry no auth header; if `true`, every preflight 401s and CORS never runs |
 | `realm` | *(default)* | OSS doesn't expose this — Enterprise-only field |
 
-Credentials hang off Consumers. See [`onboarding-partners.md`](./onboarding-partners.md) for the per-partner workflow (consumer + key-auth credential + origin tags + rate tier).
+Credentials hang off Consumers. See "Per-consumer setup" below for the workflow (consumer + key-auth credential + origin tags + rate tier).
 
 ## 3. rate-limiting
 
 | Field | Value | Why |
 |---|---|---|
-| `minute` | `60` (standard tier) | Per `onboarding-partners.md`; elevated tier (300/min) is a per-consumer override plugin instance |
-| `limit_by` | `consumer` | Per-partner-property buckets; falls back to `ip` automatically for un-authenticated requests (preflights) |
+| `minute` | `60` (standard tier) | Standard tier for the route; elevated tier (300/min) is a per-consumer override plugin instance |
+| `limit_by` | `consumer` | Per-consumer buckets; falls back to `ip` automatically for un-authenticated requests (preflights) |
 | `policy` | `local` | Per-dyno counters. Phase 2/3 traffic doesn't justify the Redis add-on. Switch to `redis` if/when strict cross-dyno limits matter |
 | `fault_tolerant` | `true` | If the rate-limiting backend errors, allow rather than 500. Right default for a public SDK |
-| `hide_client_headers` | `false` | Send `X-RateLimit-*` and standardized `RateLimit-*` headers so partners can self-throttle |
+| `hide_client_headers` | `false` | Send `X-RateLimit-*` and standardized `RateLimit-*` headers so consumers can self-throttle |
 
 **Tier overrides:** per-consumer rate-limiting plugin instances shadow the route-level instance for that consumer. The elevated tier is a separate plugin attached to the specific consumer with `minute: 300`; everyone else continues to be governed by the route-level 60.
 
-**Multi-dyno math:** with `local` policy, the effective limit is `dynos × configured`. A 2-dyno gateway running "60/min standard" tolerates up to 120/min in worst-case dyno distribution. Document this in partner-relations comms.
+**Multi-dyno math:** with `local` policy, the effective limit is `dynos × configured`. A 2-dyno gateway running "60/min standard" tolerates up to 120/min in worst-case dyno distribution. Document this when communicating the change to teams using the route.
 
 ## 4. request-transformer
 
 | Field | Value | Why |
 |---|---|---|
-| `rename.headers` | `X-GH-Brand:X-Brand` | The SDK sends the partner-facing name; the existing Commerce API expects `X-Brand`. Kong bridges so neither side has to change |
+| `rename.headers` | `X-GH-Brand:X-Brand` | The SDK sends the public name; the existing Commerce API expects `X-Brand`. Kong bridges so neither side has to change |
 
 The Commerce API trusts Kong's own request directly — no separately-injected credential header. Consumer identity is forwarded by `key-auth` via the standard `X-Consumer-Id` / `X-Consumer-Username` headers if the Commerce API ever needs to attribute requests.
 
@@ -262,9 +262,14 @@ Common failure modes and which plugin to look at first:
 | Real 401 on a valid call | key-auth attached but `key_names` doesn't match SDK's `X-GH-Key`, OR `hide_credentials: true` on a stale plugin instance with old `key_names` |
 | Upstream sees `X-GH-Brand` instead of `X-Brand` | request-transformer not attached, or `rename.headers` entry malformed (must be `Source:Destination`, no spaces) |
 
-## Onboarding a new consumer
+## Per-consumer setup
 
-See [`onboarding-partners.md`](./onboarding-partners.md). The route + plugin stack above is **one-time platform plumbing**; per-partner work is creating a consumer, attaching a `key-auth` credential, adding their origins to the route-level cors `origins` list, and optionally creating a consumer-scoped rate-limiting override for the elevated tier.
+The route + plugin stack above is **one-time platform plumbing**. Each Golden Hippo team using this route gets a Kong consumer plus credentials:
+
+1. Create a Kong consumer with a stable slug (currently named `partner-<slug>` for legacy reasons — the slug names an internal team or brand, not an external partner).
+2. Attach a `key-auth` credential. The plaintext key is shown once at creation; store it in 1Password.
+3. Add the team's origins to the route-level `cors` plugin `origins` list. No wildcards.
+4. (Optional) Create a consumer-scoped rate-limiting override if the team needs the elevated tier.
 
 ## Known limitations / future work
 
@@ -277,6 +282,5 @@ See [`onboarding-partners.md`](./onboarding-partners.md). The route + plugin sta
 ## Cross-references
 
 - [`cloudflare-deploy.md`](./cloudflare-deploy.md) — SDK bundle delivery (separate route, no auth)
-- [`onboarding-partners.md`](./onboarding-partners.md) — per-consumer setup walkthrough
 - [`incident-response.md`](./incident-response.md) — cache purge, key revocation, rollback runbooks
 - [`hippo-shop-combined-implementation-plan.md`](./hippo-shop-combined-implementation-plan.md) — original architecture and rationale
