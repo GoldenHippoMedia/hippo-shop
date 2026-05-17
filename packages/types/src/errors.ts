@@ -3,7 +3,7 @@
  *
  * Kong and the commerce API both emit this shape. `not_found` is
  * deliberately ambiguous between "doesn't exist" and "you're not
- * authorized to see this" — partners cannot enumerate resources they
+ * authorized to see this" — host pages cannot enumerate resources they
  * don't own.
  */
 export interface HippoShopErrorDTO {
