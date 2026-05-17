@@ -1,5 +1,46 @@
 # @goldenhippo/hippo-shop-sdk
 
+## 2.1.0
+
+### Minor Changes
+
+- 79674ab: Add declarative miss-handling: `data-with` narrows the binding scope for a subtree
+  and hides on missing path; `data-when="loaded|loading|failed"` shows elements based
+  on the closest resource's lifecycle state. Together these let partners express
+  loading skeletons, error fallbacks, and tight direct-lookup cards purely in HTML.
+
+  The runtime now binds twice per pass: once with all unloaded resources marked
+  `loading` (so skeletons show immediately), then again after fetches settle.
+  `gh:bindings-ready` continues to fire once, after the post-fetch pass.
+
+  Adds `ApplyBindingsOptions.resourceStates` and the `ResourceState` type to the SDK
+  exports.
+
+- 8411639: Add quantity-keyed variant access. Each `variants.<purchase>.<tier>` price level
+  now has two sibling fields: `<tier>List` (iteration) and `<tier>ByQuantity`
+  (record keyed by quantity).
+
+  HTML bindings can use the new paths directly:
+
+      data-field="variants.subscription.standardByQuantity.3.price"
+      <template data-each="variants.subscription.standardList">
+
+  JavaScript consumers can look up by quantity:
+
+      product.variants.subscription.standardByQuantity['3']?.price
+
+  The existing arrays (`variants.<purchase>.<tier>`) are deprecated and will be
+  removed in v3.0.0. Missing quantities resolve to `undefined`; the existing
+  `data-field` and `data-if` semantics handle that without changes.
+
+  The new fields are derived client-side by the SDK from the existing array
+  shape; the wire format from `/public/v1/product/:slug` is unchanged.
+
+### Patch Changes
+
+- Updated dependencies [8411639]
+  - @goldenhippo/hippo-shop-types@2.1.0
+
 ## 2.0.0
 
 ### Major Changes
