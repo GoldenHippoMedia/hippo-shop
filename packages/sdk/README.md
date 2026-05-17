@@ -280,7 +280,7 @@ Then in HTML:
 <span data-field="name" data-format="shouty"></span>
 ```
 
-If you register a custom formatter from an inline `<script>` placed **after** the SDK script tag, you do not need to call `gh.refresh()` — the SDK schedules its first bind pass via `setTimeout(0)` so your registration runs first. See [Lifecycle events](#lifecycle-events).
+If you register a custom formatter from an inline `<script>` placed **after** the SDK script tag, you do not need to call `gh.refresh()` — the SDK defers its first bind pass to after the surrounding inline scripts run. See [Lifecycle events](#lifecycle-events).
 
 Custom formatters receive the bound value as their first argument; additional `:`-separated values from the `data-format` spec arrive as **string** arguments. Convert types yourself:
 
@@ -522,7 +522,7 @@ window.gh.bind(rootElement):    Promise<void>;
 window.gh.refresh():            Promise<void>;
 
 window.gh.format: FormatRegistry; // see the Formatters section
-window.gh.debug?: true;           // present only when data-debug="true" on the script tag
+window.gh.debug?: boolean;        // set to true when data-debug="true" on the script tag
 ```
 
 The promises returned by `gh.data.*` resolve with **enriched** payloads. Products in particular gain the `<tier>List` and `<tier>ByQuantity` sibling fields described under [Loops](#loops) and [Declarative scope](#declarative-scope-data-with) — the same shape your declarative bindings see.
@@ -535,7 +535,7 @@ pnpm add @goldenhippo/hippo-shop-types
 
 ### Manually binding a subtree
 
-`gh.bind(element)` scans the given subtree for `data-gh-*` references, fetches anything not yet cached, and renders the bindings. Use it when you've inserted markup the `MutationObserver` won't catch in time — typically a modal you've just attached and want bound before it's visible.
+`gh.bind(element)` scans the given subtree for `data-gh-*` references, fetches anything not yet cached, and renders the bindings. Use it when you need a subtree bound synchronously — for instance, a modal you've just attached and want to render with data before making it visible. The `MutationObserver` will eventually catch the insertion and rebind, but its pass is scheduled asynchronously; `gh.bind` lets you await the bind right when you need it.
 
 ```js
 const modal = document.getElementById('cart-modal');
@@ -591,7 +591,7 @@ else window.addEventListener('gh:data-ready', whenReady, { once: true });
 
 ### Inline-script timing
 
-If your custom formatter registration sits in an inline `<script>` placed **after** the SDK tag but **before** `DOMContentLoaded`, the SDK's `setTimeout(0)` scheduling guarantees your inline script runs before the first bind pass — so `gh.refresh()` is unnecessary.
+If your custom formatter registration sits in an inline `<script>` placed **after** the SDK tag but **before** `DOMContentLoaded`, your inline script is guaranteed to run before the first bind pass — the SDK defers binding to `DOMContentLoaded` (or to a `setTimeout(0)` task if the DOM is already ready), and inline scripts run synchronously in source order. `gh.refresh()` is unnecessary.
 
 If you register a formatter **after** `gh:bindings-ready` has fired (e.g. from an async chunk that loads lazily), call `gh.refresh()` so existing elements pick up the new formatter.
 
