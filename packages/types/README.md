@@ -4,9 +4,9 @@
 [![types](https://img.shields.io/npm/types/@goldenhippo/hippo-shop-types.svg)](https://www.npmjs.com/package/@goldenhippo/hippo-shop-types)
 [![license: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
 
-The DTO contract for Hippo Shop. Zero runtime dependencies, pure TypeScript types — consumed by both the commerce API's DTO mappers and the SDK's typed client so that producer and consumer share the contract literally, not by convention.
+TypeScript type definitions for the Hippo Shop public API. Zero runtime dependencies — install in your project for IntelliSense and compile-time safety against the live API contract.
 
-> Source: [GoldenHippoMedia/hippo-shop](https://github.com/GoldenHippoMedia/hippo-shop) · Runtime SDK: [`@goldenhippo/hippo-shop-sdk`](https://www.npmjs.com/package/@goldenhippo/hippo-shop-sdk)
+> Runtime SDK: [`@goldenhippo/hippo-shop-sdk`](https://www.npmjs.com/package/@goldenhippo/hippo-shop-sdk)
 
 ## Installation
 
@@ -18,13 +18,32 @@ pnpm add -D @goldenhippo/hippo-shop-types
 
 ## Usage
 
+Import the DTOs you need:
+
 ```ts
 import type {
   HippoShopFunnelDTO,
   HippoShopDestinationDTO,
   HippoShopProductDTO,
+  HippoShopProductVariantDTO,
+  HippoShopProductVariantsByQuantityDTO,
   HippoShopErrorDTO,
 } from '@goldenhippo/hippo-shop-types';
+```
+
+Most pages use the SDK's auto-fetching declarative bindings — see [`@goldenhippo/hippo-shop-sdk`](https://www.npmjs.com/package/@goldenhippo/hippo-shop-sdk). For SSR, edge functions, or custom rendering, call the API directly with a typed fetch:
+
+```ts
+const res = await fetch(
+  'https://api-prod.goldenhippo.io/public/v1/product/multi-vitamin',
+  {
+    headers: {
+      'X-GH-Key': 'gh_pk_yourbrand_xxxxxx',
+      'X-GH-Brand': 'Sample Co',
+    },
+  },
+);
+const product: HippoShopProductDTO = await res.json();
 ```
 
 ## Three DTOs
@@ -33,17 +52,19 @@ import type {
 |-----|-------|----------|
 | `HippoShopFunnelDTO` | `GET /public/v1/funnel/:slugOrId` | Render or link a Golden Hippo funnel. |
 | `HippoShopDestinationDTO` | `GET /public/v1/destination/:slugOrId` | Resolve an offer to a funnel + price. |
-| `HippoShopProductDTO` | `GET /public/v1/product/:slugOrId` | Display live pricing/availability. |
+| `HippoShopProductDTO` | `GET /public/v1/product/:slugOrId` | Display live pricing and availability. |
 
-See [`docs/hippo-shop-combined-implementation-plan.md`](https://github.com/GoldenHippoMedia/hippo-shop/blob/main/docs/hippo-shop-combined-implementation-plan.md) for the full architecture and contract reference.
+## Example responses
+
+<!-- TASK 3 INSERT POINT: example response JSON blocks go here -->
 
 ## Versioning
 
-Semver — **major = API major**. `1.x.x` targets `/public/v1/*`. Minor and patch versions are additive only.
+Semver. Major versions track breaking changes to the public API contract. Minor and patch versions are additive only.
 
 ## No runtime validation
 
-There are no Zod schemas in this package by design. The SDK trusts what comes back from the gateway; the commerce API has its own internal validation; shape conformance is enforced by integration tests on the producer side. If runtime validation is ever needed, a companion package (`@goldenhippo/hippo-shop-types-zod`) will provide it.
+These are types only — no runtime validation. If you need to validate response bodies at the network boundary, use a runtime schema library like [Zod](https://zod.dev) or [io-ts](https://github.com/gcanti/io-ts).
 
 ## Provenance
 
