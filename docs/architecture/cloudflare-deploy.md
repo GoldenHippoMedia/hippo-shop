@@ -4,7 +4,7 @@ How the SDK bundle gets to the public URL, what Kong should point at, and how to
 
 ## What it does
 
-The release workflow uploads `packages/sdk/dist/` to a Cloudflare Pages project named **`gh-hippo-shop-sdk`** after every successful npm publish. The contents:
+The release workflow uploads `packages/sdk/dist/` to a Cloudflare Pages project named **`gh-hippo-shop-sdk-v3`** (the active project for the current SDK major) after every successful npm publish. The contents:
 
 | File | Purpose |
 |------|---------|
@@ -21,9 +21,9 @@ Cloudflare Pages assigns every successful deployment three URL forms.
 
 | Layer | Example | Lifetime | Use for |
 |-------|---------|----------|---------|
-| **Per-deploy hash** | `https://<hash>.gh-hippo-shop-sdk.pages.dev` | Immutable, retained forever | Audit, rollback targets, pinned consumers |
-| **Branch alias** | `https://<branch>.gh-hippo-shop-sdk.pages.dev` | Latest deploy on a non-production branch | Staging / PR previews |
-| **Production canonical** | `https://gh-hippo-shop-sdk.pages.dev` | Auto-tracks latest `--branch=main` deploy | **Kong's stable upstream** |
+| **Per-deploy hash** | `https://<hash>.gh-hippo-shop-sdk-v3.pages.dev` | Immutable, retained forever | Audit, rollback targets, pinned consumers |
+| **Branch alias** | `https://<branch>.gh-hippo-shop-sdk-v3.pages.dev` | Latest deploy on a non-production branch | Staging / PR previews |
+| **Production canonical** | `https://gh-hippo-shop-sdk-v3.pages.dev` | Auto-tracks latest `--branch=main` deploy | **Kong's stable upstream for `/sdk/v3/*`** |
 
 There is no `main.<project>.pages.dev` alias — `--branch=main` is production, served at the bare canonical URL.
 
@@ -67,11 +67,11 @@ The Pages project name encodes the SDK's major version: `gh-hippo-shop-sdk-vN`. 
 Re-activating an earlier deploy is faster than republishing to npm — the asset already exists at its hash URL; you just repoint the canonical.
 
 ```bash
-# List recent deploys (newest first)
-npx wrangler@4 pages deployment list --project-name=gh-hippo-shop-sdk
+# List recent deploys (newest first) for the active major
+npx wrangler@4 pages deployment list --project-name=gh-hippo-shop-sdk-v3
 
 # Roll back via the Cloudflare dashboard:
-#   Workers & Pages → gh-hippo-shop-sdk → Deployments
+#   Workers & Pages → gh-hippo-shop-sdk-v3 → Deployments
 #   → ⋯ on the desired older deploy → "Rollback to this deployment"
 ```
 
@@ -113,7 +113,7 @@ read -s CLOUDFLARE_API_TOKEN && export CLOUDFLARE_API_TOKEN
 export CLOUDFLARE_ACCOUNT_ID=<account-id>
 
 npx --yes wrangler@4 pages deploy packages/sdk/dist \
-  --project-name=gh-hippo-shop-sdk \
+  --project-name=gh-hippo-shop-sdk-v3 \
   --branch=main
 
 unset CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID
