@@ -240,21 +240,74 @@ These are part of the contract — they will not change in a minor release.
 
 ## Formatters
 
+`data-format="name[:arg1[:arg2…]]"` applies a formatter to a bound value before it lands in the DOM. The same registry powers `data-attr-format-<NAME>` overrides.
+
+### Built-in formatters
+
 | Name | Example | Output |
 |------|---------|--------|
-| `currency` | `currency:USD:en-US` (currency code + locale, both optional) | `$49.95` |
-| `number` | `number:0` (decimals), `number:2:en-US` | `1,235` / `1,234.50` |
-| `percent` | `percent`, `percent:1` | `25%` / `12.3%` |
-| `uppercase` / `lowercase` | `uppercase` | `MULTI VITAMIN` |
-| `bool` | `bool:In stock:Sold out` | renders the second arg if falsy |
-| `join` | `join: - ` | joins arrays |
+| `currency` | `currency` / `currency:USD` / `currency:EUR:en-GB` | `$49.95` (default USD, locale default) |
+| `number` | `number` / `number:0` / `number:2:en-US` | `1,234` / `1,234.50` |
+| `percent` | `percent` / `percent:1` | `25%` / `12.3%` (input is a fraction — see below) |
+| `uppercase` | `uppercase` | `MULTI VITAMIN` |
+| `lowercase` | `lowercase` | `multi vitamin` |
+| `bool` | `bool:In stock:Sold out` | First arg if truthy; second if falsy |
+| `join` | `join` / `join: - ` | Joins arrays with the separator (default `, `) |
 
-Register custom formatters at runtime:
+### `percent` semantics
+
+The `percent` formatter expects its input to be a **fraction** between 0 and 1, not a 0–100 number. `0.25` renders as `"25%"`, not `"0.25%"`. If your data already arrives as 0–100 (e.g. a survey score), divide by 100 before binding — or wrap it in a custom formatter (see below).
+
+### Failure modes
+
+Formatters are intentionally non-throwing. A single misformatted value never breaks the rest of the page.
+
+- **Unknown name** (`data-format="nonexistent"`) → the raw value is rendered via `String(value)`.
+- **Unconvertible value** (e.g. `currency` applied to `"foo"`) → falls back to `String(value)`.
+- **Null or undefined value** → renders as the empty string `""`.
+
+### Registering custom formatters
+
+Use the registry on `window.gh.format`:
 
 ```js
-window.gh.format.register('shouty', (v) => String(v).toUpperCase() + '!');
-// then in HTML: <span data-field="name" data-format="shouty"></span>
+window.gh.format.register('shouty', (value) => String(value).toUpperCase() + '!');
 ```
+
+Then in HTML:
+
+```html
+<span data-field="name" data-format="shouty"></span>
+```
+
+If you register a custom formatter from an inline `<script>` placed **after** the SDK script tag, you do not need to call `gh.refresh()` — the SDK schedules its first bind pass via `setTimeout(0)` so your registration runs first. See [Lifecycle events](#lifecycle-events).
+
+Custom formatters receive the bound value as their first argument; additional `:`-separated values from the `data-format` spec arrive as **string** arguments. Convert types yourself:
+
+```js
+window.gh.format.register('savePercent', (savings, fullPriceStr) => {
+  const full = Number(fullPriceStr);
+  if (!savings || !Number.isFinite(full) || full === 0) return '';
+  return 'Save ' + Math.round((savings / (full + savings)) * 100) + '%';
+});
+```
+
+### FormatRegistry — typed methods
+
+The `window.gh.format` object also exposes the three numeric built-ins as typed methods, plus introspection helpers. Reach for these when you want to format a value in your own JavaScript (e.g. inside a custom formatter or after a manual `gh.data.product(slug)` call) without re-implementing the locale logic:
+
+```js
+window.gh.format.currency(49.95);                 // "$49.95"
+window.gh.format.currency(49.95, 'EUR', 'en-GB'); // "€49.95"
+window.gh.format.number(1234.5);                  // "1,234.5"
+window.gh.format.number(1234.5, 2, 'en-US');      // "1,234.50"
+window.gh.format.percent(0.123);                  // "12%"
+window.gh.format.percent(0.123, 1);               // "12.3%"
+window.gh.format.has('shouty');                   // false (unless registered)
+window.gh.format.apply('hello', 'uppercase');     // "HELLO"
+```
+
+`apply(value, spec)` is the same entry point the declarative bindings use; it accepts the full `"name[:arg1[:arg2…]]"` syntax and inherits all failure-mode behavior described above.
 
 ## Loops
 
