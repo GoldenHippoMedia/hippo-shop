@@ -52,14 +52,9 @@ The package has one barrel export at `@goldenhippo/hippo-shop-types`. Every type
 
 ## Deprecated surface
 
-The following are still exported in v2.x but are scheduled for removal in v3.0.0 (covered by a separate work cluster). Prefer the indicated replacements.
+None in v3.0.0.
 
-| Deprecated | Replacement | Scheduled removal |
-|---|---|---|
-| `HippoShopProductVariantsDTO.subscription.standard` | Use `standardList` (iteration) or `standardByQuantity` (lookup) | v3.0.0 |
-| `HippoShopProductVariantsDTO.subscription.myAccount` | Use `myAccountList` or `myAccountByQuantity` | v3.0.0 |
-| `HippoShopProductVariantsDTO.oneTime.standard` | Use `standardList` or `standardByQuantity` | v3.0.0 |
-| `HippoShopProductVariantsDTO.oneTime.myAccount` | Use `myAccountList` or `myAccountByQuantity` | v3.0.0 |
+Historical note: v1.x and v2.x exposed legacy `variants.<purchase>.standard` and `variants.<purchase>.myAccount` array fields on `HippoShopProductVariantsDTO`. Those were removed in v3.0.0. Use `<tier>List` for iteration or `<tier>ByQuantity` for direct lookup.
 
 ## Stability
 
