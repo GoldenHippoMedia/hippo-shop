@@ -120,37 +120,125 @@ If you mutate the DOM in a way the observer doesn't catch (e.g. you swap an elem
 
 ---
 
-## Attribute reference
+## Script tag config
 
-### Script tag
+The SDK boots from a single `<script>` tag. All configuration lives on that tag's `data-*` attributes; nothing else is required.
+
+### Attributes
 
 | Attribute | Required | Default | Description |
 |-----------|----------|---------|-------------|
-| `data-key` | yes | — | Publishable key. Format: `gh_pk_<consumer>_<random>`. |
-| `data-brand` | yes | — | Brand display name. Validated server-side. |
-| `data-debug` | no | `false` | If `true`, logs requests/responses/cache to the console. |
+| `data-key` | yes | — | Publishable key. Must match `/^gh_pk_[a-z0-9_-]+_<hex>$/` (e.g. `gh_pk_yourbrand_a1b2c3d4e5f6`). |
+| `data-brand` | yes | — | Brand display name. Must be non-empty after trimming. Validated server-side. |
+| `data-debug` | no | `"false"` | If set to the string `"true"`, the SDK logs requests, cache hits, and bind passes to the browser console with a `[gh]` prefix. Also sets `window.gh.debug = true`. |
 
-The API base URL is derived from the script's `src` host. Allowed hosts: `api-prod.goldenhippo.io`, `api-uat.goldenhippo.io`, `localhost`, `127.0.0.1`, `*.local`.
+The script tag itself is auto-located via `document.currentScript`; if that's unavailable, the SDK falls back to `script[data-key][data-brand][src*="/sdk/v1/gh"]`, then to `script[data-key][data-brand][src$="/gh.js"]` (the latter is a local-dev convenience so a page served from a non-`/sdk/v1/` path still boots).
 
-### Declarative attributes
+If `window.gh.data` is already attached when the SDK boots — for example, because the tag is included twice — the SDK refuses to overwrite the existing surface and logs a warning. This is harmless but worth knowing if you see "window.gh.data already exists" in the console.
+
+### Host allowlist
+
+The API base URL is derived from the script tag's `src` host. Only the following hosts are accepted:
+
+| Host | Use |
+|------|-----|
+| `api-prod.goldenhippo.io` | Production |
+| `api-uat.goldenhippo.io` | UAT / staging |
+| `localhost`, `127.0.0.1`, `[::1]` | Local development |
+| `*.local` | Local development on `.local` hostnames |
+
+Loading the SDK from any other host throws a config error and refuses to attach. The host is part of the contract — partners cannot point the SDK at an unrecognized API server.
+
+## Declarative attributes
+
+Write HTML; the SDK reads the `data-*` attributes below, fetches the right resources, and renders values.
+
+### Reference
 
 | Attribute | Where | What it does |
 |-----------|-------|--------------|
 | `data-gh-product="slug"` | Any element | Sets the **product** context for the element + descendants. |
 | `data-gh-destination="slug"` | Any element | Sets the **destination** context. |
 | `data-gh-funnel="slug"` | Any element | Sets the **funnel** context. |
-| `data-field="path.to.value"` | Any element | Replaces `textContent` with the value at that path. |
-| `data-format="name[:arg]"` | With `data-field` or `data-attr-*` | Applies a formatter. See below. |
-| `data-attr-<NAME>="path"` | Any element | Sets the `<NAME>` attribute (e.g. `data-attr-src`, `data-attr-href`). `on*` attributes are silently refused. |
-| `data-if="path"` | Any element | Hides the element if the path resolves to a falsy value. |
-| `data-if-not="path"` | Any element | Hides the element if the path resolves to a truthy value. |
-| `data-each="path"` | `<template>` only | Clones the template's content once per item in the array. |
+| `data-with="path"` | Any element | Narrows the binding scope to the resolved value; hides on null/undefined. See [Declarative scope](#declarative-scope-data-with). |
+| `data-when="loaded\|loading\|failed"` | Any element | Shows the element only when the closest resource is in that lifecycle state. See [Resource lifecycle](#resource-lifecycle-data-when). |
+| `data-field="path"` | Any element | Replaces `textContent` with the resolved value. Undefined leaves the placeholder. |
+| `data-format="name[:arg1[:arg2…]]"` | With `data-field` or `data-attr-*` | Formats the bound value. See [Formatters](#formatters). |
+| `data-attr-<NAME>="path"` | Any element | Sets the `<NAME>` attribute to the resolved value. `data-attr-on*` and `data-attr-srcdoc` are refused. |
+| `data-attr-format-<NAME>="..."` | With `data-attr-<NAME>` | Per-attribute formatter override. An empty value (`data-attr-format-foo=""`) short-circuits an inherited `data-format`. |
+| `data-if="path"` | Any element | Hides the element (and skips the subtree) if the path resolves to a falsy value. |
+| `data-if-not="path"` | Any element | Hides the element (and skips the subtree) if the path resolves to a truthy value. |
+| `data-each="path"` | `<template>` only | Clones the template's content once per item in the array at `path`. |
 
-Paths are dot-separated. Variant lookups use the quantity as the key (e.g. `variants.subscription.standardByQuantity.6.price`); for iteration use `<template data-each="variants.subscription.standardList">`. Numeric path segments still work as array indices for any other array field.
+### Paths
 
-> **Deprecation:** the array form `variants.<purchase>.<tier>` (e.g. `variants.subscription.standard.0.price`) is deprecated and will be removed in v3.0.0. Use `<tier>List` for iteration and `<tier>ByQuantity` for direct lookup by quantity instead.
+`data-field`, `data-with`, `data-if`, `data-if-not`, `data-each`, `data-attr-<NAME>`, and `data-attr-format-<NAME>` all accept a **dot-path** that resolves against the closest enclosing data context.
 
-### Formatters
+- Dot-separated segments only. `a.b.c` reads `obj.a.b.c`.
+- Numeric segments traverse arrays. `items.0.name` reads `obj.items[0].name`.
+- An empty path resolves to the bound object itself (useful with `data-with` and `data-each` when the value already lives at the current scope).
+- A missing or non-traversable segment resolves to `undefined`. The resolver never throws.
+
+For product variants, prefer the keyed lookup `variants.subscription.standardByQuantity.<qty>.price` over the array form `variants.subscription.standardList.<index>.price`. The former is stable across catalog reorderings; the latter is only useful inside `<template data-each>` loops.
+
+> **Deprecation:** the legacy array form `variants.<purchase>.<tier>` (without the `List` / `ByQuantity` suffix) is deprecated and will be removed in v3.0.0. Use `<tier>List` for iteration and `<tier>ByQuantity` for direct lookup by quantity.
+
+### `data-attr-<NAME>` details
+
+The `<NAME>` portion is the literal HTML attribute name (lowercased on read by the browser). Hyphens are preserved:
+
+```html
+<button
+  data-field="ctaLabel"
+  data-attr-aria-label="ctaAccessibleLabel"
+></button>
+```
+
+Refused targets:
+
+- `data-attr-on*` — event handlers are never bound from data, period.
+- `data-attr-srcdoc` — `<iframe srcdoc>` is a raw HTML island; binding it would defeat the textContent-only safety rule.
+
+URL-bearing attributes (`href`, `xlink:href`, `src`, `action`, `formaction`, `data`, `ping`, `poster`, `background`, `cite`, `longdesc`, `usemap`, `manifest`) pass through a scheme check that refuses `javascript:`, `vbscript:`, and `data:` URLs. See [Safety](#safety) for the full rule.
+
+### `data-attr-format-<NAME>` — per-attribute formatter override
+
+When an element carries both `data-field` and `data-attr-*` bindings, `data-format` applies to both by default. To format an attribute differently, use `data-attr-format-<NAME>`:
+
+```html
+<span
+  class="stock-pill"
+  data-field="outOfStock"
+  data-format="bool:Out of stock:In stock"
+  data-attr-data-stock="outOfStock"
+  data-attr-format-data-stock="bool:out:in"
+>…</span>
+```
+
+Here the visible label renders via the human-readable `bool:Out of stock:In stock` formatter, while the `data-stock` attribute mirrors the same field through `bool:out:in` so CSS can target `[data-stock="in"]` and `[data-stock="out"]`.
+
+An empty value short-circuits any inherited `data-format`:
+
+```html
+<a data-field="title" data-format="uppercase"
+   data-attr-href="url" data-attr-format-href="">
+```
+
+The element's text is uppercased; the `href` attribute is set to the raw `url` value, ignoring the `uppercase` formatter that would otherwise inherit.
+
+### Markup the SDK writes back
+
+The SDK writes a handful of bookkeeping attributes that you can rely on as **stable CSS hooks**. Target them in your stylesheet to add transitions, debug overlays, or layout rules.
+
+| Marker | Where | Meaning |
+|--------|-------|---------|
+| `data-gh-hidden` | On any element the SDK has hidden via `data-if` / `data-if-not` / `data-when` / `data-with` miss | Lets CSS distinguish SDK-hidden elements from author-hidden ones. The element's `style.display` is also set to `none`. |
+| `data-gh-prior-display` | Dataset key (`element.dataset.ghPriorDisplay`) on the same hidden element | Preserves the pre-hide `style.display` so unhide restores it. Only present when a non-`none` inline display was set before hiding. |
+| `data-gh-loop-clone` | On every top-level element produced by `<template data-each>` | Lets CSS target loop items without changing markup (e.g. `[data-gh-loop-clone] { animation: fade-in 0.2s; }`). Also used internally to filter MutationObserver feedback loops. |
+
+These are part of the contract — they will not change in a minor release.
+
+## Formatters
 
 | Name | Example | Output |
 |------|---------|--------|
@@ -168,7 +256,7 @@ window.gh.format.register('shouty', (v) => String(v).toUpperCase() + '!');
 // then in HTML: <span data-field="name" data-format="shouty"></span>
 ```
 
-### Loops
+## Loops
 
 `<template>` is the standard HTML element for non-rendered templates. The SDK expands it once per array item, with each clone seeing the iterated item as its data context.
 
