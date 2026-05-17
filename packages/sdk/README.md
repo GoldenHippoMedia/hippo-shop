@@ -13,6 +13,30 @@ Both share the same auth, caching, and brand-scoped access rules enforced by the
 
 > Source: [GoldenHippoMedia/hippo-shop](https://github.com/GoldenHippoMedia/hippo-shop) · DTO contract: [`@goldenhippo/hippo-shop-types`](https://www.npmjs.com/package/@goldenhippo/hippo-shop-types)
 
+## Contents
+
+- [Installation](#installation)
+- [Quickstart — declarative](#quickstart--declarative)
+- [How it works](#how-it-works)
+- [Script tag config](#script-tag-config)
+- [Declarative attributes](#declarative-attributes)
+- [Formatters](#formatters)
+- [Loops](#loops)
+- [Declarative scope (`data-with`)](#declarative-scope-data-with)
+- [Resource lifecycle (`data-when`)](#resource-lifecycle-data-when)
+- [Recipes](#recipes)
+- [Evaluation order](#evaluation-order)
+- [Programmatic API](#programmatic-api)
+- [Lifecycle events](#lifecycle-events)
+- [Resource caching](#resource-caching)
+- [HTTP](#http)
+- [Errors](#errors)
+- [Safety](#safety)
+- [Advanced — TypeScript / NPM consumers](#advanced--typescript--npm-consumers)
+- [Size budget](#size-budget)
+- [Provenance](#provenance)
+- [License](#license)
+
 ---
 
 ## Installation
@@ -57,6 +81,42 @@ Drop one `<script>` and write your HTML:
 ```
 
 That's it. The SDK auto-boots, scans for `data-gh-*` attributes, fetches `/public/v1/product/multi-vitamin` once, and renders. Any placeholder text inside the elements stays visible until the data arrives (good for SEO and graceful loading).
+
+---
+
+## How it works
+
+A quick mental model before the reference tables.
+
+### Boot lifecycle
+
+1. The browser loads the SDK `<script>`. The IIFE executes immediately.
+2. The SDK parses its `data-key` / `data-brand` config from the script tag and derives the API base URL from the script's own host.
+3. `window.gh.data`, `gh.bind`, `gh.refresh`, and `gh.format` are attached synchronously.
+4. The SDK dispatches `gh:data-ready` on `window`.
+5. The first bind pass is scheduled — on `DOMContentLoaded` if the document is still loading, or via `setTimeout(0)` if `DOMContentLoaded` has already fired. The deliberate `setTimeout(0)` (rather than a microtask) gives inline scripts placed after the SDK tag a chance to run first — so a script that registers a custom formatter is picked up by the first bind pass.
+6. The bind pass scans the document, fetches every referenced resource, renders the bindings, and dispatches `gh:bindings-ready` (once, after the post-fetch pass).
+7. A `MutationObserver` attaches and re-binds on relevant DOM changes (see [Re-binding](#re-binding-mutationobserver)).
+
+### Two-pass binding
+
+When a page references resources that aren't yet cached, the SDK actually runs the bind walker **twice**:
+
+- **Pre-fetch pass.** Every unloaded resource is marked `loading` in an internal lifecycle map. Elements with `data-when="loading"` show their skeletons immediately; elements that depend on actual data are left untouched.
+- **Post-fetch pass.** Once all fetches settle (success or failure), the walker runs again with the final data and lifecycle states. `data-when="loaded"` blocks render real values; `data-when="failed"` blocks show error fallbacks.
+
+`gh:bindings-ready` fires once, after the post-fetch pass.
+
+### Re-binding (MutationObserver)
+
+The runtime installs a `MutationObserver` after the initial bind so late-arriving content gets bound automatically. It watches for:
+
+- Additions of any element subtree (e.g. a modal opened by your own JS, a GTM injection, a SPA route change).
+- Attribute changes on any of: `data-gh-product`, `data-gh-destination`, `data-gh-funnel`, `data-field`, `data-format`, `data-if`, `data-if-not`, `data-each`, `data-with`, `data-when`.
+
+Mutations caused by the SDK's own loop expansion are ignored (they carry a `data-gh-loop-clone` marker) to prevent feedback loops. Re-binds are coalesced via a single microtask, so a burst of DOM changes triggers only one extra bind pass.
+
+If you mutate the DOM in a way the observer doesn't catch (e.g. you swap an element's `data-gh-product` to a slug that's already cached and immediately need it bound), call `window.gh.bind(element)` to force a scan.
 
 ---
 
