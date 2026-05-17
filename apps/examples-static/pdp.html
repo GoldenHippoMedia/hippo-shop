@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hippo Shop SDK — PDP demo</title>
+    <link rel="stylesheet" href="./_shared.css" />
+    <style>
+      /* ---------- Layout ---------- */
+
+      .pdp {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 32px;
+        padding: 32px;
+      }
+      @media (min-width: 720px) {
+        .pdp { grid-template-columns: 320px 1fr; }
+      }
+
+      .hero {
+        position: relative;
+        background: var(--gray-50);
+        border-radius: 12px;
+        aspect-ratio: 1;
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .hero img {
+        width: 90%;
+        height: 90%;
+        object-fit: contain;
+      }
+      .hero .stock {
+        position: absolute;
+        top: 14px;
+        left: 14px;
+      }
+
+      .body h1 {
+        font-size: 30px;
+        line-height: 1.15;
+        margin-bottom: 8px;
+      }
+      .reviews {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--gray-600);
+        font-size: 13px;
+        margin-bottom: 18px;
+      }
+      .reviews .stars { color: var(--lime-500); font-weight: 700; }
+
+      /* ---------- Tier toggle ---------- */
+
+      .tier-toggle { margin-bottom: 18px; }
+      .tier-toggle legend {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--gray-500);
+        margin-bottom: 8px;
+        padding: 0;
+      }
+      .tier-toggle fieldset {
+        border: none;
+        padding: 0;
+        margin: 0;
+      }
+
+      /* ---------- Variant grid ---------- */
+
+      .variants legend {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--gray-500);
+        margin-bottom: 8px;
+        padding: 0;
+      }
+      .variants fieldset {
+        border: none;
+        padding: 0;
+        margin: 0 0 18px;
+      }
+      .variant-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 12px;
+      }
+      .variant {
+        background: #fff;
+        border: 2px solid var(--gray-200);
+        border-radius: 10px;
+        padding: 14px 12px;
+        text-align: center;
+        cursor: pointer;
+        position: relative;
+        transition: border-color 120ms ease, background 120ms ease;
+      }
+      .variant:hover { border-color: var(--blue-300); }
+      .variant.is-selected {
+        border-color: var(--blue-600);
+        background: var(--blue-50);
+      }
+      .variant .qty {
+        font-family: var(--font-serif);
+        font-weight: 700;
+        font-size: 22px;
+        line-height: 1;
+        margin-bottom: 4px;
+      }
+      .variant .package {
+        font-size: 11px;
+        color: var(--gray-500);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        margin-bottom: 8px;
+      }
+      .variant .price {
+        font-weight: 600;
+        font-size: 16px;
+        margin: 0 0 4px;
+      }
+      .variant .alt {
+        font-size: 11px;
+        color: var(--gray-500);
+      }
+      .variant .alt[data-gh-hidden] { display: none; }
+      .variant .ribbon {
+        position: absolute;
+        top: -10px;
+        right: 8px;
+        background: var(--lime-400);
+        color: var(--blue-900);
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        padding: 3px 7px;
+        border-radius: 999px;
+      }
+      .variant .ribbon[data-gh-hidden] { display: none; }
+
+      /* Show only the active tier's variants */
+      .pdp-root[data-tier="standard"]  [data-tier="my-account"] { display: none; }
+      .pdp-root[data-tier="my-account"] [data-tier="standard"]  { display: none; }
+
+      .cta-row {
+        margin-top: 22px;
+      }
+      .cta-row .btn { width: 100%; }
+
+      .demo-note {
+        margin-top: 28px;
+        padding: 16px 20px;
+        background: var(--gray-50);
+        border-left: 3px solid var(--blue-400);
+        border-radius: 6px;
+        font-size: 13px;
+        color: var(--gray-600);
+        line-height: 1.7;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page page-narrow">
+      <article
+        class="card pdp pdp-root"
+        data-gh-product="mct-wellness"
+        data-tier="standard"
+      >
+        <div class="hero">
+          <span
+            class="stock"
+            data-field="outOfStock"
+            data-format="bool:Out of stock:In stock"
+            data-attr-data-stock="outOfStock"
+            data-attr-format-data-stock="bool:out:in"
+          >…</span>
+          <img data-attr-src="image" data-attr-alt="name" alt="" />
+        </div>
+
+        <div class="body">
+          <h1 data-field="name">…</h1>
+          <p class="reviews">
+            <span class="stars">★</span>
+            <span data-field="reviews.average" data-format="number:1">0.0</span>
+            <span>
+              (<span data-field="reviews.count" data-format="number:0">0</span> reviews)
+            </span>
+          </p>
+
+          <!-- Tier toggle: Standard / My Account -->
+          <div class="tier-toggle">
+            <fieldset>
+              <legend>Pricing tier</legend>
+              <div class="pill-group" role="radiogroup" aria-label="Pricing tier">
+                <button type="button" class="pill" role="radio"
+                        aria-checked="true"
+                        data-value="standard">Standard</button>
+                <button type="button" class="pill" role="radio"
+                        aria-checked="false"
+                        data-value="my-account">My Account</button>
+              </div>
+            </fieldset>
+          </div>
+
+          <!--
+            Variant grid. Two parallel sets — one for each tier. CSS hides the
+            inactive set based on the data-tier attribute on .pdp-root. No
+            gh.refresh() needed; both tiers are pre-bound at first render.
+          -->
+          <div class="variants">
+            <fieldset>
+              <legend>Pick your quantity</legend>
+
+              <!-- Standard tier — visible when data-tier="standard" -->
+              <div class="variant-grid" data-tier="standard">
+                <button type="button" class="variant" data-with="variants.subscription.standardByQuantity.1">
+                  <p class="qty"><span data-field="quantity">1</span></p>
+                  <p class="package"><span data-field="packageType">bottle</span></p>
+                  <p class="price">
+                    <span data-field="price" data-format="currency:USD">$0.00</span>
+                  </p>
+                  <p class="alt" data-if="alternatePurchaseTypePrice">
+                    Or once
+                    <span data-field="alternatePurchaseTypePrice" data-format="currency:USD">$0</span>
+                  </p>
+                </button>
+
+                <button type="button" class="variant is-selected" data-with="variants.subscription.standardByQuantity.3">
+                  <p class="qty"><span data-field="quantity">3</span></p>
+                  <p class="package"><span data-field="packageType">bottle</span>s</p>
+                  <p class="price">
+                    <span data-field="price" data-format="currency:USD">$0.00</span>
+                  </p>
+                  <p class="alt" data-if="alternatePurchaseTypePrice">
+                    Or once
+                    <span data-field="alternatePurchaseTypePrice" data-format="currency:USD">$0</span>
+                  </p>
+                </button>
+
+                <button type="button" class="variant" data-with="variants.subscription.standardByQuantity.6">
+                  <p class="ribbon" data-if="savings">
+                    Save <span data-field="savings" data-format="savePercent:0">0%</span>
+                  </p>
+                  <p class="qty"><span data-field="quantity">6</span></p>
+                  <p class="package"><span data-field="packageType">bottle</span>s</p>
+                  <p class="price">
+                    <span data-field="price" data-format="currency:USD">$0.00</span>
+                  </p>
+                  <p class="alt" data-if="alternatePurchaseTypePrice">
+                    Or once
+                    <span data-field="alternatePurchaseTypePrice" data-format="currency:USD">$0</span>
+                  </p>
+                </button>
+              </div>
+
+              <!-- My Account tier — visible when data-tier="my-account" -->
+              <div class="variant-grid" data-tier="my-account">
+                <button type="button" class="variant" data-with="variants.subscription.myAccountByQuantity.1">
+                  <p class="qty"><span data-field="quantity">1</span></p>
+                  <p class="package"><span data-field="packageType">bottle</span></p>
+                  <p class="price">
+                    <span data-field="price" data-format="currency:USD">$0.00</span>
+                  </p>
+                  <p class="alt" data-if="alternatePurchaseTypePrice">
+                    Or once
+                    <span data-field="alternatePurchaseTypePrice" data-format="currency:USD">$0</span>
+                  </p>
+                </button>
+
+                <button type="button" class="variant is-selected" data-with="variants.subscription.myAccountByQuantity.3">
+                  <p class="qty"><span data-field="quantity">3</span></p>
+                  <p class="package"><span data-field="packageType">bottle</span>s</p>
+                  <p class="price">
+                    <span data-field="price" data-format="currency:USD">$0.00</span>
+                  </p>
+                  <p class="alt" data-if="alternatePurchaseTypePrice">
+                    Or once
+                    <span data-field="alternatePurchaseTypePrice" data-format="currency:USD">$0</span>
+                  </p>
+                </button>
+
+                <button type="button" class="variant" data-with="variants.subscription.myAccountByQuantity.6">
+                  <p class="ribbon" data-if="savings">
+                    Save <span data-field="savings" data-format="savePercent:0">0%</span>
+                  </p>
+                  <p class="qty"><span data-field="quantity">6</span></p>
+                  <p class="package"><span data-field="packageType">bottle</span>s</p>
+                  <p class="price">
+                    <span data-field="price" data-format="currency:USD">$0.00</span>
+                  </p>
+                  <p class="alt" data-if="alternatePurchaseTypePrice">
+                    Or once
+                    <span data-field="alternatePurchaseTypePrice" data-format="currency:USD">$0</span>
+                  </p>
+                </button>
+              </div>
+            </fieldset>
+          </div>
+
+          <div class="cta-row">
+            <button id="add-to-cart" class="btn" type="button">
+              Add to Cart
+            </button>
+          </div>
+        </div>
+      </article>
+
+      <p class="demo-note">
+        Tier toggle is CSS-only — both Standard and My Account variant cards are
+        pre-rendered. Switching the tier just changes which set is visible, so
+        no extra HTTP fetch happens. Variant selection is captured in a small
+        inline JS that <code>console.log</code>s the chosen SKU on click.
+      </p>
+
+      <footer class="demo-footer">
+        <p>← <a href="./index.html">Back to demos</a></p>
+        <p>
+          SDK loaded from <code>api-uat.goldenhippo.io</code>. Product slug:
+          <code>mct-wellness</code>.
+        </p>
+      </footer>
+    </main>
+
+    <script
+      src="https://api-uat.goldenhippo.io/sdk/v1/gh.js"
+      data-key="gh_pk_test_all_feab8e2ae18f8164ee7e1f36412b774a"
+      data-brand="Gundry MD"
+    ></script>
+
+    <script>
+      // Register a savePercent formatter so the 6-unit ribbon renders
+      // "Save 23%" from raw savings dollars. Second arg (the retail price)
+      // arrives as a string from data-format="savePercent:<retailPrice>" —
+      // in the demo we pass 0 since we don't have a retail baseline; the
+      // formatter falls back to a percentage of the (price + savings) sum.
+      window.addEventListener('gh:data-ready', () => {
+        window.gh.format.register('savePercent', (savings, retailStr) => {
+          const sav = Number(savings);
+          if (!Number.isFinite(sav) || sav <= 0) return '';
+          const retail = Number(retailStr);
+          const base = Number.isFinite(retail) && retail > 0
+            ? retail
+            : sav * 4; /* rough fallback — real partner would pass a baseline */
+          return Math.round((sav / base) * 100) + '%';
+        });
+      }, { once: true });
+
+      // Tier toggle — flips data-tier on .pdp-root which CSS reads.
+      (function () {
+        const root = document.querySelector('.pdp-root');
+        const pills = document.querySelectorAll('.tier-toggle .pill');
+        pills.forEach((pill) => {
+          pill.addEventListener('click', () => {
+            pills.forEach((p) => p.setAttribute('aria-checked', 'false'));
+            pill.setAttribute('aria-checked', 'true');
+            root.setAttribute('data-tier', pill.getAttribute('data-value'));
+          });
+        });
+      })();
+
+      // Variant selection — click a card, mark it selected, persist for Add-to-Cart.
+      (function () {
+        function applyVariantClickHandlers() {
+          document.querySelectorAll('.variant-grid').forEach((grid) => {
+            grid.querySelectorAll('.variant').forEach((v) => {
+              if (v.dataset.clickWired === 'true') return;
+              v.dataset.clickWired = 'true';
+              v.addEventListener('click', () => {
+                grid.querySelectorAll('.variant').forEach((other) =>
+                  other.classList.remove('is-selected'),
+                );
+                v.classList.add('is-selected');
+              });
+            });
+          });
+        }
+        // Wire on data-ready (DOM is parsed); re-wire once bindings have run
+        // because the SDK's bind pass doesn't remove these buttons but we run
+        // it twice just to be safe against any future DOM rewrites.
+        window.addEventListener('gh:data-ready', applyVariantClickHandlers, { once: true });
+        window.addEventListener('gh:bindings-ready', applyVariantClickHandlers, { once: true });
+      })();
+
+      // Add to Cart — logs the selected SKU + tier. A real partner would push
+      // this to their own cart system here.
+      document.getElementById('add-to-cart').addEventListener('click', () => {
+        const root = document.querySelector('.pdp-root');
+        const tier = root.getAttribute('data-tier');
+        const activeGrid = root.querySelector(`.variant-grid[data-tier="${tier}"]`);
+        const selected = activeGrid && activeGrid.querySelector('.variant.is-selected');
+        if (!selected) return;
+        // The SKU lives inside the bound subtree — read it from the DOM the SDK populated.
+        // We grab the price element's surrounding subtree and pull the SKU via attribute lookup.
+        // (Real partner code could carry data-attr-data-sku="sku" on each .variant to make this trivial.)
+        console.log('[cart] add', {
+          tier,
+          path: selected.getAttribute('data-with'),
+        });
+      });
+    </script>
+  </body>
+</html>
