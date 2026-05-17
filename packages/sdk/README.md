@@ -114,7 +114,7 @@ The runtime installs a `MutationObserver` after the initial bind so late-arrivin
 - Additions of any element subtree (e.g. a modal opened by your own JS, a GTM injection, a SPA route change).
 - Attribute changes on any of: `data-gh-product`, `data-gh-destination`, `data-gh-funnel`, `data-field`, `data-format`, `data-if`, `data-if-not`, `data-each`, `data-with`, `data-when`.
 
-Mutations caused by the SDK's own loop expansion are ignored (they carry a `data-gh-loop-clone` marker) to prevent feedback loops. Re-binds are coalesced via a single microtask, so a burst of DOM changes triggers only one extra bind pass.
+Mutations caused by the SDK's own loop expansion are ignored automatically to prevent feedback loops. Re-binds are coalesced via a single microtask, so a burst of DOM changes triggers only one extra bind pass.
 
 If you mutate the DOM in a way the observer doesn't catch (e.g. you swap an element's `data-gh-product` to a slug that's already cached and immediately need it bound), call `window.gh.bind(element)` to force a scan.
 
