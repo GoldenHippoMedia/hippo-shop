@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hippo Shop SDK — offer selector demo</title>
+    <link rel="stylesheet" href="./_shared.css" />
+    <style>
+      /* ---------- Header ---------- */
+
+      .demo-header { margin-bottom: 36px; }
+      .demo-header h1 {
+        font-size: 30px;
+        line-height: 1.2;
+        margin: 4px 0 6px;
+      }
+      .demo-header p {
+        color: var(--gray-600);
+        font-size: 15px;
+        max-width: 560px;
+      }
+
+      /* ---------- Filter rows ---------- */
+
+      .filters { margin-bottom: 28px; }
+      .filter-row { margin-bottom: 18px; }
+      .filter-row legend {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--gray-500);
+        margin-bottom: 8px;
+        padding: 0;
+      }
+      .filter-row fieldset {
+        border: none;
+        padding: 0;
+        margin: 0;
+      }
+
+      /* ---------- Offer grid ---------- */
+
+      .offers {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 16px;
+      }
+
+      .offer {
+        background: #fff;
+        border: 1px solid var(--gray-200);
+        border-radius: 14px;
+        padding: 24px;
+        text-align: center;
+        position: relative;
+        transition: border-color 160ms ease, box-shadow 160ms ease;
+      }
+      .offer:hover {
+        border-color: var(--blue-300);
+        box-shadow: var(--shadow-sm);
+      }
+      .offer.is-featured {
+        border-color: var(--lime-300);
+        box-shadow: 0 0 0 2px var(--lime-100), var(--shadow-sm);
+      }
+      .offer[hidden] { display: none !important; }
+
+      .offer .ribbon {
+        position: absolute;
+        top: 14px;
+        right: 14px;
+        background: var(--lime-400);
+        color: var(--blue-900);
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        padding: 4px 9px;
+        border-radius: 999px;
+      }
+
+      .offer .qty {
+        font-family: var(--font-serif);
+        font-size: 38px;
+        font-weight: 700;
+        line-height: 1;
+        margin: 0 0 4px;
+      }
+      .offer .package {
+        color: var(--gray-500);
+        font-size: 13px;
+        margin-bottom: 14px;
+      }
+      .offer .price {
+        font-size: 24px;
+        font-weight: 600;
+        margin: 0 0 4px;
+      }
+      .offer .cadence {
+        font-size: 12px;
+        color: var(--gray-500);
+        margin: 0 0 14px;
+      }
+      .offer .savings {
+        color: var(--green-600);
+        font-size: 13px;
+        font-weight: 700;
+        margin: 0 0 14px;
+      }
+      .offer .savings[data-gh-hidden] { display: none; }
+      .offer .sku {
+        font-size: 11px;
+        color: var(--gray-400);
+        margin-top: 12px;
+      }
+
+      .offer .btn {
+        width: 100%;
+        margin-top: 10px;
+      }
+
+      .demo-note {
+        margin-top: 28px;
+        padding: 16px 20px;
+        background: var(--gray-50);
+        border-left: 3px solid var(--blue-400);
+        border-radius: 6px;
+        font-size: 13px;
+        color: var(--gray-600);
+        line-height: 1.7;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <header class="demo-header">
+        <p class="eyebrow">MCT Wellness · Offer Selector</p>
+        <h1>Pick the package that's right for you</h1>
+        <p>
+          12 destinations in this demo (2 flavors × 3 quantities × 2 purchase types).
+          The two filter rows below collapse them to 3 visible cards. Each card's
+          CTA <code>href</code> is bound to <code>funnelSlug</code> so click routes
+          to the post-purchase funnel for that specific SKU.
+        </p>
+      </header>
+
+      <div class="filters">
+        <div class="filter-row" data-filter="flavor">
+          <fieldset>
+            <legend>Flavor</legend>
+            <div class="pill-group" role="radiogroup" aria-label="Flavor">
+              <button type="button" class="pill" role="radio"
+                      aria-checked="true"
+                      data-value="strawberry-lemonade">Strawberry Lemonade</button>
+              <button type="button" class="pill" role="radio"
+                      aria-checked="false"
+                      data-value="raspberry-medley">Raspberry Medley</button>
+            </div>
+          </fieldset>
+        </div>
+
+        <div class="filter-row" data-filter="purchase">
+          <fieldset>
+            <legend>Plan</legend>
+            <div class="pill-group" role="radiogroup" aria-label="Purchase type">
+              <button type="button" class="pill" role="radio"
+                      aria-checked="true"
+                      data-value="subscription">Subscribe &amp; save</button>
+              <button type="button" class="pill" role="radio"
+                      aria-checked="false"
+                      data-value="one-time">One-time</button>
+            </div>
+          </fieldset>
+        </div>
+      </div>
+
+      <!--
+        12 destination cards. Each carries data-flavor + data-purchase markers
+        so the inline JS at the bottom can toggle [hidden] on the 9 cards that
+        don't match the current filter pair. The CTA href is bound to
+        funnelSlug so click routes to the correct post-purchase funnel.
+      -->
+      <section class="offers">
+        <!-- Strawberry Lemonade · Subscription -->
+        <article class="offer" data-flavor="strawberry-lemonade" data-purchase="subscription"
+                 data-gh-destination="d_mctwellness_1unitsub_mf_240210">
+          <p class="qty"><span data-field="pricing.packageQuantity">1</span></p>
+          <p class="package"><span data-field="name">…</span></p>
+          <p class="price">
+            <span data-field="pricing.price.amount" data-format="currency:USD">$0.00</span>
+          </p>
+          <p class="cadence">
+            Renews <span data-field="pricing.frequency.label">every 30 days</span>
+          </p>
+          <p class="savings" data-if="pricing.price.savings">
+            Save <span data-field="pricing.price.savings" data-format="currency:USD">$0</span>
+          </p>
+          <a class="btn" data-attr-href="funnelSlug" data-attr-aria-label="name" href="#">
+            Continue →
+          </a>
+          <p class="sku"><span data-field="pricing.sku">SKU</span></p>
+        </article>
+
+        <article class="offer" data-flavor="strawberry-lemonade" data-purchase="subscription"
+                 data-gh-destination="d_mctwellness_3unitsub_mf_240210">
+          <p class="qty"><span data-field="pricing.packageQuantity">3</span></p>
+          <p class="package"><span data-field="name">…</span></p>
+          <p class="price">
+            <span data-field="pricing.price.amount" data-format="currency:USD">$0.00</span>
+          </p>
+          <p class="cadence">
+            Renews <span data-field="pricing.frequency.label">every 30 days</span>
+          </p>
+          <p class="savings" data-if="pricing.price.savings">
+            Save <span data-field="pricing.price.savings" data-format="currency:USD">$0</span>
+          </p>
+          <a class="btn" data-attr-href="funnelSlug" data-attr-aria-label="name" href="#">
+            Continue →
+          </a>
+          <p class="sku"><span data-field="pricing.sku">SKU</span></p>
+        </article>
+
+        <article class="offer is-featured" data-flavor="strawberry-lemonade" data-purchase="subscription"
+                 data-gh-destination="d_mctwellness_6unitsub_mf_240210">
+          <p class="ribbon" data-if="pricing.price.savings">Best Value</p>
+          <p class="qty"><span data-field="pricing.packageQuantity">6</span></p>
+          <p class="package"><span data-field="name">…</span></p>
+          <p class="price">
+            <span data-field="pricing.price.amount" data-format="currency:USD">$0.00</span>
+          </p>
+          <p class="cadence">
+            Renews <span data-field="pricing.frequency.label">every 30 days</span>
+          </p>
+          <p class="savings" data-if="pricing.price.savings">
+            Save <span data-field="pricing.price.savings" data-format="currency:USD">$0</span>
+          </p>
+          <a class="btn" data-attr-href="funnelSlug" data-attr-aria-label="name" href="#">
+            Continue →
+          </a>
+          <p class="sku"><span data-field="pricing.sku">SKU</span></p>
+        </article>
+
+        <!-- Strawberry Lemonade · One-time -->
+        <article class="offer" data-flavor="strawberry-lemonade" data-purchase="one-time"
+                 data-gh-destination="d_mctwellness_1unit_mf_221006">
+          <p class="qty"><span data-field="pricing.packageQuantity">1</span></p>
+          <p class="package"><span data-field="name">…</span></p>
+          <p class="price">
+            <span data-field="pricing.price.amount" data-format="currency:USD">$0.00</span>
+          </p>
+          <p class="savings" data-if="pricing.price.savings">
+            Save <span data-field="pricing.price.savings" data-format="currency:USD">$0</span>
+          </p>
+          <a class="btn" data-attr-href="funnelSlug" data-attr-aria-label="name" href="#">
+            Continue →
+          </a>
+          <p class="sku"><span data-field="pricing.sku">SKU</span></p>
+        </article>
+
+        <article class="offer" data-flavor="strawberry-lemonade" data-purchase="one-time"
+                 data-gh-destination="d_mctwellness_3unit_mf_240210">
+          <p class="qty"><span data-field="pricing.packageQuantity">3</span></p>
+          <p class="package"><span data-field="name">…</span></p>
+          <p class="price">
+            <span data-field="pricing.price.amount" data-format="currency:USD">$0.00</span>
+          </p>
+          <p class="savings" data-if="pricing.price.savings">
+            Save <span data-field="pricing.price.savings" data-format="currency:USD">$0</span>
+          </p>
+          <a class="btn" data-attr-href="funnelSlug" data-attr-aria-label="name" href="#">
+            Continue →
+          </a>
+          <p class="sku"><span data-field="pricing.sku">SKU</span></p>
+        </article>
+
+        <article class="offer is-featured" data-flavor="strawberry-lemonade" data-purchase="one-time"
+                 data-gh-destination="d_mctwellness_6unit_mf_240210">
+          <p class="ribbon" data-if="pricing.price.savings">Best Value</p>
+          <p class="qty"><span data-field="pricing.packageQuantity">6</span></p>
+          <p class="package"><span data-field="name">…</span></p>
+          <p class="price">
+            <span data-field="pricing.price.amount" data-format="currency:USD">$0.00</span>
+          </p>
+          <p class="savings" data-if="pricing.price.savings">
+            Save <span data-field="pricing.price.savings" data-format="currency:USD">$0</span>
+          </p>
+          <a class="btn" data-attr-href="funnelSlug" data-attr-aria-label="name" href="#">
+            Continue →
+          </a>
+          <p class="sku"><span data-field="pricing.sku">SKU</span></p>
+        </article>
+
+        <!-- Raspberry Medley · Subscription -->
+        <article class="offer" data-flavor="raspberry-medley" data-purchase="subscription"
+                 data-gh-destination="d_mctwellnessraspberry_1unitsub_mf_240210" hidden>
+          <p class="qty"><span data-field="pricing.packageQuantity">1</span></p>
+          <p class="package"><span data-field="name">…</span></p>
+          <p class="price">
+            <span data-field="pricing.price.amount" data-format="currency:USD">$0.00</span>
+          </p>
+          <p class="cadence">
+            Renews <span data-field="pricing.frequency.label">every 30 days</span>
+          </p>
+          <p class="savings" data-if="pricing.price.savings">
+            Save <span data-field="pricing.price.savings" data-format="currency:USD">$0</span>
+          </p>
+          <a class="btn" data-attr-href="funnelSlug" data-attr-aria-label="name" href="#">
+            Continue →
+          </a>
+          <p class="sku"><span data-field="pricing.sku">SKU</span></p>
+        </article>
+
+        <article class="offer" data-flavor="raspberry-medley" data-purchase="subscription"
+                 data-gh-destination="d_mctwellnessraspberry_3unitsub_mf_240210" hidden>
+          <p class="qty"><span data-field="pricing.packageQuantity">3</span></p>
+          <p class="package"><span data-field="name">…</span></p>
+          <p class="price">
+            <span data-field="pricing.price.amount" data-format="currency:USD">$0.00</span>
+          </p>
+          <p class="cadence">
+            Renews <span data-field="pricing.frequency.label">every 30 days</span>
+          </p>
+          <p class="savings" data-if="pricing.price.savings">
+            Save <span data-field="pricing.price.savings" data-format="currency:USD">$0</span>
+          </p>
+          <a class="btn" data-attr-href="funnelSlug" data-attr-aria-label="name" href="#">
+            Continue →
+          </a>
+          <p class="sku"><span data-field="pricing.sku">SKU</span></p>
+        </article>
+
+        <article class="offer is-featured" data-flavor="raspberry-medley" data-purchase="subscription"
+                 data-gh-destination="d_mctwellnessraspberry_6unitsub_mf_240210" hidden>
+          <p class="ribbon" data-if="pricing.price.savings">Best Value</p>
+          <p class="qty"><span data-field="pricing.packageQuantity">6</span></p>
+          <p class="package"><span data-field="name">…</span></p>
+          <p class="price">
+            <span data-field="pricing.price.amount" data-format="currency:USD">$0.00</span>
+          </p>
+          <p class="cadence">
+            Renews <span data-field="pricing.frequency.label">every 30 days</span>
+          </p>
+          <p class="savings" data-if="pricing.price.savings">
+            Save <span data-field="pricing.price.savings" data-format="currency:USD">$0</span>
+          </p>
+          <a class="btn" data-attr-href="funnelSlug" data-attr-aria-label="name" href="#">
+            Continue →
+          </a>
+          <p class="sku"><span data-field="pricing.sku">SKU</span></p>
+        </article>
+
+        <!-- Raspberry Medley · One-time -->
+        <article class="offer" data-flavor="raspberry-medley" data-purchase="one-time"
+                 data-gh-destination="d_mctwellnessraspberry_1unit_mf_11164" hidden>
+          <p class="qty"><span data-field="pricing.packageQuantity">1</span></p>
+          <p class="package"><span data-field="name">…</span></p>
+          <p class="price">
+            <span data-field="pricing.price.amount" data-format="currency:USD">$0.00</span>
+          </p>
+          <p class="savings" data-if="pricing.price.savings">
+            Save <span data-field="pricing.price.savings" data-format="currency:USD">$0</span>
+          </p>
+          <a class="btn" data-attr-href="funnelSlug" data-attr-aria-label="name" href="#">
+            Continue →
+          </a>
+          <p class="sku"><span data-field="pricing.sku">SKU</span></p>
+        </article>
+
+        <article class="offer" data-flavor="raspberry-medley" data-purchase="one-time"
+                 data-gh-destination="d_mctwellnessraspberry_3unit_mf_240210" hidden>
+          <p class="qty"><span data-field="pricing.packageQuantity">3</span></p>
+          <p class="package"><span data-field="name">…</span></p>
+          <p class="price">
+            <span data-field="pricing.price.amount" data-format="currency:USD">$0.00</span>
+          </p>
+          <p class="savings" data-if="pricing.price.savings">
+            Save <span data-field="pricing.price.savings" data-format="currency:USD">$0</span>
+          </p>
+          <a class="btn" data-attr-href="funnelSlug" data-attr-aria-label="name" href="#">
+            Continue →
+          </a>
+          <p class="sku"><span data-field="pricing.sku">SKU</span></p>
+        </article>
+
+        <article class="offer is-featured" data-flavor="raspberry-medley" data-purchase="one-time"
+                 data-gh-destination="d_mctwellnessraspberry_6unit_mf_240210" hidden>
+          <p class="ribbon" data-if="pricing.price.savings">Best Value</p>
+          <p class="qty"><span data-field="pricing.packageQuantity">6</span></p>
+          <p class="package"><span data-field="name">…</span></p>
+          <p class="price">
+            <span data-field="pricing.price.amount" data-format="currency:USD">$0.00</span>
+          </p>
+          <p class="savings" data-if="pricing.price.savings">
+            Save <span data-field="pricing.price.savings" data-format="currency:USD">$0</span>
+          </p>
+          <a class="btn" data-attr-href="funnelSlug" data-attr-aria-label="name" href="#">
+            Continue →
+          </a>
+          <p class="sku"><span data-field="pricing.sku">SKU</span></p>
+        </article>
+      </section>
+
+      <p class="demo-note">
+        All 12 destinations fetch concurrently when the page loads — the SDK
+        dedupes requests by slug. Filter pills toggle <code>hidden</code> on the
+        9 non-matching cards purely in client JS; no extra fetches happen when
+        you change a filter.
+      </p>
+
+      <footer class="demo-footer">
+        <p>← <a href="./index.html">Back to demos</a></p>
+        <p>
+          SDK loaded from <code>api-uat.goldenhippo.io</code>. 12 destination slugs
+          listed in the page source.
+        </p>
+      </footer>
+    </main>
+
+    <script
+      src="https://api-uat.goldenhippo.io/sdk/v1/gh.js"
+      data-key="gh_pk_test_all_feab8e2ae18f8164ee7e1f36412b774a"
+      data-brand="Gundry MD"
+    ></script>
+
+    <script>
+      // Filter-pill toggling. No SDK calls here — just visibility on already-
+      // rendered cards. The 3 cards whose data-flavor + data-purchase match
+      // the active pair stay visible; the other 9 get [hidden].
+      (function () {
+        const filters = { flavor: 'strawberry-lemonade', purchase: 'subscription' };
+
+        function applyFilters() {
+          document.querySelectorAll('.offer').forEach((card) => {
+            const matches =
+              card.getAttribute('data-flavor') === filters.flavor &&
+              card.getAttribute('data-purchase') === filters.purchase;
+            card.hidden = !matches;
+          });
+        }
+
+        document.querySelectorAll('.filter-row').forEach((row) => {
+          const kind = row.getAttribute('data-filter');
+          row.querySelectorAll('.pill').forEach((pill) => {
+            pill.addEventListener('click', () => {
+              row.querySelectorAll('.pill').forEach((p) =>
+                p.setAttribute('aria-checked', 'false'),
+              );
+              pill.setAttribute('aria-checked', 'true');
+              filters[kind] = pill.getAttribute('data-value');
+              applyFilters();
+            });
+          });
+        });
+
+        applyFilters();
+      })();
+    </script>
+  </body>
+</html>
