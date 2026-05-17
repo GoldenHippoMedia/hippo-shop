@@ -161,19 +161,14 @@ The package also exports these for advanced consumers building a custom auto-boo
 - `FormatRegistry`, `builtinFormatters` — formatter registry class plus the built-in set.
 - `applyBindings`, `collectResources`, `ResourceState` — low-level binding primitives.
 - `getByPath` — dot-path lookup utility.
-- `enrichProduct` — quantity-keyed variant builder applied to product responses.
 
 These are versioned with the rest of the package but are not the recommended path. The `default` export is reserved.
 
 ## Deprecated surface
 
-Currently-shipping SDK behavior depends on deprecated DTO fields in `@goldenhippo/hippo-shop-types`. Specifically:
+None in v3.0.0.
 
-| Deprecated path | Replacement | Scheduled removal |
-|---|---|---|
-| `data-field="variants.subscription.standard"` (and the other three matching paths) | Use `*List` for iteration or `*ByQuantity` for direct lookup | v3.0.0 |
-
-No SDK-internal API is currently marked `@deprecated`. When v3 removes the deprecated paths from the types package, the SDK's path lookup will simply stop seeing them.
+Historical note: pre-v3 SDK builds carried a client-side shim (`enrichProduct`) that built `*List` and `*ByQuantity` fields from legacy DTO arrays. v3 removed both the legacy DTO arrays and the shim — the SDK is now a thin pass-through for product responses.
 
 ## Stability
 
