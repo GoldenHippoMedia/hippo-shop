@@ -1,6 +1,6 @@
 {
   "name": "@goldenhippo/hippo-shop-sdk",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "Browser SDK for Hippo Shop — auto-boots from a <script> tag and attaches window.gh.data.",
   "license": "MIT",
   "repository": {
