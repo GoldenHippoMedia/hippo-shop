@@ -700,7 +700,7 @@ type GhErrorCode =
 | Code | Meaning | Common cause |
 |------|---------|--------------|
 | `not_found` | 404 from the API | Slug doesn't exist for your brand, or you're not authorized to see it. The two are deliberately indistinguishable — partners cannot enumerate resources they don't own. |
-| `rate_limited` | 429 from the API | Too many requests. Honour `retryAfterMs` before retrying. |
+| `rate_limited` | 429 from the API | Too many requests. Honor `retryAfterMs` before retrying. |
 | `forbidden` | 401 or 403 from the API | Missing / invalid `data-key`, or the key/brand combination doesn't authorize this resource. |
 | `bad_request` | Other 4xx from the API | Malformed slug, unknown resource type, or a programmatic call with an empty argument. |
 | `network` | Fetch rejected before getting a response | DNS, CORS, offline. Check the `cause` for the underlying `TypeError`. |
