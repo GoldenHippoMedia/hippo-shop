@@ -605,6 +605,75 @@ window.addEventListener('gh:bindings-ready', async () => {
 
 ---
 
+## Resource caching
+
+The SDK keeps an in-memory cache of resource fetches keyed by `<kind>:<slug>` (e.g. `product:multi-vitamin`). The cache stores **promises**, not resolved values, which means:
+
+- **Concurrent calls dedupe.** Two `gh.data.product('multi-vitamin')` calls fired at the same time share a single HTTP request.
+- **Resolved values stay cached** for the lifetime of the page. Successive calls return immediately.
+- **Rejected promises are evicted.** A failed fetch (network error, 5xx, etc.) is removed from the cache as soon as it settles, so the next call retries instead of returning the stuck failure.
+
+There is no `localStorage` and no cross-tab persistence — every page load starts with an empty cache.
+
+To invalidate the cache explicitly, call `gh.refresh()` (see [Programmatic API](#programmatic-api)). This clears the resource cache, clears the lifecycle-state map, and re-runs the bind pass.
+
+---
+
+## HTTP
+
+What the SDK sends and how it talks to the API.
+
+### Endpoints
+
+All three resource types use the same shape:
+
+| Method | URL | Returns |
+|--------|-----|---------|
+| `GET` | `<base>/public/v1/funnel/<slugOrId>` | `HippoShopFunnelDTO` |
+| `GET` | `<base>/public/v1/destination/<slugOrId>` | `HippoShopDestinationDTO` |
+| `GET` | `<base>/public/v1/product/<slugOrId>` | `HippoShopProductDTO` (client-side enriched) |
+
+`<slugOrId>` is URL-encoded before insertion. The product endpoint is client-side enriched — the raw response is passed through `enrichProduct` to attach the `<tier>List` and `<tier>ByQuantity` sibling fields before it resolves.
+
+### Headers sent
+
+| Header | Value |
+|--------|-------|
+| `X-GH-Key` | Your publishable key (from `data-key`) |
+| `X-GH-Brand` | Your brand display name (from `data-brand`) |
+| `Accept` | `application/json` |
+
+The SDK does not send credentials (cookies are not included), does not set a `User-Agent` beyond the browser default, and does not send any analytics or PII.
+
+### Base URL derivation
+
+The API base URL is the script tag's `src` origin. Loading the SDK from `https://api-prod.goldenhippo.io/sdk/v1/gh.js` produces a base URL of `https://api-prod.goldenhippo.io`; loading it from `https://api-uat.goldenhippo.io/sdk/v1/gh.js` produces `https://api-uat.goldenhippo.io`. See [Script tag config — Host allowlist](#host-allowlist) for the full list of accepted hosts.
+
+### Status → error code mapping
+
+When a fetch returns a non-2xx status, the SDK constructs a `GhError` with a code derived from the response. The server's response body may supply an explicit `code`; otherwise the SDK infers from the status:
+
+| HTTP status | `GhError.code` |
+|-------------|----------------|
+| 401, 403 | `forbidden` |
+| 404 | `not_found` |
+| 429 | `rate_limited` |
+| Other 4xx | `bad_request` |
+| 5xx | `server` |
+
+Network errors (the fetch itself rejects) surface as `network`. Bad client-side config (bad key pattern, missing brand, disallowed host) surfaces as `bad_config` and is thrown during boot.
+
+### `Retry-After` parsing
+
+Rate-limited responses (status `429`) carry a `Retry-After` header. The SDK parses both forms allowed by the spec:
+
+- Seconds — `Retry-After: 30` → `retryAfterMs: 30000`
+- HTTP-date — `Retry-After: Wed, 21 Oct 2026 07:28:00 GMT` → `retryAfterMs: <ms-from-now>`
+
+If the error response body includes an explicit `retryAfterMs`, that value takes precedence over the header.
+
+---
+
 ## Errors
 
 The programmatic API rejects with `GhError`:
