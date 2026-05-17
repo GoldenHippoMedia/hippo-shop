@@ -9,7 +9,7 @@ Browser SDK for reading Golden Hippo public data — funnels, destinations, prod
 1. **Declarative** — write HTML with `data-gh-*` attributes; the SDK scans the page, fetches the right resources, and renders the values. No JS required.
 2. **Programmatic** — call `window.gh.data.product(slug)` and friends for full control.
 
-Both share the same auth, caching, and brand-tenancy guardrails enforced at the API gateway.
+Both share the same auth, caching, and brand-scoped access rules enforced by the API.
 
 > Source: [GoldenHippoMedia/hippo-shop](https://github.com/GoldenHippoMedia/hippo-shop) · DTO contract: [`@goldenhippo/hippo-shop-types`](https://www.npmjs.com/package/@goldenhippo/hippo-shop-types)
 
@@ -35,10 +35,10 @@ Drop one `<script>` and write your HTML:
 
 ```html
 <script src="https://api-prod.goldenhippo.io/sdk/v1/gh.js"
-        data-key="gh_pk_netlify_gundry_xyz"
-        data-brand="Gundry MD"></script>
+        data-key="gh_pk_yourbrand_xxxxxx"
+        data-brand="Sample Co"></script>
 
-<article data-gh-product="bio-complete-3">
+<article data-gh-product="multi-vitamin">
   <img data-attr-src="image" data-attr-alt="name" />
   <h2 data-field="name">Loading…</h2>
 
@@ -56,7 +56,7 @@ Drop one `<script>` and write your HTML:
 </article>
 ```
 
-That's it. The SDK auto-boots, scans for `data-gh-*` attributes, fetches `/public/v1/product/bio-complete-3` once, and renders. Any placeholder text inside the elements stays visible until the data arrives (good for SEO and graceful loading).
+That's it. The SDK auto-boots, scans for `data-gh-*` attributes, fetches `/public/v1/product/multi-vitamin` once, and renders. Any placeholder text inside the elements stays visible until the data arrives (good for SEO and graceful loading).
 
 ---
 
@@ -97,7 +97,7 @@ Paths are dot-separated. Variant lookups use the quantity as the key (e.g. `vari
 | `currency` | `currency:USD:en-US` (currency code + locale, both optional) | `$49.95` |
 | `number` | `number:0` (decimals), `number:2:en-US` | `1,235` / `1,234.50` |
 | `percent` | `percent`, `percent:1` | `25%` / `12.3%` |
-| `uppercase` / `lowercase` | `uppercase` | `BIO COMPLETE 3` |
+| `uppercase` / `lowercase` | `uppercase` | `MULTI VITAMIN` |
 | `bool` | `bool:In stock:Sold out` | renders the second arg if falsy |
 | `join` | `join: - ` | joins arrays |
 
@@ -113,7 +113,7 @@ window.gh.format.register('shouty', (v) => String(v).toUpperCase() + '!');
 `<template>` is the standard HTML element for non-rendered templates. The SDK expands it once per array item, with each clone seeing the iterated item as its data context.
 
 ```html
-<ul data-gh-product="bio-complete-3">
+<ul data-gh-product="multi-vitamin">
   <template data-each="variants.subscription.standardList">
     <li>
       <strong data-field="quantity"></strong>
@@ -153,7 +153,7 @@ If the catalog doesn't carry a 6-pack, the entire `<article>` hides.
 - `failed` — the fetch settled without populating the resource (404, network error, brand mismatch).
 
 ```html
-<article data-gh-product="bio-complete-3">
+<article data-gh-product="multi-vitamin">
   <div data-when="loading" class="skeleton" aria-busy="true">…</div>
   <div data-when="failed" class="error" role="alert">Couldn't load this product.</div>
   <div data-when="loaded">
@@ -163,7 +163,134 @@ If the catalog doesn't carry a 6-pack, the entire `<article>` hides.
 </article>
 ```
 
-The runtime now binds twice per pass: once with unloaded resources marked `'loading'` (skeletons appear before the network round-trip), then again after fetches settle. `gh:bindings-ready` continues to fire once, after the post-fetch pass.
+Loading skeletons render immediately on page load; the SDK swaps in real values when data arrives. The `gh:bindings-ready` event fires once, after the initial data fetch settles.
+
+## Recipes
+
+Copy-paste patterns for the most common partner integrations. All use the example product slug `multi-vitamin`; swap in your own slug and brand.
+
+### Quantity ladder (side-by-side pricing cards)
+
+Three cards bound to the 1-pack, 3-pack, and 6-pack subscription tiers. Each card uses `data-with` so its descendants address relative fields. Any quantity the catalog doesn't carry stays hidden automatically.
+
+```html
+<section data-gh-product="multi-vitamin" class="tier-grid">
+  <article class="tier" data-with="variants.subscription.standardByQuantity.1">
+    <h3>1-Month Supply</h3>
+    <p class="price"><span data-field="price" data-format="currency:USD"></span> /mo</p>
+    <p class="cadence" data-if="defaultFrequency">
+      Renews <span data-field="defaultFrequency.label"></span>
+    </p>
+  </article>
+
+  <article class="tier" data-with="variants.subscription.standardByQuantity.3">
+    <span class="ribbon" data-if="savings">
+      Save <span data-field="savings" data-format="currency:USD"></span>
+    </span>
+    <h3>3-Month Supply</h3>
+    <p class="price"><span data-field="price" data-format="currency:USD"></span></p>
+    <p class="cadence" data-if="defaultFrequency">
+      Renews <span data-field="defaultFrequency.label"></span>
+    </p>
+  </article>
+
+  <article class="tier featured" data-with="variants.subscription.standardByQuantity.6">
+    <span class="ribbon">Best Value</span>
+    <h3>6-Month Supply</h3>
+    <p class="price"><span data-field="price" data-format="currency:USD"></span></p>
+    <p class="savings" data-if="savings">
+      Save <span data-field="savings" data-format="currency:USD"></span>
+    </p>
+  </article>
+</section>
+```
+
+### Subscription vs one-time tier picker
+
+Show the same package's price under both purchase types, with a small comparison line. No JS — `alternatePurchaseTypePrice` on each variant carries the price for the opposite purchase type, so a single bind gets both.
+
+```html
+<article data-gh-product="multi-vitamin" data-with="variants.subscription.standardByQuantity.3">
+  <h2>3-Month Supply</h2>
+
+  <p class="price-sub">
+    Subscribe and save:
+    <strong data-field="price" data-format="currency:USD"></strong>
+  </p>
+
+  <p class="price-onetime" data-if="alternatePurchaseTypePrice">
+    Or pay once:
+    <span data-field="alternatePurchaseTypePrice" data-format="currency:USD"></span>
+  </p>
+</article>
+```
+
+### Loading skeleton + error fallback
+
+Show a pulsing skeleton while the product loads, an error message if the fetch fails, and the real content on success. All three states are sibling `data-when` blocks; the SDK picks the right one each render pass.
+
+```html
+<article data-gh-product="multi-vitamin" class="card">
+  <div data-when="loading" class="card-skeleton" aria-busy="true">
+    <div class="skel-image"></div>
+    <div class="skel-lines">
+      <div class="skel-line"></div>
+      <div class="skel-line short"></div>
+    </div>
+  </div>
+
+  <div data-when="failed" class="card-error" role="alert">
+    <p>This product is temporarily unavailable. <a href="/products">See other products →</a></p>
+  </div>
+
+  <div data-when="loaded" class="card-content">
+    <img data-attr-src="image" data-attr-alt="name" />
+    <h2 data-field="name"></h2>
+    <p class="price">
+      <span data-field="variants.subscription.standardByQuantity.3.price"
+            data-format="currency:USD"></span>
+    </p>
+  </div>
+</article>
+
+<style>
+  .skel-image, .skel-line {
+    background: #e5e7eb;
+    border-radius: 4px;
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 0.6; }
+    50%      { opacity: 1; }
+  }
+</style>
+```
+
+### Custom formatter — "Save 23% off"
+
+Register your own formatter once on `gh:data-ready`, then bind any field through it. This pattern is the right way to express derived values (percentages, computed labels, currency-in-words) without adding per-page JS to every binding.
+
+```html
+<script>
+  window.addEventListener('gh:data-ready', () => {
+    window.gh.format.register('savePercent', (savings, fullPriceStr) => {
+      const full = Number(fullPriceStr);
+      if (!savings || !Number.isFinite(full) || full === 0) return '';
+      return 'Save ' + Math.round((savings / (full + savings)) * 100) + '%';
+    });
+    window.gh.refresh(); // re-bind so existing pages pick up the new formatter
+  }, { once: true });
+</script>
+
+<article data-gh-product="multi-vitamin" data-with="variants.subscription.standardByQuantity.6">
+  <p class="badge" data-if="savings">
+    <span data-field="savings" data-format="savePercent:169.95"></span>
+  </p>
+  <p class="price"><span data-field="price" data-format="currency:USD"></span></p>
+</article>
+```
+
+Formatters receive the bound value as their first argument; additional `:`-separated values from `data-format` are passed as string arguments (so the `:169.95` above arrives as a string and `Number()`'s back to a float).
 
 ## Evaluation order
 
