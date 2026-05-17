@@ -509,41 +509,98 @@ When multiple binding attributes appear on the same element, they evaluate in th
 
 ## Programmatic API
 
-Everything the declarative layer does is also available on `window.gh`:
+Everything the declarative layer does is also exposed on `window.gh`. Useful when you want to fetch data without binding (e.g. server-side rendering preview), open a modal whose markup needs binding, or invalidate the cache after a known data change.
+
+### `window.gh` surface
 
 ```ts
 window.gh.data.funnel(slugOrId):      Promise<HippoShopFunnelDTO>;
 window.gh.data.destination(slugOrId): Promise<HippoShopDestinationDTO>;
 window.gh.data.product(slugOrId):     Promise<HippoShopProductDTO>;
 
-// Manually scan a subtree (e.g., a modal opened via JS):
-window.gh.bind(myElement);
+window.gh.bind(rootElement):    Promise<void>;
+window.gh.refresh():            Promise<void>;
 
-// Drop cached data and refetch + re-render everything:
-window.gh.refresh();
-
-// Formatter registry:
-window.gh.format.currency(49.95);                     // "$49.95"
-window.gh.format.register('shouty', v => v + '!');
+window.gh.format: FormatRegistry; // see the Formatters section
+window.gh.debug?: true;           // present only when data-debug="true" on the script tag
 ```
 
-Types come from `@goldenhippo/hippo-shop-types` — install it for IntelliSense in TypeScript projects.
+The promises returned by `gh.data.*` resolve with **enriched** payloads. Products in particular gain the `<tier>List` and `<tier>ByQuantity` sibling fields described under [Loops](#loops) and [Declarative scope](#declarative-scope-data-with) — the same shape your declarative bindings see.
 
-### Lifecycle events
+Types live in `@goldenhippo/hippo-shop-types`. Install it for IntelliSense in TypeScript projects:
+
+```bash
+pnpm add @goldenhippo/hippo-shop-types
+```
+
+### Manually binding a subtree
+
+`gh.bind(element)` scans the given subtree for `data-gh-*` references, fetches anything not yet cached, and renders the bindings. Use it when you've inserted markup the `MutationObserver` won't catch in time — typically a modal you've just attached and want bound before it's visible.
+
+```js
+const modal = document.getElementById('cart-modal');
+modal.innerHTML = `
+  <article data-gh-product="multi-vitamin">
+    <h2 data-field="name"></h2>
+    <p data-field="variants.subscription.standardByQuantity.3.price"
+       data-format="currency:USD"></p>
+  </article>
+`;
+await window.gh.bind(modal);
+modal.classList.add('open');
+```
+
+`gh.bind` is safe to call on the same subtree repeatedly — bindings are idempotent and prior loop clones are removed before re-expansion.
+
+### Refreshing cached data
+
+`gh.refresh()` drops every cached resource, clears the lifecycle-state map, and re-binds the document. Use it when you know the underlying data has changed (e.g. you just informed the API of a price update) and you want the page to reflect it without a full reload.
+
+```js
+await window.gh.refresh();
+```
+
+`refresh()` returns the same promise as `bind(document)` and resolves after the post-fetch pass completes.
+
+## Lifecycle events
+
+Two events fire on `window` during boot:
 
 | Event | When |
 |-------|------|
-| `gh:data-ready` | The synchronous setup is done — `window.gh.data`, `bind`, `refresh`, `format` are attached. |
-| `gh:bindings-ready` | The initial declarative bind pass has completed (DOMContentLoaded + first fetch). |
+| `gh:data-ready` | The synchronous setup is done — `window.gh.data`, `bind`, `refresh`, and `format` are attached. Fires before the first bind pass. |
+| `gh:bindings-ready` | The initial bind pass has completed, including all initial fetches. Fires **once** per page lifetime. |
 
-Both are dispatched on `window`.
+### Defensive "already booted?" pattern
 
-Since the SDK boots synchronously when its `<script>` tag finishes loading, inline scripts placed below it may miss `gh:data-ready`. Use the defensive pattern:
+The SDK boots synchronously when its `<script>` tag finishes loading. Inline scripts placed **below** that tag may miss `gh:data-ready` because it fires before they run. To handle both orderings, check for the surface first:
 
 ```js
-function whenReady() { /* … */ }
+function whenReady() {
+  // window.gh.data is now attached
+  window.gh.format.register('savePercent', (savings, fullPriceStr) => {
+    const full = Number(fullPriceStr);
+    if (!savings || !Number.isFinite(full) || full === 0) return '';
+    return 'Save ' + Math.round((savings / (full + savings)) * 100) + '%';
+  });
+}
+
 if (window.gh && window.gh.data) whenReady();
 else window.addEventListener('gh:data-ready', whenReady, { once: true });
+```
+
+### Inline-script timing
+
+If your custom formatter registration sits in an inline `<script>` placed **after** the SDK tag but **before** `DOMContentLoaded`, the SDK's `setTimeout(0)` scheduling guarantees your inline script runs before the first bind pass — so `gh.refresh()` is unnecessary.
+
+If you register a formatter **after** `gh:bindings-ready` has fired (e.g. from an async chunk that loads lazily), call `gh.refresh()` so existing elements pick up the new formatter.
+
+```js
+window.addEventListener('gh:bindings-ready', async () => {
+  // first bind is done; we can safely add late formatters and re-render
+  window.gh.format.register('shouty', (v) => String(v).toUpperCase() + '!');
+  await window.gh.refresh();
+}, { once: true });
 ```
 
 ---
