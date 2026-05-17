@@ -140,11 +140,6 @@ a:hover { color: var(--blue-700); }
 }
 
 .btn-block { width: 100%; }
-.btn-ghost {
-  background: transparent;
-  color: var(--blue-600);
-}
-.btn-ghost:hover { background: var(--blue-50); }
 
 /* ---------- Stock pill ---------- */
 
