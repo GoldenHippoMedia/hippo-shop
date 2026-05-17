@@ -665,7 +665,7 @@ Network errors (the fetch itself rejects) surface as `network`. Bad client-side 
 
 ### `Retry-After` parsing
 
-Rate-limited responses (status `429`) carry a `Retry-After` header. The SDK parses both forms allowed by the spec:
+The `Retry-After` header is parsed on **any** non-2xx response (most commonly status `429`, but also 503 if the server provides it). The SDK accepts both forms allowed by the spec:
 
 - Seconds — `Retry-After: 30` → `retryAfterMs: 30000`
 - HTTP-date — `Retry-After: Wed, 21 Oct 2026 07:28:00 GMT` → `retryAfterMs: <ms-from-now>`
