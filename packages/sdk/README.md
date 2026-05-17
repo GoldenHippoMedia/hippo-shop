@@ -744,6 +744,59 @@ A request for a resource that belongs to a different brand returns 404 from the 
 
 ---
 
+## Advanced — TypeScript / NPM consumers
+
+Most partners need only the declarative attributes ([§ Declarative attributes](#declarative-attributes)) and the `window.gh` surface ([§ Programmatic API](#programmatic-api)). The exports listed below are the package's full public API for advanced consumers — building a custom auto-boot, bypassing the script-tag detection, instantiating the runtime in a framework, or reusing utilities like `getByPath` in isolation. They're **stable but not the recommended path**.
+
+If you're not sure whether you need these, you don't.
+
+Import from the package root:
+
+```ts
+import {
+  applyBindings,
+  builtinFormatters,
+  collectResources,
+  enrichProduct,
+  FormatRegistry,
+  GhDataClient,
+  GhError,
+  GhRuntime,
+  getByPath,
+  parseScriptConfig,
+} from '@goldenhippo/hippo-shop-sdk';
+
+import type { GhConfig, GhErrorCode, ResourceState } from '@goldenhippo/hippo-shop-sdk';
+```
+
+### Barrel exports
+
+| Export | Kind | Purpose |
+|--------|------|---------|
+| `applyBindings(root, opts)` | function | Apply bindings to a subtree against an explicit `{ formatters, resources, resourceStates? }` bag. The low-level core that `gh.bind` wraps. |
+| `collectResources(root)` | function | Return every `(kind, slug)` referenced under a node. Useful for prefetching server-side or warming a cache. |
+| `getByPath(obj, path)` | function | Resolve a dot-path against any object. Returns `undefined` on miss; never throws. Reusable outside the SDK. |
+| `enrichProduct(raw)` | function | Mutate a raw product DTO in place, attaching `<tier>List` and `<tier>ByQuantity` sibling fields. Use after a manual `fetch()` to a product endpoint if you want the same shape `gh.data.product` returns. |
+| `parseScriptConfig(scriptEl)` | function | Validate a `<script>` element's `data-*` config and produce a `GhConfig`. Throws on invalid input. |
+| `builtinFormatters` | `Record<string, Formatter>` | The raw built-in formatter map. Useful for constructing a custom `FormatRegistry`. |
+| `FormatRegistry` | class | The class behind `window.gh.format`. Instantiate one if you need an isolated registry that doesn't share state with the global. |
+| `GhDataClient` | class | The HTTP client (`funnel` / `destination` / `product` methods). Construct with a `GhConfig` + `Logger` to talk to the API without the binding layer. |
+| `GhRuntime` | class | The high-level orchestrator: ties a `GhDataClient` to the binding pass and manages the resource + lifecycle caches. |
+| `GhError` | class | The error class thrown by all data methods. |
+| `GhConfig` | type | The parsed config produced by `parseScriptConfig`. |
+| `GhErrorCode` | type | Union of `'not_found' \| 'rate_limited' \| 'forbidden' \| 'bad_request' \| 'network' \| 'bad_config' \| 'server'`. |
+| `ResourceState` | type | Union of `'loading' \| 'loaded' \| 'failed'` — the values passed in `ApplyBindingsOptions.resourceStates`. |
+
+### DTO types
+
+The data types these methods accept and return (`HippoShopFunnelDTO`, `HippoShopDestinationDTO`, `HippoShopProductDTO`, `HippoShopErrorDTO`) live in a separate package, [`@goldenhippo/hippo-shop-types`](https://www.npmjs.com/package/@goldenhippo/hippo-shop-types). Install it alongside the SDK for type-only imports:
+
+```bash
+pnpm add -D @goldenhippo/hippo-shop-types
+```
+
+---
+
 ## Size budget
 
 Hard-budgeted at **8 KB gzipped**, CI-enforced.
