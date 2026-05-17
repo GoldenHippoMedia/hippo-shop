@@ -11,7 +11,6 @@ export { GhRuntime } from './runtime';
 export { FormatRegistry, builtinFormatters } from './format';
 export { applyBindings, collectResources, type ResourceState } from './bindings';
 export { getByPath } from './path';
-export { enrichProduct } from './enrich';
 
 interface GhDataApi {
   funnel: GhDataClient['funnel'];

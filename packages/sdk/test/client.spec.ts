@@ -130,46 +130,6 @@ describe('GhDataClient', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it('enriches product responses with List and ByQuantity siblings', async () => {
-    mockFetchOnce({
-      id: 'p1',
-      slug: 'bio-complete-3',
-      name: 'Bio Complete 3',
-      packaging: { singular: 'Bottle', plural: 'Bottles' },
-      image: 'https://cdn.example.com/bc3.png',
-      reviews: { count: 1, average: 5, globalFiveStarReviews: 1 },
-      outOfStock: false,
-      variants: {
-        subscription: {
-          standard: [
-            { productId: 'p', variantId: 'v1', sku: 'BC3-SUB-3', price: 90,
-              rebillPrice: 90, quantity: 3, packageType: 'bottle',
-              savings: null, alternatePurchaseTypePrice: null, defaultFrequency: null },
-            { productId: 'p', variantId: 'v2', sku: 'BC3-SUB-6', price: 170,
-              rebillPrice: 170, quantity: 6, packageType: 'bottle',
-              savings: 10, alternatePurchaseTypePrice: null, defaultFrequency: null },
-          ],
-          myAccount: [],
-        },
-        oneTime: {
-          standard: [],
-          myAccount: [],
-        },
-      },
-    });
-
-    const client = new GhDataClient(CONFIG, createLogger(false));
-    const product = await client.product('bio-complete-3');
-
-    expect(product.variants.subscription.standardList).toHaveLength(2);
-    expect(product.variants.subscription.standardByQuantity['3']?.sku).toBe('BC3-SUB-3');
-    expect(product.variants.subscription.standardByQuantity['6']?.price).toBe(170);
-    expect(product.variants.subscription.standardByQuantity['9']).toBeUndefined();
-    // Empty branches still get the sibling fields.
-    expect(product.variants.oneTime.standardList).toEqual([]);
-    expect(product.variants.oneTime.standardByQuantity).toEqual({});
-  });
-
   it('does not enrich funnel or destination responses', async () => {
     mockFetchOnce({ slug: 'f1', name: 'F', active: true, steps: [] });
     const client = new GhDataClient(CONFIG, createLogger(false));
@@ -178,15 +138,25 @@ describe('GhDataClient', () => {
     expect(Object.keys(funnel)).not.toContain('standardList');
   });
 
-  it('returns the same enriched object on cache hit', async () => {
+  it('returns the same object on cache hit', async () => {
     mockFetchOnce({
       id: 'p1', slug: 's', name: 'n',
       packaging: { singular: 'B', plural: 'Bs' },
       image: '', reviews: { count: 0, average: 0, globalFiveStarReviews: 0 },
       outOfStock: false,
       variants: {
-        subscription: { standard: [], myAccount: [] },
-        oneTime: { standard: [], myAccount: [] },
+        subscription: {
+          standardList: [],
+          standardByQuantity: {},
+          myAccountList: [],
+          myAccountByQuantity: {},
+        },
+        oneTime: {
+          standardList: [],
+          standardByQuantity: {},
+          myAccountList: [],
+          myAccountByQuantity: {},
+        },
       },
     });
     const client = new GhDataClient(CONFIG, createLogger(false));
