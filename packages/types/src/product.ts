@@ -22,45 +22,23 @@ export interface HippoShopProductDTO {
 
 export interface HippoShopProductVariantsDTO {
   subscription: {
-    /**
-     * @deprecated Use `standardList` for iteration or `standardByQuantity` for direct lookup.
-     * Will be removed in v3.0.0.
-     */
-    standard: HippoShopProductVariantDTO[];
-    /** Ordered list for iteration (same content as the deprecated `standard`). */
+    /** Ordered list of subscription "standard" variants for iteration. */
     standardList: HippoShopProductVariantDTO[];
-    /** Variants keyed by `quantity` as a string. Missing quantities are absent (no `null` entries). */
+    /** Subscription "standard" variants keyed by `quantity` as a string. Missing quantities are absent (no `null` entries). */
     standardByQuantity: HippoShopProductVariantsByQuantityDTO;
-
-    /**
-     * @deprecated Use `myAccountList` for iteration or `myAccountByQuantity` for direct lookup.
-     * Will be removed in v3.0.0.
-     */
-    myAccount: HippoShopProductVariantDTO[];
-    /** Ordered list for iteration (same content as the deprecated `myAccount`). */
+    /** Ordered list of subscription "my account" variants for iteration. */
     myAccountList: HippoShopProductVariantDTO[];
-    /** Variants keyed by `quantity` as a string. Missing quantities are absent. */
+    /** Subscription "my account" variants keyed by `quantity` as a string. Missing quantities are absent. */
     myAccountByQuantity: HippoShopProductVariantsByQuantityDTO;
   };
   oneTime: {
-    /**
-     * @deprecated Use `standardList` for iteration or `standardByQuantity` for direct lookup.
-     * Will be removed in v3.0.0.
-     */
-    standard: HippoShopProductVariantDTO[];
-    /** Ordered list for iteration (same content as the deprecated `standard`). */
+    /** Ordered list of one-time "standard" variants for iteration. */
     standardList: HippoShopProductVariantDTO[];
-    /** Variants keyed by `quantity` as a string. Missing quantities are absent. */
+    /** One-time "standard" variants keyed by `quantity` as a string. Missing quantities are absent. */
     standardByQuantity: HippoShopProductVariantsByQuantityDTO;
-
-    /**
-     * @deprecated Use `myAccountList` for iteration or `myAccountByQuantity` for direct lookup.
-     * Will be removed in v3.0.0.
-     */
-    myAccount: HippoShopProductVariantDTO[];
-    /** Ordered list for iteration (same content as the deprecated `myAccount`). */
+    /** Ordered list of one-time "my account" variants for iteration. */
     myAccountList: HippoShopProductVariantDTO[];
-    /** Variants keyed by `quantity` as a string. Missing quantities are absent. */
+    /** One-time "my account" variants keyed by `quantity` as a string. Missing quantities are absent. */
     myAccountByQuantity: HippoShopProductVariantsByQuantityDTO;
   };
 }
