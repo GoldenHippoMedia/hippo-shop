@@ -59,7 +59,7 @@ Drop one `<script>` and write your HTML:
 
 ```html
 <script src="https://api-prod.goldenhippo.io/sdk/v1/gh.js"
-        data-key="gh_pk_yourbrand_xxxxxx"
+        data-key="gh_pk_yourbrand_a1b2c3d4e5f6"
         data-brand="Sample Co"></script>
 
 <article data-gh-product="multi-vitamin">
@@ -172,7 +172,7 @@ Write HTML; the SDK reads the `data-*` attributes below, fetches the right resou
 
 ### Paths
 
-`data-field`, `data-with`, `data-if`, `data-if-not`, `data-each`, `data-attr-<NAME>`, and `data-attr-format-<NAME>` all accept a **dot-path** that resolves against the closest enclosing data context.
+`data-field`, `data-with`, `data-if`, `data-if-not`, `data-each`, and `data-attr-<NAME>` all accept a **dot-path** that resolves against the closest enclosing data context.
 
 - Dot-separated segments only. `a.b.c` reads `obj.a.b.c`.
 - Numeric segments traverse arrays. `items.0.name` reads `obj.items[0].name`.
@@ -221,7 +221,7 @@ An empty value short-circuits any inherited `data-format`:
 
 ```html
 <a data-field="title" data-format="uppercase"
-   data-attr-href="url" data-attr-format-href="">
+   data-attr-href="url" data-attr-format-href=""></a>
 ```
 
 The element's text is uppercased; the `href` attribute is set to the raw `url` value, ignoring the `uppercase` formatter that would otherwise inherit.
