@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hippo Shop SDK — funnel step demo</title>
+    <link rel="stylesheet" href="./_shared.css" />
+    <style>
+      /* ---------- Page-specific layout ---------- */
+
+      .funnel-card { padding: 40px; }
+      .funnel-name {
+        font-size: 13px;
+        color: var(--gray-500);
+        margin-bottom: 12px;
+      }
+      .funnel-name strong { color: var(--gray-700); }
+
+      /* Progress bar */
+      .progress {
+        display: flex;
+        gap: 6px;
+        margin-bottom: 28px;
+      }
+      .progress-seg {
+        flex: 1;
+        height: 6px;
+        background: var(--gray-200);
+        border-radius: 3px;
+        transition: background 200ms ease;
+      }
+      .progress-seg[data-current="true"] { background: var(--blue-600); }
+      .progress-seg[data-done="true"]    { background: var(--blue-400); }
+
+      /* Color-code by step kind */
+      .progress-seg[data-stage="landing"][data-done="true"]    { background: var(--lime-400); }
+      .progress-seg[data-stage="content"][data-done="true"]    { background: var(--blue-400); }
+      .progress-seg[data-stage="order-form"][data-done="true"] { background: var(--blue-500); }
+      .progress-seg[data-stage="upsell"][data-done="true"]     { background: var(--blue-600); }
+      .progress-seg[data-stage="thank-you"][data-done="true"]  { background: var(--green-600); }
+
+      .step-meta {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--blue-600);
+        margin-bottom: 10px;
+      }
+
+      .step-name {
+        font-size: 30px;
+        line-height: 1.2;
+        margin-bottom: 18px;
+      }
+
+      .step-body {
+        background: var(--gray-50);
+        border: 1px dashed var(--gray-300);
+        border-radius: 8px;
+        padding: 32px;
+        color: var(--gray-500);
+        font-style: italic;
+        text-align: center;
+        margin: 20px 0 32px;
+      }
+
+      .cta-row {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+      }
+      .cta-row .btn { flex: 1; }
+      .cta-row .btn[hidden] { display: none; }
+
+      .demo-note {
+        margin-top: 12px;
+        font-size: 12px;
+        color: var(--gray-500);
+      }
+      .demo-note code { font-size: 11px; }
+    </style>
+  </head>
+  <body>
+    <main class="page page-narrow">
+      <article
+        class="card funnel-card"
+        data-gh-funnel="demo_mct_cms_survey_260427"
+      >
+        <p class="funnel-name">
+          You're inside <strong data-field="name">…</strong>
+        </p>
+
+        <!--
+          Progress bar — built from funnel.steps[] via <template data-each>.
+          `data-attr-data-stage="kind"` lets CSS color-code each segment by step kind.
+          The inline JS at the bottom of this file sets `data-current` / `data-done`
+          on each segment based on the hardcoded currentIndex.
+        -->
+        <nav class="progress" aria-label="Funnel progress">
+          <template data-each="steps">
+            <span
+              class="progress-seg"
+              data-attr-data-stage="kind"
+              data-attr-data-step-number="stepNumber"
+            ></span>
+          </template>
+        </nav>
+
+        <!--
+          Current step body. `data-field="steps.2.name"` reads the third step
+          (index 2 = step 3 of 5) directly. Real partner code would derive
+          the index from the URL or session state; the demo hardcodes 2.
+        -->
+        <p class="step-meta">
+          Step <span data-field="steps.2.stepNumber">3</span> of
+          <span data-field="steps.0.stepNumber">5</span><!-- replaced below by JS -->
+          ·
+          <span data-field="steps.2.kind">content</span>
+        </p>
+
+        <h1 class="step-name" data-field="steps.2.name">Quick wellness check-in</h1>
+
+        <div class="step-body">
+          Partner-controlled step body lives here — a quiz question, a content
+          block, an order-form, whatever fits this step's <code>kind</code>.
+        </div>
+
+        <div class="cta-row">
+          <a id="continue-btn" class="btn btn-block" href="#" hidden>
+            Continue to step <span id="continue-target-number">N</span> →
+          </a>
+          <a id="complete-btn" class="btn btn-block" href="#complete" hidden>
+            Complete →
+          </a>
+        </div>
+
+        <p class="demo-note">
+          The <code>href</code> on the Continue button is built by inline JS reading
+          <code>funnel.steps[currentIndex&nbsp;+&nbsp;1].slug</code> on
+          <code>gh:bindings-ready</code>. Hardcoded <code>currentIndex = 2</code>
+          in this demo — your code would derive it from the URL.
+        </p>
+      </article>
+
+      <footer class="demo-footer">
+        <p>
+          ← <a href="./index.html">Back to demos</a>
+        </p>
+        <p>
+          SDK loaded from <code>api-uat.goldenhippo.io</code>. Funnel slug:
+          <code>demo_mct_cms_survey_260427</code>.
+        </p>
+      </footer>
+    </main>
+
+    <script
+      src="https://api-uat.goldenhippo.io/sdk/v1/gh.js"
+      data-key="gh_pk_test_all_feab8e2ae18f8164ee7e1f36412b774a"
+      data-brand="Gundry MD"
+    ></script>
+
+    <script>
+      // Demo hardcodes "you are currently on step index 2" (= step 3 of 5).
+      // In a real partner page this would come from the URL or session.
+      const currentIndex = 2;
+
+      // Wait for the SDK's initial bind pass to settle before we touch the
+      // progress segments or read funnel.steps. We listen on `gh:bindings-ready`
+      // because by that point: (a) every <template data-each> has expanded into
+      // sibling clones, and (b) the funnel resource is cached.
+      window.addEventListener('gh:bindings-ready', async () => {
+        const funnel = await window.gh.data.funnel('demo_mct_cms_survey_260427');
+
+        // Mark progress segments. The clones live alongside the <template> in
+        // document order, each carrying data-gh-loop-clone (an SDK marker).
+        const segments = document.querySelectorAll('.progress-seg[data-gh-loop-clone]');
+        segments.forEach((seg, idx) => {
+          if (idx < currentIndex)       seg.setAttribute('data-done', 'true');
+          else if (idx === currentIndex) seg.setAttribute('data-current', 'true');
+        });
+
+        // Wire up Continue / Complete buttons.
+        const next = funnel.steps[currentIndex + 1];
+        const continueBtn = document.getElementById('continue-btn');
+        const completeBtn = document.getElementById('complete-btn');
+
+        if (next) {
+          continueBtn.href = `#step-${next.slug}`;
+          document.getElementById('continue-target-number').textContent = next.stepNumber;
+          continueBtn.hidden = false;
+        } else {
+          completeBtn.hidden = false;
+        }
+      }, { once: true });
+    </script>
+  </body>
+</html>
