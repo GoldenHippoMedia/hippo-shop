@@ -1,0 +1,197 @@
+/*
+ * Hippo Shop SDK demos — shared design system.
+ * Each demo file `<link>`s this stylesheet, then adds its own layout rules
+ * in a per-page `<style>` block.
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400..700;1,400..700&family=Red+Hat+Text:ital,wght@0,300..700;1,300..700&display=swap');
+
+:root {
+  /* Gundry Blue */
+  --blue-50:#F3F7FF; --blue-100:#E0E9FF; --blue-200:#C2D4FF; --blue-300:#9DB8FF;
+  --blue-400:#6B91FF; --blue-500:#4569DF; --blue-600:#2945B8; --blue-700:#233B92;
+  --blue-800:#1A2C6A; --blue-900:#101D49;
+
+  /* Vitality Lime */
+  --lime-50:#F4F9E8; --lime-100:#E5EFCB; --lime-300:#AEC947;
+  --lime-400:#C2E329; --lime-500:#6B7F00; --lime-600:#536300; --lime-700:#3F4C00;
+
+  /* Neutrals */
+  --gray-50:#f9fafb; --gray-100:#f3f4f6; --gray-200:#e5e7eb; --gray-300:#d1d5db;
+  --gray-400:#9ca3af; --gray-500:#6b7280; --gray-600:#4b5563; --gray-700:#374151;
+  --gray-900:#111827;
+
+  --green-600:#16a34a;
+  --red-600:#dc2626;
+
+  --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.08), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+
+  --font-serif: 'Lora', Georgia, serif;
+  --font-sans:  'Red Hat Text', Inter, -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.55;
+  color: var(--gray-900);
+  background: #fff;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3 { font-family: var(--font-serif); font-weight: 600; margin: 0; letter-spacing: -0.01em; }
+p { margin: 0; }
+a { color: var(--blue-600); }
+a:hover { color: var(--blue-700); }
+
+/* ---------- Page chrome ---------- */
+
+.page { max-width: 960px; margin: 56px auto 96px; padding: 0 20px; }
+.page-narrow { max-width: 720px; }
+
+.eyebrow {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--blue-600);
+}
+
+.section-eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--gray-500);
+  margin-bottom: 8px;
+}
+
+/* ---------- Cards ---------- */
+
+.card {
+  background: #fff;
+  border: 1px solid var(--gray-200);
+  border-radius: 14px;
+  box-shadow: var(--shadow-xs);
+  padding: 22px;
+}
+
+/* ---------- Pills (radio-style segmented controls) ---------- */
+
+.pill-group {
+  display: inline-flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 16px;
+  border: 1px solid var(--gray-200);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--gray-700);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.pill:hover { border-color: var(--blue-300); }
+.pill[aria-checked="true"] {
+  background: var(--blue-600);
+  border-color: var(--blue-600);
+  color: #fff;
+  font-weight: 700;
+}
+
+/* ---------- Buttons / CTAs ---------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 22px;
+  border: 1px solid var(--blue-600);
+  background: var(--blue-600);
+  color: #fff;
+  border-radius: 10px;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
+}
+
+.btn:hover {
+  background: var(--blue-700);
+  border-color: var(--blue-700);
+  color: #fff;
+}
+
+.btn-block { width: 100%; }
+.btn-ghost {
+  background: transparent;
+  color: var(--blue-600);
+}
+.btn-ghost:hover { background: var(--blue-50); }
+
+/* ---------- Stock pill ---------- */
+
+.stock {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--gray-100);
+  color: var(--gray-600);
+}
+.stock[data-stock="in"] {
+  background: color-mix(in srgb, var(--green-600) 18%, transparent);
+  color: var(--green-600);
+}
+.stock[data-stock="out"] {
+  background: color-mix(in srgb, var(--red-600) 18%, transparent);
+  color: var(--red-600);
+}
+
+/* ---------- Inline code ---------- */
+
+code {
+  background: var(--gray-100);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: var(--gray-700);
+}
+
+/* ---------- Demo-frame footer ---------- */
+
+.demo-footer {
+  margin-top: 56px;
+  padding-top: 24px;
+  border-top: 1px solid var(--gray-200);
+  font-size: 13px;
+  color: var(--gray-500);
+  line-height: 1.7;
+}
+.demo-footer p + p { margin-top: 8px; }
+.demo-footer a {
+  color: var(--gray-600);
+  font-weight: 500;
+}
