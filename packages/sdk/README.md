@@ -13,6 +13,8 @@ Both share the same auth, caching, and brand-scoped access rules enforced by the
 
 > Source: [GoldenHippoMedia/hippo-shop](https://github.com/GoldenHippoMedia/hippo-shop) · DTO contract: [`@goldenhippo/hippo-shop-types`](https://www.npmjs.com/package/@goldenhippo/hippo-shop-types)
 
+> For context on v1.x/v2.x → v3 — see [About this version](../../README.md#about-this-version) in the root README.
+
 ## Contents
 
 - [Installation](#installation)
@@ -180,8 +182,6 @@ Write HTML; the SDK reads the `data-*` attributes below, fetches the right resou
 - A missing or non-traversable segment resolves to `undefined`. The resolver never throws.
 
 For product variants, prefer the keyed lookup `variants.subscription.standardByQuantity.<qty>.price` over the array form `variants.subscription.standardList.<index>.price`. The former is stable across catalog reorderings; the latter is only useful inside `<template data-each>` loops.
-
-> **Deprecation:** the legacy array form `variants.<purchase>.<tier>` (without the `List` / `ByQuantity` suffix) is deprecated and will be removed in v3.0.0. Use `<tier>List` for iteration and `<tier>ByQuantity` for direct lookup by quantity.
 
 ### `data-attr-<NAME>` details
 
@@ -631,9 +631,9 @@ All three resource types use the same shape:
 |--------|-----|---------|
 | `GET` | `<base>/public/v1/funnel/<slugOrId>` | `HippoShopFunnelDTO` |
 | `GET` | `<base>/public/v1/destination/<slugOrId>` | `HippoShopDestinationDTO` |
-| `GET` | `<base>/public/v1/product/<slugOrId>` | `HippoShopProductDTO` (client-side enriched) |
+| `GET` | `<base>/public/v1/product/<slugOrId>` | `HippoShopProductDTO` |
 
-`<slugOrId>` is URL-encoded before insertion. The product endpoint is client-side enriched — the raw response is passed through `enrichProduct` to attach the `<tier>List` and `<tier>ByQuantity` sibling fields before it resolves.
+`<slugOrId>` is URL-encoded before insertion. Product responses arrive with `<tier>List` and `<tier>ByQuantity` fields already populated server-side.
 
 ### Headers sent
 
@@ -757,7 +757,6 @@ import {
   applyBindings,
   builtinFormatters,
   collectResources,
-  enrichProduct,
   FormatRegistry,
   GhDataClient,
   GhError,
@@ -776,7 +775,6 @@ import type { GhConfig, GhErrorCode, ResourceState } from '@goldenhippo/hippo-sh
 | `applyBindings(root, opts)` | function | Apply bindings to a subtree against an explicit `{ formatters, resources, resourceStates? }` bag. The low-level core that `gh.bind` wraps. |
 | `collectResources(root)` | function | Return every `(kind, slug)` referenced under a node. Useful for prefetching server-side or warming a cache. |
 | `getByPath(obj, path)` | function | Resolve a dot-path against any object. Returns `undefined` on miss; never throws. Reusable outside the SDK. |
-| `enrichProduct(raw)` | function | Mutate a raw product DTO in place, attaching `<tier>List` and `<tier>ByQuantity` sibling fields. Use after a manual `fetch()` to a product endpoint if you want the same shape `gh.data.product` returns. |
 | `parseScriptConfig(scriptEl)` | function | Validate a `<script>` element's `data-*` config and produce a `GhConfig`. Throws on invalid input. |
 | `builtinFormatters` | `Record<string, Formatter>` | The raw built-in formatter map. Useful for constructing a custom `FormatRegistry`. |
 | `FormatRegistry` | class | The class behind `window.gh.format`. Instantiate one if you need an isolated registry that doesn't share state with the global. |

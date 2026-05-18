@@ -4,7 +4,7 @@ How the SDK bundle gets to the public URL, what Kong should point at, and how to
 
 ## What it does
 
-The release workflow uploads `packages/sdk/dist/` to a Cloudflare Pages project named **`gh-hippo-shop-sdk`** after every successful npm publish. The contents:
+The release workflow uploads `packages/sdk/dist/` to a Cloudflare Pages project named **`gh-hippo-shop-sdk-v3`** (the active project for the current SDK major) after every successful npm publish. The contents:
 
 | File | Purpose |
 |------|---------|
@@ -21,42 +21,57 @@ Cloudflare Pages assigns every successful deployment three URL forms.
 
 | Layer | Example | Lifetime | Use for |
 |-------|---------|----------|---------|
-| **Per-deploy hash** | `https://<hash>.gh-hippo-shop-sdk.pages.dev` | Immutable, retained forever | Audit, rollback targets, pinned consumers |
-| **Branch alias** | `https://<branch>.gh-hippo-shop-sdk.pages.dev` | Latest deploy on a non-production branch | Staging / PR previews |
-| **Production canonical** | `https://gh-hippo-shop-sdk.pages.dev` | Auto-tracks latest `--branch=main` deploy | **Kong's stable upstream** |
+| **Per-deploy hash** | `https://<hash>.gh-hippo-shop-sdk-v3.pages.dev` | Immutable, retained forever | Audit, rollback targets, pinned consumers |
+| **Branch alias** | `https://<branch>.gh-hippo-shop-sdk-v3.pages.dev` | Latest deploy on a non-production branch | Staging / PR previews |
+| **Production canonical** | `https://gh-hippo-shop-sdk-v3.pages.dev` | Auto-tracks latest `--branch=main` deploy | **Kong's stable upstream for `/sdk/v3/*`** |
 
 There is no `main.<project>.pages.dev` alias — `--branch=main` is production, served at the bare canonical URL.
 
 ## Kong wiring (operational model)
 
-Point Kong at the **canonical** URL once. It does not change between releases.
+Each npm major has its own Pages project and Kong route. The SDK URL path tracks the SDK's major version 1:1.
 
 ```
 Public         Kong                                Cloudflare Pages
 ─────────────  ──────────────────────────────────  ─────────────────────────────────
-api-prod.      ─►  forwards /sdk/v1/gh.js to       ─►  gh-hippo-shop-sdk.pages.dev/gh.js
+api-prod.      ─►  forwards /sdk/v3/gh.js to       ─►  gh-hippo-shop-sdk-v3.pages.dev/gh.js
 goldenhippo.io                                          (canonical — auto-tracks latest)
+
+               ─►  forwards /sdk/v1/gh.js to       ─►  gh-hippo-shop-sdk.pages.dev/gh.js
+                                                        (frozen at last v2.1.1 build)
 ```
 
-Per release:
+Per release on the active major:
 
-1. CI uploads new assets to Cloudflare → new immutable hash URL is created.
+1. CI uploads new assets to the active Pages project → new immutable hash URL is created.
 2. Cloudflare flips the canonical alias to the new hash (automatic, sub-second).
 3. Kong's upstream URL is unchanged but now serves new bytes.
 4. Older hash URLs remain live indefinitely as rollback targets.
 
-Kong configuration changes are **not** required on a release cadence.
+Kong configuration changes are **not** required on a release cadence within a single major. They are required once per new major — to add a new `/sdk/vN/*` route.
+
+### Frozen URL lines
+
+When a major is cut, the prior major's Pages project stops receiving deploys. Its canonical URL freezes at the last build that landed there — Cloudflare keeps serving that hash forever via the project's canonical alias.
+
+The frozen URL is **unsupported but functional**: anyone still pointing at it gets the old SDK code. Whether the page renders correctly depends on whether the backend still emits the wire shape that SDK version expected. After a backend wire-format change, frozen-URL pages may render gracefully-degraded content (e.g., empty product variants). The freeze is honest about the state: the URL works, the code is what it was, the data may or may not be.
+
+To retire a frozen URL entirely, remove its Kong route (it'll then 404 from `api-prod`). The Pages project itself can be left alone — its `*.pages.dev` URLs keep working but won't be reachable through the public host.
+
+### Per-major project-naming convention
+
+The Pages project name encodes the SDK's major version: `gh-hippo-shop-sdk-vN`. The release workflow's `--project-name` argument is hardcoded to the currently-active project; bumping to a new major requires updating that argument in `.github/workflows/release.yml`. (We considered deriving the name from `package.json` at workflow time but kept it hardcoded for clarity — `grep --project-name release.yml` immediately tells you which major is live.)
 
 ## Rollback
 
 Re-activating an earlier deploy is faster than republishing to npm — the asset already exists at its hash URL; you just repoint the canonical.
 
 ```bash
-# List recent deploys (newest first)
-npx wrangler@4 pages deployment list --project-name=gh-hippo-shop-sdk
+# List recent deploys (newest first) for the active major
+npx wrangler@4 pages deployment list --project-name=gh-hippo-shop-sdk-v3
 
 # Roll back via the Cloudflare dashboard:
-#   Workers & Pages → gh-hippo-shop-sdk → Deployments
+#   Workers & Pages → gh-hippo-shop-sdk-v3 → Deployments
 #   → ⋯ on the desired older deploy → "Rollback to this deployment"
 ```
 
@@ -75,7 +90,7 @@ For the npm side, see "I shipped a bad version" in [`release-process.md`](./rele
 
 2. **Account ID** — visible in the right sidebar of any Cloudflare dashboard page.
 
-3. **Pages project** — does **not** need to be pre-created. The first `wrangler pages deploy` will create the project automatically if it doesn't exist, using the supplied `--project-name`.
+3. **Pages project** — does **not** need to be pre-created. The first `wrangler pages deploy` will create the project automatically if it doesn't exist, using the supplied `--project-name`. By convention the project for SDK major version N is named `gh-hippo-shop-sdk-vN`. Bumping to a new major creates a new project on the first release-workflow run after the `--project-name` change in `.github/workflows/release.yml`.
 
 ### GitHub side
 
@@ -98,7 +113,7 @@ read -s CLOUDFLARE_API_TOKEN && export CLOUDFLARE_API_TOKEN
 export CLOUDFLARE_ACCOUNT_ID=<account-id>
 
 npx --yes wrangler@4 pages deploy packages/sdk/dist \
-  --project-name=gh-hippo-shop-sdk \
+  --project-name=gh-hippo-shop-sdk-v3 \
   --branch=main
 
 unset CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID
@@ -122,4 +137,4 @@ This is a feature, not a leak. They make rollback trivial and let you audit "wha
 
 ### Pages project name is in the workflow
 
-The workflow hardcodes `--project-name=gh-hippo-shop-sdk`. If the project is renamed in Cloudflare, update `.github/workflows/release.yml` to match.
+The workflow hardcodes `--project-name=gh-hippo-shop-sdk-v3` (matches the current SDK major). On a future major bump, update `.github/workflows/release.yml` to the new project name before merging the major-bump PR.

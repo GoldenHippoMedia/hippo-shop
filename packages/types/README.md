@@ -6,6 +6,8 @@
 
 TypeScript type definitions for the Hippo Shop public API. Zero runtime dependencies — install in your project for IntelliSense and compile-time safety against the live API contract.
 
+> For context on v1.x/v2.x → v3 — see [About this version](../../README.md#about-this-version) in the root README.
+
 > Runtime SDK: [`@goldenhippo/hippo-shop-sdk`](https://www.npmjs.com/package/@goldenhippo/hippo-shop-sdk)
 
 ## Installation
@@ -118,7 +120,7 @@ What the API actually returns. All examples use a fictional product (`multi-vita
 
 ### `HippoShopProductDTO`
 
-The variant tree is the largest part of the product response. Each price-level branch (`subscription.standard`, `subscription.myAccount`, `oneTime.standard`, `oneTime.myAccount`) contains three sibling fields: the deprecated array, an ordered `…List` for iteration, and a `…ByQuantity` record keyed by stringified quantity for direct lookup.
+The variant tree is the largest part of the product response. Each price-level branch (`subscription.standardList`, `subscription.myAccountList`, `oneTime.standardList`, `oneTime.myAccountList`) is paired with a `…ByQuantity` record keyed by stringified quantity for direct lookup.
 
 ```json
 {
@@ -131,9 +133,6 @@ The variant tree is the largest part of the product response. Each price-level b
   "outOfStock": false,
   "variants": {
     "subscription": {
-      "standard": [
-        /* deprecated mirror of standardList — removed in v3.0.0 */
-      ],
       "standardList": [
         {
           "productId": "p_01ABCDEFGHJK",
@@ -189,14 +188,10 @@ The variant tree is the largest part of the product response. Each price-level b
         "3": { /* same shape as standardList[1] */ },
         "6": { /* same shape as standardList[2] */ }
       },
-      "myAccount": [],
       "myAccountList": [],
       "myAccountByQuantity": {}
     },
     "oneTime": {
-      "standard": [
-        /* deprecated mirror of standardList */
-      ],
       "standardList": [
         {
           "productId": "p_01ABCDEFGHJK",
@@ -227,7 +222,6 @@ The variant tree is the largest part of the product response. Each price-level b
         "1": { /* same shape as standardList[0] */ },
         "3": { /* same shape as standardList[1] */ }
       },
-      "myAccount": [],
       "myAccountList": [],
       "myAccountByQuantity": {}
     }
