@@ -1,0 +1,22 @@
+---
+/**
+ * Static code block with token-tinted inline styling. No syntax highlighter
+ * dependency — these are hand-authored snippets, not user input.
+ *
+ * Pass children as raw HTML using <Fragment set:html={...} /> so individual
+ * tokens can be wrapped in <span> with brand-aligned color tints.
+ */
+
+interface Props {
+  /** Optional max width in pixels (default: full width of parent). */
+  maxWidth?: string;
+  /** Show a copy button (deferred — v1 has no copy interaction). */
+  showCopy?: false;
+}
+
+const { maxWidth } = Astro.props;
+---
+<pre
+  class="bg-gh-ink-900 text-gh-ink-50 font-mono text-[13px] leading-relaxed rounded-lg p-4 overflow-x-auto"
+  style={maxWidth ? `max-width: ${maxWidth}; margin-left: auto; margin-right: auto;` : ''}
+><code><slot /></code></pre>
