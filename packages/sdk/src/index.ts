@@ -85,9 +85,9 @@ function findScript(doc: Document): HTMLScriptElement | null {
   const cur = doc.currentScript as HTMLScriptElement | null;
   if (cur && cur.dataset['key'] && cur.dataset['brand']) return cur;
   return doc.querySelector<HTMLScriptElement>(
-    'script[data-key][data-brand][src*="/sdk/v1/gh"]',
+    'script[data-key][data-brand][src*="/sdk/"]',
   ) ?? doc.querySelector<HTMLScriptElement>(
-    // Local-dev fallback so served pages don't need to live at a /sdk/v1/ path.
+    // Local-dev fallback so served pages don't need to live at a /sdk/ path.
     'script[data-key][data-brand][src$="/gh.js"]',
   );
 }
