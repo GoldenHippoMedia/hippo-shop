@@ -1,15 +1,28 @@
 ---
-// Placeholder page so the dev server has something to render before the
-// layout and components exist. Replaced by the real composition in Task 15.
+import Base from '../layouts/Base.astro';
+import LogoWordmark from '../components/LogoWordmark.astro';
+import Hero from '../components/Hero.astro';
+import HowItWorks from '../components/HowItWorks.astro';
+import Features from '../components/Features.astro';
+import InAction from '../components/InAction.astro';
+import ComingSoon from '../components/ComingSoon.astro';
 ---
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <title>Hippo Shop</title>
-  </head>
-  <body>
-    <h1>Hippo Shop — placeholder</h1>
-    <p>If you see this, the Astro dev server is working.</p>
-  </body>
-</html>
+<Base>
+  <header class="flex items-center justify-between px-7 py-3 border-b border-gh-ink-100 text-sm">
+    <LogoWordmark height={28} />
+    <a
+      href="https://github.com/GoldenHippoMedia/hippo-shop"
+      class="text-gh-ink-500 hover:text-gh-ink-700 font-semibold"
+    >
+      GitHub →
+    </a>
+  </header>
+
+  <main>
+    <Hero />
+    <HowItWorks />
+    <Features />
+    <InAction />
+    <ComingSoon />
+  </main>
+</Base>
