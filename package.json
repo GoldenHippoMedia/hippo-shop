@@ -12,7 +12,8 @@
     "size": "pnpm --filter @goldenhippo/hippo-shop-sdk size",
     "changeset": "changeset",
     "version-packages": "changeset version",
-    "release": "pnpm build && changeset publish"
+    "release": "pnpm build && changeset publish",
+    "heroku-postbuild": "pnpm --filter @goldenhippo/hippo-shop-web build"
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.10",
