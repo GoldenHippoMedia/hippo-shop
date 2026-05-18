@@ -17,7 +17,7 @@ Golden Hippo's internal teams building landing pages, sales funnels, and support
 - **Brand-scoped isolation** — every request is scoped to one brand by the `data-brand` attribute and the access key. Cross-brand reads return 404.
 - **Access-key gating** — unknown or revoked keys are rejected at the edge (401 from Kong). CORS origins are allow-listed at the route level today; per-key origin pinning is on the roadmap.
 - **SLSA-provenanced npm releases** for both packages via npm Trusted Publishers.
-- **URL stability** for the CDN-hosted SDK: `https://api-prod.goldenhippo.io/sdk/v1/gh.js` is the stable entry point; major-version upgrades will use a new URL path.
+- **URL stability** for the CDN-hosted SDK: `https://api-prod.goldenhippo.io/sdk/v3/gh.js` is the current stable entry point. Each major-version cut publishes to its own URL path (`/sdk/vN/gh.js`) so embedded pages can upgrade on their own schedule.
 
 ## What it does NOT do
 
@@ -39,7 +39,7 @@ Golden Hippo's internal teams building landing pages, sales funnels, and support
 
 - Both npm packages follow semver. Breaking DTO or SDK changes ship in a major.
 - Deprecated surfaces are documented in the package SPECs and stay alive for at least one minor release before removal.
-- The CDN script URL `https://api-prod.goldenhippo.io/sdk/v1/gh.js` will not break for v1.x. v2 will publish to a separate URL path so embedded pages can upgrade on their own schedule.
+- The CDN script URL `https://api-prod.goldenhippo.io/sdk/v3/gh.js` will not break for v3.x. Future majors publish to a separate URL path (`/sdk/vN/gh.js`) so embedded pages upgrade on their own schedule. The prior `/sdk/v1/gh.js` URL is frozen at the last v2.1.1 build and is unsupported.
 
 ## Roadmap and backlog
 

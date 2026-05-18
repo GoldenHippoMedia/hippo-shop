@@ -60,7 +60,7 @@ The published bundle is `dist/gh.js` (IIFE, browser-loadable directly from a CDN
 Drop one `<script>` and write your HTML:
 
 ```html
-<script src="https://api-prod.goldenhippo.io/sdk/v1/gh.js"
+<script src="https://api-prod.goldenhippo.io/sdk/v3/gh.js"
         data-key="gh_pk_yourbrand_a1b2c3d4e5f6"
         data-brand="Sample Co"></script>
 
@@ -134,7 +134,7 @@ The SDK boots from a single `<script>` tag. All configuration lives on that tag'
 | `data-brand` | yes | — | Brand display name. Must be non-empty after trimming. Validated server-side. |
 | `data-debug` | no | `"false"` | If set to the string `"true"`, the SDK logs requests, cache hits, and bind passes to the browser console with a `[gh]` prefix. Also sets `window.gh.debug = true`. |
 
-The script tag itself is auto-located via `document.currentScript`; if that's unavailable, the SDK falls back to `script[data-key][data-brand][src*="/sdk/v1/gh"]`, then to `script[data-key][data-brand][src$="/gh.js"]` (the latter is a local-dev convenience so a page served from a non-`/sdk/v1/` path still boots).
+The script tag itself is auto-located via `document.currentScript`; if that's unavailable, the SDK falls back to a `[data-key][data-brand]` `<script>` whose `src` ends in `/gh.js`. That covers the active CDN URL (`/sdk/v3/gh.js`), the frozen v1 URL (`/sdk/v1/gh.js`), and local-dev paths.
 
 If `window.gh.data` is already attached when the SDK boots — for example, because the tag is included twice — the SDK refuses to overwrite the existing surface and logs a warning. This is harmless but worth knowing if you see "window.gh.data already exists" in the console.
 
@@ -647,7 +647,7 @@ The SDK does not send credentials (cookies are not included), does not set a `Us
 
 ### Base URL derivation
 
-The API base URL is the script tag's `src` origin. Loading the SDK from `https://api-prod.goldenhippo.io/sdk/v1/gh.js` produces a base URL of `https://api-prod.goldenhippo.io`; loading it from `https://api-uat.goldenhippo.io/sdk/v1/gh.js` produces `https://api-uat.goldenhippo.io`. See [Script tag config — Host allowlist](#host-allowlist) for the full list of accepted hosts.
+The API base URL is the script tag's `src` origin. Loading the SDK from `https://api-prod.goldenhippo.io/sdk/v3/gh.js` produces a base URL of `https://api-prod.goldenhippo.io`; loading it from `https://api-uat.goldenhippo.io/sdk/v3/gh.js` produces `https://api-uat.goldenhippo.io`. See [Script tag config — Host allowlist](#host-allowlist) for the full list of accepted hosts.
 
 ### Status → error code mapping
 

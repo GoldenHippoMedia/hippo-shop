@@ -9,12 +9,12 @@ What is documented here is what the SDK promises. Walkthroughs, recipes, and cop
 The SDK ships as an IIFE bundle (`gh.js`) intended to be loaded from a stable CDN URL:
 
 ```html
-<script src="https://api-prod.goldenhippo.io/sdk/v1/gh.js"
+<script src="https://api-prod.goldenhippo.io/sdk/v3/gh.js"
         data-key="gh_pk_yourbrand_xxxxxx"
         data-brand="Your Brand"></script>
 ```
 
-When the script evaluates, it locates its own `<script>` element (via `document.currentScript` or a fallback selector on `[data-key][data-brand][src*="/sdk/v1/gh"]`, with a final local-dev fallback on `[data-key][data-brand][src$="/gh.js"]`), reads its `data-*` attributes, and attaches `window.gh`. Loading the SDK from any host outside the allowlist throws a config error and refuses to attach — the host is part of the contract.
+When the script evaluates, it locates its own `<script>` element (via `document.currentScript` or a fallback `[data-key][data-brand]` selector matching a `src` that ends in `/gh.js`), reads its `data-*` attributes, and attaches `window.gh`. Loading the SDK from any host outside the allowlist throws a config error and refuses to attach — the host is part of the contract.
 
 Attributes read from the script tag:
 - `data-key` (required) — public access key issued by Golden Hippo. Must match `/^gh_pk_[a-z0-9_-]+_<hex>$/`.

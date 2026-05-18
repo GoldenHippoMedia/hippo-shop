@@ -1,7 +1,8 @@
 import { defineConfig } from 'tsup';
 
 export default defineConfig([
-  // Browser IIFE bundle — what Cloudflare serves and Kong fronts at /sdk/v1/gh.js.
+  // Browser IIFE bundle — what Cloudflare serves and Kong fronts at /sdk/v3/gh.js
+  // (active CDN URL for the current SDK major; future majors get their own /sdk/vN/ path).
   // Side-effect bundle: attaches window.gh.data on load. Filename matches the prod URL.
   {
     entry: { gh: 'src/index.ts' },
