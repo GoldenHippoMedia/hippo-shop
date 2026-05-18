@@ -36,7 +36,7 @@ General security review of the repo. Open questions to answer: is keeping the ar
 Status: in-progress
 Added: 2026-05-17
 
-A single-page Astro lander that explains Hippo Shop and points at the SDK docs on GitHub. Stack chosen for the eventual admin UI: Astro 5 + Tailwind 4 + Node adapter on Heroku, `apps/web/` in the monorepo. No auth, no admin operations in v1 — the page signals "admin self-serve coming soon" and links to GitHub for the docs.
+A single-page Astro lander that explains Hippo Shop and points at the SDK docs on GitHub. Stack chosen for the eventual admin UI: Astro 6 + Tailwind 4 + Node adapter on Heroku, `apps/web/` in the monorepo. No auth, no admin operations in v1 — the page signals "admin self-serve coming soon" and links to GitHub for the docs.
 
 Related: `docs/superpowers/specs/2026-05-18-cluster-e-v1-lander-design.md`, `docs/superpowers/plans/2026-05-18-cluster-e-v1-lander.md`
 
