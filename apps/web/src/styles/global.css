@@ -24,22 +24,24 @@
   --font-mono:    var(--gh-font-mono);
 }
 
-/* Base typography. The brand skill calls for body text in --gh-ink-900,
-   never #000, with Poppins as the default. */
-body {
-  font-family: var(--gh-font-body);
-  color: var(--gh-ink-900);
-  background: var(--gh-white);
-  line-height: 1.6;
-  margin: 0;
-  -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
-}
+/*
+ * Base typography lives in @layer base so utilities (mx-auto, mt-3, mb-4, …)
+ * cleanly override us. Unlayered user CSS wins against any layered Tailwind
+ * utility in v4's cascade — that silently broke heading centering in v0.
+ */
+@layer base {
+  body {
+    font-family: var(--gh-font-body);
+    color: var(--gh-ink-900);
+    background: var(--gh-white);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
 
-/* Headlines use the display font with tightened tracking per the brand ramp. */
-h1, h2, h3, h4 {
-  font-family: var(--gh-font-display);
-  color: var(--gh-ink-900);
-  margin: 0;
-  letter-spacing: -0.01em;
+  h1, h2, h3, h4 {
+    font-family: var(--gh-font-display);
+    color: var(--gh-ink-900);
+    letter-spacing: -0.01em;
+  }
 }
