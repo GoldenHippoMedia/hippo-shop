@@ -1,0 +1,37 @@
+---
+import CodeBlock from './CodeBlock.astro';
+---
+<section class="bg-gh-ink-50 px-8 py-16 text-center">
+  <span class="text-[11px] uppercase tracking-[1.2px] text-gh-ink-500 font-semibold">
+    Hippo Shop SDK
+  </span>
+
+  <h1 class="font-display font-bold text-4xl md:text-5xl leading-tight mt-3 mb-4 max-w-[800px] mx-auto">
+    Read Golden Hippo product data from any page in two lines of HTML
+  </h1>
+
+  <p class="text-base text-gh-ink-700 max-w-[560px] mx-auto mb-8">
+    Typed DTOs. Brand-scoped access keys. Declarative HTML bindings — no JavaScript required.
+  </p>
+
+  <div class="flex flex-wrap gap-2 justify-center mb-8">
+    <a
+      href="https://github.com/GoldenHippoMedia/hippo-shop/blob/main/packages/sdk/README.md"
+      class="bg-gh-yellow-500 hover:bg-gh-yellow-400 text-gh-ink-900 font-semibold text-sm px-5 py-2 rounded-lg transition-colors"
+    >
+      Read the docs
+    </a>
+    <!--<a-->
+    <!--  href="#coming-soon"-->
+    <!--  class="bg-white border border-gh-ink-300 text-gh-ink-900 font-semibold text-sm px-5 py-2 rounded-lg"-->
+    <!--  aria-disabled="true"-->
+    <!--&gt;-->
+    <!--  Admin — coming soon-->
+    <!--</a>-->
+  </div>
+
+  <CodeBlock maxWidth="540px">
+    <Fragment set:html={`<span style="color: var(--gh-ink-500)">&lt;script</span> <span style="color: var(--gh-yellow-400)">src</span><span style="color: var(--gh-ink-500)">=</span><span style="color: var(--gh-yellow-100)">"https://api-prod.goldenhippo.io/sdk/v3/gh.js"</span>
+        <span style="color: var(--gh-yellow-400)">data-key</span><span style="color: var(--gh-ink-500)">=</span><span style="color: var(--gh-yellow-100)">"…"</span> <span style="color: var(--gh-yellow-400)">data-brand</span><span style="color: var(--gh-ink-500)">=</span><span style="color: var(--gh-yellow-100)">"…"</span><span style="color: var(--gh-ink-500)">&gt;&lt;/script&gt;</span>`} />
+  </CodeBlock>
+</section>

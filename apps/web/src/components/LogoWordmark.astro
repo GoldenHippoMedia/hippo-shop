@@ -1,0 +1,14 @@
+---
+interface Props {
+  /** Pixel height — the brand skill recommends 40–48px in headers. */
+  height?: number;
+}
+
+const { height = 32 } = Astro.props;
+---
+<img
+  src="/logo-wordmark.webp"
+  alt="Golden Hippo"
+  height={height}
+  style={`height: ${height}px; width: auto; display: block;`}
+/>
