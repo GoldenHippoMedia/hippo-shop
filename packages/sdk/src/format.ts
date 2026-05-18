@@ -1,6 +1,6 @@
 /**
  * Formatter registry. Used by `data-format="name[:arg1[:arg2…]]"` on bound
- * elements. The built-in set covers the vast majority of partner needs;
+ * elements. The built-in set covers the vast majority of host-page needs;
  * custom formatters can be registered via `window.gh.format.register`.
  *
  * Failure modes are intentionally non-throwing — a malformed format spec

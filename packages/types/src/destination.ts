@@ -4,7 +4,7 @@ import type { HippoShopFrequencyDTO } from './product';
  * A destination resolves an offer to a funnel and a displayable price.
  *
  * Pre-Purchase only. Cross-brand requests return 404 (no enumeration).
- * Split tests are resolved server-side — partners always see the
+ * Split tests are resolved server-side — host pages always see the
  * destination's `defaultFunnel`.
  */
 export interface HippoShopDestinationDTO {

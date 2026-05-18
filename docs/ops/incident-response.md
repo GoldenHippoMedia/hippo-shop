@@ -22,19 +22,19 @@ curl -X DELETE \
 
 Wait 10 seconds, hit the route from an allowed origin, confirm new payload.
 
-**Multi-dyno caveat.** The route runs `proxy-cache` with the `memory` strategy, which means counters and cached responses are **per-dyno** — each gateway dyno has its own cache. A single Admin API DELETE only purges the dyno that handled that admin request; partners hitting a different dyno may still see the stale entry until its TTL expires. Three options when this matters:
+**Multi-dyno caveat.** The route runs `proxy-cache` with the `memory` strategy, which means counters and cached responses are **per-dyno** — each gateway dyno has its own cache. A single Admin API DELETE only purges the dyno that handled that admin request; consumers hitting a different dyno may still see the stale entry until its TTL expires. Three options when this matters:
 
 1. **Accept the TTL window** (60s default). Usually faster than orchestrating a fan-out.
 2. **Restart the gateway dyno set** (`heroku ps:restart -a <gateway-app>`) — purges *all* dynos' caches at the cost of a brief cold-cache period.
 3. **Switch `proxy-cache.config.strategy` to `redis`** if sub-60s propagation becomes a recurring need. One-time config change; no schema migration.
 
-## 2. Revoke a partner key
+## 2. Revoke a consumer key
 
-Effective globally within seconds. The partner's pages will start returning 401 from Kong.
+Effective globally within seconds. Pages using that key will start returning 401 from Kong.
 
-1. Kong Admin UI → Consumers → `partner-<slug>` → Credentials → Key Auth.
+1. Kong Admin UI → Consumers → the affected consumer (currently named `partner-<slug>` for legacy reasons) → Credentials → Key Auth.
 2. Delete the credential.
-3. Notify partner-relations to communicate with the partner.
+3. Notify the internal team that owns the consumer.
 4. Tag the consumer with `revoked:<YYYY-MM-DD>:<reason-slug>` for audit.
 
 To restore: add a new credential with a fresh key; the old key is *not* reactivated.
@@ -47,20 +47,20 @@ To restore: add a new credential with a fresh key; the old key is *not* reactiva
    - Kong Admin UI → Services → `hippo-shop-sdk-delivery` → upstream URL.
 4. Bust the edge cache for `/sdk/v1/gh.js` if you've changed the moving channel.
 
-The moving channel `Cache-Control` is `public, max-age=300, stale-while-revalidate=86400`. Worst-case partner refresh is ~5 minutes for fresh, ~24 hours for stale-OK. Hash-pinned URLs are immutable — they will continue serving the prior version until partner pages stop referencing the prior hash.
+The moving channel `Cache-Control` is `public, max-age=300, stale-while-revalidate=86400`. Worst-case refresh on a consumer's page is ~5 minutes for fresh, ~24 hours for stale-OK. Hash-pinned URLs are immutable — they will continue serving the prior version until pages embedding the SDK stop referencing the prior hash.
 
-## 4. "A partner is being abusive"
+## 4. "A consumer is being abusive"
 
-1. Read recent traffic from the Kong dashboard for the partner's consumer.
-2. If it's plausibly accidental (a runaway loop), email partner-relations with the consumer ID and traffic curve. Lower the rate-limit tier from standard to a quarter of standard temporarily.
+1. Read recent traffic from the Kong dashboard for that consumer.
+2. If it's plausibly accidental (a runaway loop), email the team that owns the consumer with the consumer ID and traffic curve. Lower the rate-limit tier from standard to a quarter of standard temporarily.
 3. If it's clearly malicious or there's an active investigation, **revoke the key (section 2)** first, then communicate.
-4. Document the incident — partner ID, what happened, what we did, who decided what.
+4. Document the incident — consumer ID, what happened, what we did, who decided what.
 
 ## 5. "Bundle 404s for some region"
 
 1. Check [Cloudflare status](https://www.cloudflarestatus.com/).
 2. If Cloudflare is healthy, check Kong's `/sdk/v1/*` route logs for upstream errors.
-3. Fallback path for partners: have them switch their `<script src="">` to the hash-pinned URL from `manifest.json` — those are immutable and can be served from a different edge if needed.
+3. Fallback path for pages using the SDK: have them switch their `<script src="">` to the hash-pinned URL from `manifest.json` — those are immutable and can be served from a different edge if needed.
 4. If the issue persists beyond ~5 minutes, escalate to platform on-call.
 
 ## Drills

@@ -1,7 +1,7 @@
 /**
  * Declarative DOM bindings.
  *
- * Partners author HTML with data-attributes; the SDK scans the page, fetches
+ * The host page authors HTML with data-attributes; the SDK scans the page, fetches
  * the resources they reference, and renders values into the DOM.
  *
  * Supported attributes (all data-*):
@@ -19,7 +19,7 @@
  *   <template data-each="path">   Clones content per item in the array (path resolves to an array).
  *
  * Lookups are read-only. textContent (not innerHTML) is used everywhere, so
- * partner data can never inject markup. on* attribute bindings are silently
+ * data can never inject markup. on* attribute bindings are silently
  * dropped — we never wire event handlers from data.
  */
 
@@ -136,7 +136,7 @@ function walk(el: Element, ctx: BindContext | null, opts: ApplyBindingsOptions):
 
   // data-when checks the closest resource ancestor's lifecycle state.
   // Cheap state check before any path resolution; fires whether or not
-  // the resource has loaded yet so partners can show skeletons immediately.
+  // the resource has loaded yet so host pages can show skeletons immediately.
   const whenState = el.getAttribute('data-when');
   if (whenState !== null) {
     if (!nextCtx?.resourceKey) return; // No resource ancestor → leave alone (consistent with data-if).

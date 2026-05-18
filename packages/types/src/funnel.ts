@@ -30,7 +30,7 @@ export interface HippoShopFunnelStepDTO {
 /**
  * Closed enum of step kinds. The internal `pageType` is mapped to this set
  * via a documented lookup; any unknown internal value causes the step to be
- * dropped (and a structured log line emitted) — partners never see garbage.
+ * dropped (and a structured log line emitted) — host pages never see garbage.
  */
 export type HippoShopStepKind =
   | 'landing'

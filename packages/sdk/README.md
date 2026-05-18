@@ -147,7 +147,7 @@ The API base URL is derived from the script tag's `src` host. Only the following
 | `localhost`, `127.0.0.1`, `[::1]` | Local development |
 | `*.local` | Local development on `.local` hostnames |
 
-Loading the SDK from any other host throws a config error and refuses to attach. The host is part of the contract — partners cannot point the SDK at an unrecognized API server.
+Loading the SDK from any other host throws a config error and refuses to attach. The host is part of the contract — the SDK cannot be pointed at an unrecognized API server.
 
 ## Declarative attributes
 
@@ -368,7 +368,7 @@ Loading skeletons render immediately on page load; the SDK swaps in real values 
 
 ## Recipes
 
-Copy-paste patterns for the most common partner integrations. All use the example product slug `multi-vitamin`; swap in your own slug and brand.
+Copy-paste patterns for the most common integrations. All use the example product slug `multi-vitamin`; swap in your own slug and brand.
 
 ### Quantity ladder (side-by-side pricing cards)
 
@@ -699,7 +699,7 @@ type GhErrorCode =
 
 | Code | Meaning | Common cause |
 |------|---------|--------------|
-| `not_found` | 404 from the API | Slug doesn't exist for your brand, or you're not authorized to see it. The two are deliberately indistinguishable — partners cannot enumerate resources they don't own. |
+| `not_found` | 404 from the API | Slug doesn't exist for your brand, or you're not authorized to see it. The two are deliberately indistinguishable — you cannot enumerate resources you don't own. |
 | `rate_limited` | 429 from the API | Too many requests. Honor `retryAfterMs` before retrying. |
 | `forbidden` | 401 or 403 from the API | Missing / invalid `data-key`, or the key/brand combination doesn't authorize this resource. |
 | `bad_request` | Other 4xx from the API | Malformed slug, unknown resource type, or a programmatic call with an empty argument. |
@@ -721,7 +721,7 @@ The SDK is read-only by design. It sends no analytics, no PII, and never execute
 
 ### textContent only
 
-All field values are rendered via `textContent`, never `innerHTML`. Partner data can never inject markup, scripts, or styles. This is the single most important guarantee in the SDK.
+All field values are rendered via `textContent`, never `innerHTML`. Data can never inject markup, scripts, or styles. This is the single most important guarantee in the SDK.
 
 ### Refused attributes
 
@@ -746,7 +746,7 @@ A request for a resource that belongs to a different brand returns 404 from the 
 
 ## Advanced — TypeScript / NPM consumers
 
-Most partners need only the declarative attributes ([§ Declarative attributes](#declarative-attributes)) and the `window.gh` surface ([§ Programmatic API](#programmatic-api)). The exports listed below are the package's full public API for advanced consumers — building a custom auto-boot, bypassing the script-tag detection, instantiating the runtime in a framework, or reusing utilities like `getByPath` in isolation. They're **stable but not the recommended path**.
+Most pages need only the declarative attributes ([§ Declarative attributes](#declarative-attributes)) and the `window.gh` surface ([§ Programmatic API](#programmatic-api)). The exports listed below are the package's full public API for advanced consumers — building a custom auto-boot, bypassing the script-tag detection, instantiating the runtime in a framework, or reusing utilities like `getByPath` in isolation. They're **stable but not the recommended path**.
 
 If you're not sure whether you need these, you don't.
 
