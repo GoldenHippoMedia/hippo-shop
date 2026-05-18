@@ -7,7 +7,7 @@ import CodeBlock from './CodeBlock.astro';
     A real destination binding — price, offer name, and the order form ID that hands off to checkout.
   </p>
 
-  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-[760px] mx-auto items-start">
+  <div class="flex flex-col gap-4 max-w-[760px] mx-auto">
     <CodeBlock>
       <Fragment set:html={`<span style="color: var(--gh-ink-500)">&lt;div</span> <span style="color: var(--gh-yellow-400)">data-gh-destination</span><span style="color: var(--gh-ink-500)">=</span><span style="color: var(--gh-yellow-100)">"krill-oil-6pack-sub"</span><span style="color: var(--gh-ink-500)">&gt;</span>
   <span style="color: var(--gh-ink-500)">&lt;span</span> <span style="color: var(--gh-yellow-400)">data-field</span><span style="color: var(--gh-ink-500)">=</span><span style="color: var(--gh-yellow-100)">"pricing.price.amount"</span>
