@@ -1,0 +1,39 @@
+---
+const features = [
+  {
+    title: 'Typed DTOs',
+    body: 'Published as <code class="font-mono text-[12px]">@goldenhippo/hippo-shop-types</code> on npm. Zero runtime deps; safe to import server-side too.',
+  },
+  {
+    title: 'Declarative bindings',
+    body: '<code class="font-mono text-[12px]">data-gh-product</code>, <code class="font-mono text-[12px]">data-field</code>, <code class="font-mono text-[12px]">data-format</code>, <code class="font-mono text-[12px]">data-when</code> — read DTOs into HTML with no JavaScript.',
+  },
+  {
+    title: 'Programmatic API',
+    body: '<code class="font-mono text-[12px]">window.gh.data.funnel(...)</code>, <code class="font-mono text-[12px]">.destination(...)</code>, <code class="font-mono text-[12px]">.product(...)</code> — typed promises for dynamic flows.',
+  },
+  {
+    title: 'Brand-scoped &amp; key-gated',
+    body: 'Every request is brand-scoped at Kong. Cross-brand reads return 404. CORS origins are allow-listed at the route.',
+  },
+];
+---
+<section class="bg-gh-ink-50 px-8 py-16">
+  <h2 class="font-display font-bold text-3xl text-center mb-2">What you get</h2>
+  <p class="text-sm text-gh-ink-500 text-center mb-10 max-w-[540px] mx-auto">
+    Built for Golden Hippo's funnels, PDPs, and offer pages.
+  </p>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-3 max-w-[760px] mx-auto">
+    {features.map((feature) => (
+      <div class="bg-white border border-gh-ink-300 rounded-xl p-5 shadow-[0_1px_2px_rgba(15,17,21,0.04)]">
+        <h3 class="font-display font-semibold text-sm mb-2">
+          <Fragment set:html={feature.title} />
+        </h3>
+        <p class="text-sm text-gh-ink-500 leading-relaxed">
+          <Fragment set:html={feature.body} />
+        </p>
+      </div>
+    ))}
+  </div>
+</section>
