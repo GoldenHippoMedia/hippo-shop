@@ -55,4 +55,10 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: npx --yes wrangler@4 pages deploy packages/sdk/dist --project-name=gh-hippo-shop-sdk-v3 --branch=main
+        # `pages deploy` in non-interactive mode (CI) does NOT auto-create
+        # the project if it doesn't exist — it errors with "Project not
+        # found" instead. We always run `project create` first; it errors
+        # with exit 1 if the project exists, which we swallow with `|| true`.
+        run: |
+          npx --yes wrangler@4 pages project create gh-hippo-shop-sdk-v3 --production-branch=main || true
+          npx --yes wrangler@4 pages deploy packages/sdk/dist --project-name=gh-hippo-shop-sdk-v3 --branch=main
