@@ -4,25 +4,35 @@ import CodeBlock from './CodeBlock.astro';
 <section class="bg-white px-8 py-16">
   <h2 class="font-display font-bold text-3xl text-center mb-2">See it in action</h2>
   <p class="text-sm text-gh-ink-500 text-center mb-10 max-w-[540px] mx-auto">
-    A snippet of HTML and what the SDK renders into it.
+    A real destination binding — price, offer name, and the order form ID that hands off to checkout.
   </p>
 
-  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-[760px] mx-auto">
+  <div class="flex flex-col gap-4 max-w-[760px] mx-auto">
     <CodeBlock>
-      <Fragment set:html={`<span style="color: var(--gh-ink-500)">&lt;span</span> <span style="color: var(--gh-yellow-400)">data-gh-product</span><span style="color: var(--gh-ink-500)">=</span><span style="color: var(--gh-yellow-100)">"sku-123"</span>
-      <span style="color: var(--gh-yellow-400)">data-field</span><span style="color: var(--gh-ink-500)">=</span><span style="color: var(--gh-yellow-100)">"price"</span>
-      <span style="color: var(--gh-yellow-400)">data-format</span><span style="color: var(--gh-ink-500)">=</span><span style="color: var(--gh-yellow-100)">"currency"</span><span style="color: var(--gh-ink-500)">&gt;&lt;/span&gt;</span>
+      <Fragment set:html={`<span style="color: var(--gh-ink-500)">&lt;div</span> <span style="color: var(--gh-yellow-400)">data-gh-destination</span><span style="color: var(--gh-ink-500)">=</span><span style="color: var(--gh-yellow-100)">"krill-oil-6pack-sub"</span><span style="color: var(--gh-ink-500)">&gt;</span>
+  <span style="color: var(--gh-ink-500)">&lt;span</span> <span style="color: var(--gh-yellow-400)">data-field</span><span style="color: var(--gh-ink-500)">=</span><span style="color: var(--gh-yellow-100)">"pricing.price.amount"</span>
+        <span style="color: var(--gh-yellow-400)">data-format</span><span style="color: var(--gh-ink-500)">=</span><span style="color: var(--gh-yellow-100)">"currency:USD"</span><span style="color: var(--gh-ink-500)">&gt;</span>--<span style="color: var(--gh-ink-500)">&lt;/span&gt;</span>
+  / <span style="color: var(--gh-ink-500)">&lt;span</span> <span style="color: var(--gh-yellow-400)">data-field</span><span style="color: var(--gh-ink-500)">=</span><span style="color: var(--gh-yellow-100)">"name"</span><span style="color: var(--gh-ink-500)">&gt;</span>Loading…<span style="color: var(--gh-ink-500)">&lt;/span&gt;</span>
 
-<span style="color: var(--gh-ink-500)">&lt;span</span> <span style="color: var(--gh-yellow-400)">data-gh-product</span><span style="color: var(--gh-ink-500)">=</span><span style="color: var(--gh-yellow-100)">"sku-123"</span>
-      <span style="color: var(--gh-yellow-400)">data-field</span><span style="color: var(--gh-ink-500)">=</span><span style="color: var(--gh-yellow-100)">"name"</span><span style="color: var(--gh-ink-500)">&gt;&lt;/span&gt;</span>`} />
+  <span style="color: var(--gh-ink-500)">&lt;button</span> <span style="color: var(--gh-yellow-400)">data-attr-data-order-form-id</span><span style="color: var(--gh-ink-500)">=</span><span style="color: var(--gh-yellow-100)">"pricing.orderFormId"</span><span style="color: var(--gh-ink-500)">&gt;</span>
+    Get Yours →
+  <span style="color: var(--gh-ink-500)">&lt;/button&gt;</span>
+<span style="color: var(--gh-ink-500)">&lt;/div&gt;</span>`} />
     </CodeBlock>
 
     <div class="bg-white border border-gh-ink-300 rounded-lg p-5">
       <div class="text-[11px] uppercase tracking-[1.2px] text-gh-ink-500 font-semibold mb-3">
         Rendered
       </div>
-      <div class="font-bold text-xl text-gh-ink-900">$59.99</div>
-      <div class="text-sm text-gh-ink-700">Ultra Krill Oil — 60 softgels</div>
+      <div class="font-bold text-xl text-gh-ink-900 mb-1">
+        $59.99 / Krill Oil 6-Pack Subscription
+      </div>
+      <button class="bg-gh-yellow-500 text-gh-ink-900 font-semibold text-sm px-4 py-2 rounded-lg mt-3" type="button">
+        Get Yours →
+      </button>
+      <div class="text-[11px] font-mono text-gh-ink-500 mt-2">
+        data-order-form-id="a1B5x000000QkPaEAK"
+      </div>
     </div>
   </div>
 </section>
