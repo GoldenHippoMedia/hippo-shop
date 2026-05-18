@@ -1,6 +1,6 @@
 {
   "name": "@goldenhippo/hippo-shop-types",
-  "version": "2.1.0",
+  "version": "3.0.0",
   "description": "Public DTO types for Hippo Shop — the typed contract shared by the commerce API and the browser SDK.",
   "license": "MIT",
   "repository": {

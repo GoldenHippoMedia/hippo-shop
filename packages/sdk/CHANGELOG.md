@@ -1,5 +1,16 @@
 # @goldenhippo/hippo-shop-sdk
 
+## 3.0.0
+
+### Major Changes
+
+- b4f8dbb: **Breaking:** Removed the `enrichProduct` export. The SDK now expects the API to emit `<tier>List` and `<tier>ByQuantity` directly — there is no longer a client-side fallback that builds those fields from the legacy `variants.<purchase>.standard` / `.myAccount` arrays. `data-field` paths through the legacy arrays are no longer supported.
+
+### Patch Changes
+
+- Updated dependencies [b4f8dbb]
+  - @goldenhippo/hippo-shop-types@3.0.0
+
 ## 2.1.1
 
 ### Patch Changes

@@ -1,5 +1,11 @@
 # @goldenhippo/hippo-shop-types
 
+## 3.0.0
+
+### Major Changes
+
+- b4f8dbb: **Breaking:** Removed deprecated `variants.<purchase>.standard` and `variants.<purchase>.myAccount` array fields from `HippoShopProductVariantsDTO`. Use `<tier>List` for iteration or `<tier>ByQuantity` for direct lookup. The replacement fields have been available since v2.0.0.
+
 ## 2.1.0
 
 ### Minor Changes
