@@ -43,9 +43,9 @@ To restore: add a new credential with a fresh key; the old key is *not* reactiva
 
 1. Find the previous Cloudflare Pages deployment in the dashboard.
 2. Hit **Rollback to this deployment**.
-3. If Kong's `/sdk/v1/*` upstream targets a hash-pinned URL, update it back to the prior hash:
+3. If Kong's `/sdk/v3/*` upstream targets a hash-pinned URL, update it back to the prior hash:
    - Kong Admin UI → Services → `hippo-shop-sdk-delivery` → upstream URL.
-4. Bust the edge cache for `/sdk/v1/gh.js` if you've changed the moving channel.
+4. Bust the edge cache for `/sdk/v3/gh.js` if you've changed the moving channel.
 
 The moving channel `Cache-Control` is `public, max-age=300, stale-while-revalidate=86400`. Worst-case refresh on a consumer's page is ~5 minutes for fresh, ~24 hours for stale-OK. Hash-pinned URLs are immutable — they will continue serving the prior version until pages embedding the SDK stop referencing the prior hash.
 
@@ -59,7 +59,7 @@ The moving channel `Cache-Control` is `public, max-age=300, stale-while-revalida
 ## 5. "Bundle 404s for some region"
 
 1. Check [Cloudflare status](https://www.cloudflarestatus.com/).
-2. If Cloudflare is healthy, check Kong's `/sdk/v1/*` route logs for upstream errors.
+2. If Cloudflare is healthy, check Kong's `/sdk/v3/*` route logs for upstream errors (the active SDK delivery path; the prior `/sdk/v1/*` route is frozen and should not receive live traffic).
 3. Fallback path for pages using the SDK: have them switch their `<script src="">` to the hash-pinned URL from `manifest.json` — those are immutable and can be served from a different edge if needed.
 4. If the issue persists beyond ~5 minutes, escalate to platform on-call.
 

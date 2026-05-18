@@ -34,7 +34,7 @@ If you're starting fresh, install the latest. If you've been on v1.x or v2.x, th
 Drop one `<script>` tag and write your HTML — no install required:
 
 ```html
-<script src="https://api-prod.goldenhippo.io/sdk/v1/gh.js"
+<script src="https://api-prod.goldenhippo.io/sdk/v3/gh.js"
         data-key="gh_pk_yourbrand_xxxxxx"
         data-brand="Sample Co"></script>
 

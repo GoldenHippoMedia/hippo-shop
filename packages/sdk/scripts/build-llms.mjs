@@ -5,8 +5,8 @@
 // Runs as part of `pnpm --filter @goldenhippo/hippo-shop-sdk build`. The
 // existing Cloudflare Pages deploy in .github/workflows/release.yml publishes
 // everything in dist/, so the resulting files land at
-// https://api-prod.goldenhippo.io/sdk/v1/{llms.txt,llms-full.txt} after the
-// next release.
+// https://api-prod.goldenhippo.io/sdk/v3/{llms.txt,llms-full.txt} after the
+// next release. (The prior `/sdk/v1/` URL line is frozen at v2.1.1.)
 //
 // Source: docs/superpowers/specs/2026-05-16-llms-txt-design.md
 
@@ -30,7 +30,7 @@ The SDK ships two complementary surfaces: declarative \`data-gh-*\` attribute bi
 
 - [SDK README](https://github.com/GoldenHippoMedia/hippo-shop/blob/main/packages/sdk/README.md): Full attribute reference, built-in and custom formatters, lifecycle events, programmatic API, error codes, safety guarantees, and the advanced TypeScript / NPM surface
 - [Types README](https://github.com/GoldenHippoMedia/hippo-shop/blob/main/packages/types/README.md): DTO shapes for funnel, destination, and product resources, with field definitions and example JSON responses
-- [Full content (one-fetch)](https://api-prod.goldenhippo.io/sdk/v1/llms-full.txt): Both READMEs concatenated for LLMs that want a single download
+- [Full content (one-fetch)](https://api-prod.goldenhippo.io/sdk/v3/llms-full.txt): Both READMEs concatenated for LLMs that want a single download
 
 ## Packages
 

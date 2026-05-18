@@ -1,6 +1,6 @@
 # Kong public-v1 routing
 
-How the public `/public/v1/*` route is wired in Kong — the service, the route, the six plugins, and the order they run in. Companion to [`cloudflare-deploy.md`](./cloudflare-deploy.md), which covers the `/sdk/v1/gh.js` delivery path.
+How the public `/public/v1/*` route is wired in Kong — the service, the route, the six plugins, and the order they run in. Companion to [`cloudflare-deploy.md`](./cloudflare-deploy.md), which covers the SDK delivery path (active: `/sdk/v3/gh.js`; frozen: `/sdk/v1/gh.js`).
 
 ## At a glance
 
