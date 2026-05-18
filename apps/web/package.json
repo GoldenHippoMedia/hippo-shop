@@ -1,0 +1,15 @@
+{
+  "name": "@goldenhippo/hippo-shop-web",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Hippo Shop public lander — Astro app served at hippo-shop.goldenhippo.io.",
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "start": "node ./dist/server/entry.mjs",
+    "build": "astro check && astro build",
+    "preview": "astro preview",
+    "typecheck": "astro check",
+    "astro": "astro"
+  }
+}

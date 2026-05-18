@@ -57,6 +57,8 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@20.19.41)(jsdom@25.0.1)
 
+  apps/web: {}
+
   packages/sdk:
     dependencies:
       '@goldenhippo/hippo-shop-types':
