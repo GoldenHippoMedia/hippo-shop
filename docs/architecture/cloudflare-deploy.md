@@ -90,7 +90,9 @@ For the npm side, see "I shipped a bad version" in [`release-process.md`](./rele
 
 2. **Account ID** — visible in the right sidebar of any Cloudflare dashboard page.
 
-3. **Pages project** — does **not** need to be pre-created. The first `wrangler pages deploy` will create the project automatically if it doesn't exist, using the supplied `--project-name`. By convention the project for SDK major version N is named `gh-hippo-shop-sdk-vN`. Bumping to a new major creates a new project on the first release-workflow run after the `--project-name` change in `.github/workflows/release.yml`.
+3. **Pages project** — the release workflow runs `wrangler pages project create gh-hippo-shop-sdk-vN --production-branch=main || true` immediately before `wrangler pages deploy`, so the project is auto-created on the first major-bump deploy. The `|| true` makes the step idempotent (wrangler exits 1 if the project already exists, which is fine). By convention the project for SDK major version N is named `gh-hippo-shop-sdk-vN`. Bumping to a new major requires updating the project name in `.github/workflows/release.yml`; the first release-workflow run after that creates the new project.
+
+   **Why we run create explicitly:** `wrangler@4 pages deploy` does NOT auto-create the project in non-interactive (CI) mode — it errors with `Project not found` (code 8000007). The first v3.0.0 release deploy hit exactly this; the workflow now creates first, deploys second.
 
 ### GitHub side
 
@@ -107,10 +109,15 @@ If CI is broken and a deploy must ship, or to validate Cloudflare credentials ma
 
 ```bash
 cd ~/Code/hippo-shop
-pnpm --filter @goldenhippo/hippo-shop-sdk build
+pnpm install --frozen-lockfile
+pnpm build  # builds types and sdk in dep order
 
 read -s CLOUDFLARE_API_TOKEN && export CLOUDFLARE_API_TOKEN
 export CLOUDFLARE_ACCOUNT_ID=<account-id>
+
+# Idempotent: succeeds on first run, exits 1 (swallowed) if project exists.
+npx --yes wrangler@4 pages project create gh-hippo-shop-sdk-v3 \
+  --production-branch=main || true
 
 npx --yes wrangler@4 pages deploy packages/sdk/dist \
   --project-name=gh-hippo-shop-sdk-v3 \
