@@ -32,11 +32,19 @@ Added: 2026-05-17
 
 General security review of the repo. Open questions to answer: is keeping the architecture plan in a public repo a problem? Are there issues the backend / API team should know about before this is used on a real funnel? Findings that need breaking changes ship as v4 (the `/sdk/vN/` URL-line convention established by Cluster B makes that clean).
 
-### Cluster E — Admin UI + marketing lander at `hippo-shop.goldenhippo.io`
+### Cluster E v1 — Public lander at `hippo-shop.goldenhippo.io`
+Status: in-progress
+Added: 2026-05-17
+
+A single-page Astro lander that explains Hippo Shop and points at the SDK docs on GitHub. Stack chosen for the eventual admin UI: Astro 5 + Tailwind 4 + Node adapter on Heroku, `apps/web/` in the monorepo. No auth, no admin operations in v1 — the page signals "admin self-serve coming soon" and links to GitHub for the docs.
+
+Related: `docs/superpowers/specs/2026-05-18-cluster-e-v1-lander-design.md`, `docs/superpowers/plans/2026-05-18-cluster-e-v1-lander.md`
+
+### Cluster E2 — Admin UI (Google login, key & origin management)
 Status: idea
 Added: 2026-05-17
 
-A web app that serves two purposes: (1) a marketing lander for internal teams that explains what Hippo Shop does and how it empowers them, and (2) an admin UI behind Google login (@goldenhippo.com required) for requesting and managing access keys, authorized origins, and (eventually) per-team relationships. Regular users can request a new key, see their request status, view their issued keys, and manage their domain allow-list. Admins can manage all relationships. Future: request-count visibility, possibly sourced from Kong logs via Logtail on Heroku.
+Adds the gated half of the web app: Google OAuth restricted to `@goldenhippo.com`, requests/issuance of brand-scoped access keys, per-key authorized-origin allowlists, and eventually per-team relationships. Regular users see their own requests and keys; admins see and manage all relationships. Future: request-count visibility, possibly sourced from Kong logs via Logtail on Heroku. Builds on top of `apps/web/` from Cluster E v1.
 
 ### Cluster F — SDK session, UTM, and checkout handoff
 Status: idea
