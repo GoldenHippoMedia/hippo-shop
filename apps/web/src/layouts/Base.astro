@@ -1,0 +1,37 @@
+---
+import '../styles/global.css';
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+
+const {
+  title = 'Hippo Shop — SDK for Golden Hippo product data',
+  description = 'Typed DTOs. Brand-scoped access keys. Declarative HTML bindings — no JavaScript required.',
+} = Astro.props;
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+
+    <!-- Open Sans isn't used; we want Poppins (display/body) + JetBrains Mono (code). -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap"
+    />
+  </head>
+  <body>
+    <!-- Signature yellow band: 6px, full bleed across the top. -->
+    <div class="h-1.5 bg-gh-yellow-500"></div>
+
+    <slot />
+  </body>
+</html>
