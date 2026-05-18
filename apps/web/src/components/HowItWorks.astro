@@ -1,0 +1,40 @@
+---
+const steps = [
+  {
+    title: 'Drop the SDK script tag on your page',
+    body: 'Add the script with your access key and brand. The SDK loads from the CDN and attaches <code class="font-mono text-[13px]">window.gh</code>.',
+  },
+  {
+    title: 'Mark elements with <code class="font-mono text-[13px]">data-gh-*</code> attributes',
+    body: 'Point any HTML element at a product, destination, or funnel — the SDK reads the DTO and writes the value.',
+  },
+  {
+    title: 'Or call <code class="font-mono text-[13px]">window.gh.data</code> directly',
+    body: 'For dynamic flows, the typed programmatic API is one promise away. Same auth, same DTOs, same brand scope.',
+  },
+];
+---
+<section class="bg-white px-8 py-16">
+  <h2 class="font-display font-bold text-3xl text-center mb-2">How it works</h2>
+  <p class="text-sm text-gh-ink-500 text-center mb-10 max-w-[540px] mx-auto">
+    Three steps, no build tooling required.
+  </p>
+
+  <div class="max-w-[640px] mx-auto">
+    {steps.map((step, i) => (
+      <div class={`flex gap-4 py-4 items-start ${i === 0 ? '' : 'border-t border-gh-ink-100'}`}>
+        <div class="bg-gh-yellow-500 text-gh-ink-900 w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0">
+          {i + 1}
+        </div>
+        <div>
+          <h3 class="font-display font-semibold text-base mb-1">
+            <Fragment set:html={step.title} />
+          </h3>
+          <p class="text-sm text-gh-ink-700">
+            <Fragment set:html={step.body} />
+          </p>
+        </div>
+      </div>
+    ))}
+  </div>
+</section>
