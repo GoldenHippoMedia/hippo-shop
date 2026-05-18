@@ -1,0 +1,45 @@
+@import 'tailwindcss';
+@import './tokens.css';
+
+/*
+ * Wire the --gh-* tokens into Tailwind 4's theme so utilities like
+ * bg-gh-yellow-500, text-gh-ink-900, font-display, font-mono exist.
+ */
+@theme {
+  --color-gh-yellow-50:  var(--gh-yellow-50);
+  --color-gh-yellow-100: var(--gh-yellow-100);
+  --color-gh-yellow-400: var(--gh-yellow-400);
+  --color-gh-yellow-500: var(--gh-yellow-500);
+  --color-gh-yellow-600: var(--gh-yellow-600);
+
+  --color-gh-ink-50:  var(--gh-ink-50);
+  --color-gh-ink-100: var(--gh-ink-100);
+  --color-gh-ink-300: var(--gh-ink-300);
+  --color-gh-ink-500: var(--gh-ink-500);
+  --color-gh-ink-700: var(--gh-ink-700);
+  --color-gh-ink-900: var(--gh-ink-900);
+
+  --font-display: var(--gh-font-display);
+  --font-sans:    var(--gh-font-body);
+  --font-mono:    var(--gh-font-mono);
+}
+
+/* Base typography. The brand skill calls for body text in --gh-ink-900,
+   never #000, with Poppins as the default. */
+body {
+  font-family: var(--gh-font-body);
+  color: var(--gh-ink-900);
+  background: var(--gh-white);
+  line-height: 1.6;
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Headlines use the display font with tightened tracking per the brand ramp. */
+h1, h2, h3, h4 {
+  font-family: var(--gh-font-display);
+  color: var(--gh-ink-900);
+  margin: 0;
+  letter-spacing: -0.01em;
+}

@@ -1,0 +1,29 @@
+/*
+ * Golden Hippo parent-brand design tokens.
+ * Source: golden-hippo-brand skill (SKILL.md, "Color tokens" section).
+ *
+ * These are the canonical values. The @theme block in global.css reads them
+ * to expose Tailwind utilities like bg-gh-yellow-500 and text-gh-ink-900.
+ */
+:root {
+  /* Brand */
+  --gh-yellow-500: #edbf26;   /* primary brand */
+  --gh-yellow-400: #f3cf57;   /* hover / lighter accent */
+  --gh-yellow-600: #c99e0f;   /* pressed / darker accent */
+  --gh-yellow-100: #fdf4d4;   /* soft callout background */
+  --gh-yellow-50:  #fefaeb;   /* tinted surface */
+
+  /* Ink (replaces gray — never pure black) */
+  --gh-ink-900:    #0f1115;   /* default body text */
+  --gh-ink-700:    #2a2f3a;   /* secondary text */
+  --gh-ink-500:    #5b6373;   /* muted text, captions */
+  --gh-ink-300:    #c5cad3;   /* borders, dividers */
+  --gh-ink-100:    #eef0f4;   /* subtle surfaces */
+  --gh-ink-50:     #f7f8fa;   /* page backgrounds */
+  --gh-white:      #ffffff;
+
+  /* Fonts */
+  --gh-font-display: 'Poppins', 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --gh-font-body:    'Poppins', 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --gh-font-mono:    'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
