@@ -2,15 +2,15 @@
 const steps = [
   {
     title: 'Drop the SDK script tag on your page',
-    body: 'Add the script with your access key and brand. The SDK loads from the CDN and attaches <code class="font-mono text-[13px]">window.gh</code>.',
+    body: 'Add the script with your access key and brand. The SDK boots automatically and attaches <code class="font-mono text-[13px]">window.gh</code>.',
   },
   {
-    title: 'Mark elements with <code class="font-mono text-[13px]">data-gh-*</code> attributes',
-    body: 'Point any HTML element at a product, destination, or funnel — the SDK reads the DTO and writes the value.',
+    title: 'Wrap your CTA in <code class="font-mono text-[13px]">data-gh-destination</code>',
+    body: 'One destination per offer. Inside it, bind the price, the offer name, and the order form ID with <code class="font-mono text-[13px]">data-field</code> and <code class="font-mono text-[13px]">data-attr-*</code>.',
   },
   {
-    title: 'Or call <code class="font-mono text-[13px]">window.gh.data</code> directly',
-    body: 'For dynamic flows, the typed programmatic API is one promise away. Same auth, same DTOs, same brand scope.',
+    title: 'Marketing edits the destination, the page updates',
+    body: 'Change a price or swap an order form in your destination data — the next pageview reflects it. No PR, no deploy, no engineering ticket.',
   },
 ];
 ---
