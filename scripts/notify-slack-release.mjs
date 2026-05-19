@@ -15,6 +15,7 @@ const PACKAGE_DIRS = {
 };
 
 const EXCERPT_MAX_CHARS = 500;
+const ERROR_BODY_MAX_CHARS = 500; // defensive cap for log-line safety on non-2xx Slack responses
 
 /** Mirror a line to stderr and (best-effort) to $GITHUB_STEP_SUMMARY. */
 function logSummary(line) {
@@ -160,8 +161,11 @@ async function main() {
   if (!res.ok) {
     let body = '';
     try {
-      body = (await res.text()).slice(0, 500);
-    } catch {}
+      body = (await res.text()).slice(0, ERROR_BODY_MAX_CHARS);
+    } catch (_err) {
+      // res.text() can throw on truncated or malformed HTTP responses;
+      // the empty body is fine — the status code was already logged above.
+    }
     logSummary(`Slack POST returned ${res.status}: ${body}`);
     process.exit(0);
   }
