@@ -168,3 +168,74 @@ describe('GhDataClient', () => {
     expect(first.variants.subscription.standardByQuantity).toEqual({});
   });
 });
+
+describe('GhDataClient.postJson', () => {
+  let client: GhDataClient;
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    client = new GhDataClient(
+      {
+        key: 'gh_pk_test_abc123',
+        brand: 'Test',
+        debug: false,
+        apiBaseUrl: 'https://api-prod.goldenhippo.io',
+        checkoutBase: null,
+        cookieDomain: null,
+      },
+      { debug: () => {}, warn: () => {}, error: () => {} },
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('POSTs JSON body with X-GH-Key and X-GH-Brand headers and credentials: include', async () => {
+    fetchMock.mockResolvedValueOnce(new Response('{"ok":true}', { status: 200 }));
+    await client.postJson('session', { affParameters: { utmSource: 'fb' } });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://api-prod.goldenhippo.io/public/v1/session');
+    expect(init.method).toBe('POST');
+    expect(init.credentials).toBe('include');
+    expect(init.headers['Content-Type']).toBe('application/json');
+    expect(init.headers['X-GH-Key']).toBe('gh_pk_test_abc123');
+    expect(init.headers['X-GH-Brand']).toBe('Test');
+    expect(JSON.parse(init.body)).toEqual({ affParameters: { utmSource: 'fb' } });
+  });
+
+  it('returns parsed JSON response on 2xx', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response('{"sessionId":"abc"}', { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    );
+    const result = await client.postJson<{ sessionId: string }>('session', {});
+    expect(result).toEqual({ sessionId: 'abc' });
+  });
+
+  it('returns null on 2xx with empty body', async () => {
+    const res = new Response(null, { status: 204 });
+    fetchMock.mockResolvedValueOnce(res);
+    const result = await client.postJson('session', {});
+    expect(result).toBeNull();
+  });
+
+  it('throws GhError on non-2xx response', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response('{"code":"forbidden","message":"nope"}', { status: 403 }),
+    );
+    await expect(client.postJson('session', {})).rejects.toMatchObject({
+      code: 'forbidden',
+      message: 'nope',
+    });
+  });
+
+  it('throws GhError on network failure', async () => {
+    fetchMock.mockRejectedValueOnce(new TypeError('fetch failed'));
+    await expect(client.postJson('session', {})).rejects.toMatchObject({
+      code: 'network',
+    });
+  });
+});

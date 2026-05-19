@@ -36,6 +36,21 @@ export class GhDataClient {
     this.cache.clear();
   }
 
+  /**
+   * POST a JSON body to a `/public/v1/<resource>` route. Used by Cluster F's
+   * session endpoint. Includes credentials so the API's `Set-Cookie` for
+   * `connect.sid` is stored and forwarded on subsequent calls.
+   */
+  postJson<T = unknown>(resource: string, body: unknown): Promise<T | null> {
+    const url = `${this.config.apiBaseUrl}/public/v1/${resource}`;
+    this.logger.debug('POST', url);
+    return this.fetchJson<T | null>(url, {
+      method: 'POST',
+      body,
+      credentials: 'include',
+    });
+  }
+
   private request<T>(resource: Resource, slugOrId: string): Promise<T> {
     if (!slugOrId) {
       return Promise.reject(
@@ -57,17 +72,26 @@ export class GhDataClient {
     return this.cache.set(cacheKey, promise);
   }
 
-  private async fetchJson<T>(url: string): Promise<T> {
+  private async fetchJson<T>(
+    url: string,
+    opts: { method?: string; body?: unknown; credentials?: RequestCredentials } = {},
+  ): Promise<T> {
+    const method = opts.method ?? 'GET';
+    const init: RequestInit = {
+      method,
+      headers: {
+        'X-GH-Key': this.config.key,
+        'X-GH-Brand': this.config.brand,
+        Accept: 'application/json',
+        ...(opts.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+      },
+    };
+    if (opts.body !== undefined) init.body = JSON.stringify(opts.body);
+    if (opts.credentials) init.credentials = opts.credentials;
+
     let res: Response;
     try {
-      res = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'X-GH-Key': this.config.key,
-          'X-GH-Brand': this.config.brand,
-          Accept: 'application/json',
-        },
-      });
+      res = await fetch(url, init);
     } catch (err) {
       throw new GhError('network', errorMessage(err), { cause: err });
     }
@@ -82,8 +106,15 @@ export class GhDataClient {
       });
     }
 
+    // 204 / empty body short-circuit
+    if (res.status === 204 || res.headers.get('Content-Length') === '0') {
+      return null as T;
+    }
+
+    const text = await res.text();
+    if (!text) return null as T;
     try {
-      return (await res.json()) as T;
+      return JSON.parse(text) as T;
     } catch (err) {
       throw new GhError('server', 'response was not valid JSON', { cause: err });
     }
