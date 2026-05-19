@@ -22,7 +22,7 @@ describe('boot()', () => {
     installScript({
       key: 'gh_pk_internal_test_abc123',
       brand: 'Gundry MD',
-      src: 'https://api-prod.goldenhippo.io/sdk/v1/gh.js',
+      src: 'https://api-prod.goldenhippo.io/sdk/v3/gh.js',
     });
     const attached = boot();
     expect(attached).toBe(true);
@@ -39,7 +39,7 @@ describe('boot()', () => {
     installScript({
       key: 'gh_pk_internal_test_abc123',
       brand: 'Gundry MD',
-      src: 'https://api-prod.goldenhippo.io/sdk/v1/gh.js',
+      src: 'https://api-prod.goldenhippo.io/sdk/v3/gh.js',
     });
     const handler = vi.fn();
     window.addEventListener('gh:data-ready', handler);
@@ -52,7 +52,7 @@ describe('boot()', () => {
     installScript({
       key: 'not-a-key',
       brand: 'Gundry MD',
-      src: 'https://api-prod.goldenhippo.io/sdk/v1/gh.js',
+      src: 'https://api-prod.goldenhippo.io/sdk/v3/gh.js',
     });
     const attached = boot();
     expect(attached).toBe(false);
@@ -66,7 +66,7 @@ describe('boot()', () => {
     installScript({
       key: 'gh_pk_internal_test_abc123',
       brand: 'Gundry MD',
-      src: 'https://api-prod.goldenhippo.io/sdk/v1/gh.js',
+      src: 'https://api-prod.goldenhippo.io/sdk/v3/gh.js',
     });
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const attached = boot();
@@ -80,7 +80,7 @@ describe('boot()', () => {
     installScript({
       key: 'gh_pk_internal_test_abc123',
       brand: 'Gundry MD',
-      src: 'https://api-prod.goldenhippo.io/sdk/v1/gh.js',
+      src: 'https://api-prod.goldenhippo.io/sdk/v3/gh.js',
     });
     boot();
     expect((window.gh as { somethingElse?: string }).somethingElse).toBe('kept');

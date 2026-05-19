@@ -32,11 +32,11 @@ Added: 2026-05-17
 
 General security review of the repo. Open questions to answer: is keeping the architecture plan in a public repo a problem? Are there issues the backend / API team should know about before this is used on a real funnel? Findings that need breaking changes ship as v4 (the `/sdk/vN/` URL-line convention established by Cluster B makes that clean).
 
-### Cluster E — Admin UI + marketing lander at `hippo-shop.goldenhippo.io`
+### Cluster E v2 — Admin UI behind Google login
 Status: idea
-Added: 2026-05-17
+Added: 2026-05-18
 
-A web app that serves two purposes: (1) a marketing lander for internal teams that explains what Hippo Shop does and how it empowers them, and (2) an admin UI behind Google login (@goldenhippo.com required) for requesting and managing access keys, authorized origins, and (eventually) per-team relationships. Regular users can request a new key, see their request status, view their issued keys, and manage their domain allow-list. Admins can manage all relationships. Future: request-count visibility, possibly sourced from Kong logs via Logtail on Heroku.
+Now that Cluster E v1 has landed the public lander, layer an admin UI onto the same `apps/web` Astro app behind Google login (@goldenhippo.com required) for requesting and managing access keys, authorized origins, and (eventually) per-team relationships. Regular users can request a new key, see their request status, view their issued keys, and manage their domain allow-list. Admins can manage all relationships. Future: request-count visibility, possibly sourced from Kong logs via Logtail on Heroku. Coming-soon callout on the lander already points at this.
 
 ### Cluster F — SDK session, UTM, and checkout handoff
 Status: idea
@@ -54,22 +54,16 @@ Pick up alongside any other small SDK change that warrants a v3.0.1 patch.
 
 Related: PR #10 (deferred this cleanup)
 
-### npm deprecate v1.x and v2.x packages
-Status: bug
-Added: 2026-05-18
-
-The Cluster B plan called for `npm deprecate` on v1.x and v2.x of both packages after v3 publish; it wasn't run. Anyone installing v2.1.1 or earlier sees no warning. Two one-off commands:
-
-```
-npm deprecate '@goldenhippo/hippo-shop-sdk@<3.0.0' 'use v3.0.0 or later — v1.x/v2.x were internal-only iterations and are no longer maintained'
-npm deprecate '@goldenhippo/hippo-shop-types@<3.0.0' 'use v3.0.0 or later — v1.x/v2.x were internal-only iterations and are no longer maintained'
-```
-
-Needs `npm login` with publish-level npm access.
-
 ---
 
 ## Done
+
+### npm deprecate v1.x and v2.x packages
+Status: done
+Added: 2026-05-18
+Shipped: 2026-05-18
+
+Cluster B post-publish housekeeping that didn't run with the original release. Both `@goldenhippo/hippo-shop-sdk` and `@goldenhippo/hippo-shop-types` now have every `<3.0.0` version flagged with the deprecation message "use v3.0.0 or later — v1.x/v2.x were internal-only iterations and are no longer maintained". Verified via `npm view <pkg>@<v> deprecated` on every published 1.x/2.x.
 
 ### Cluster A — Repo honesty & docs restructure
 Status: done
@@ -79,6 +73,15 @@ Shipped: 2026-05-18 (PR #7)
 Replaced aspirational "partner"-framed planning docs with contract-only `SPEC.md` files (root + per package), stood up `ROADMAP.md` as the canonical backlog with GitHub Issues disabled, reorganized `docs/` into `architecture/` and `ops/`, light tone scrub on the SDK README and JSDoc. CI workflow gained a build-before-typecheck fix as part of the same PR after the original ordering surfaced a workspace-dependency resolution failure.
 
 Related: `docs/superpowers/specs/2026-05-17-cluster-a-docs-restructure-design.md`, `docs/superpowers/plans/2026-05-17-cluster-a-docs-restructure.md`, PR #7
+
+### Cluster E v1 — Public lander at `hippo-shop.goldenhippo.io`
+Status: done
+Added: 2026-05-17
+Shipped: 2026-05-18 (PRs #11, #12)
+
+Stood up `apps/web/` as a new Astro 6 + Tailwind 4 app deployed to Heroku — a single public lander pitched at Golden Hippo funnel writers. v1 is presentation-only; the framework choice is sized for the admin UI (Cluster E v2) that will layer on top. PR #11 shipped the initial page (Hero / How it works / What you get / In action / Coming-soon callout) with the Golden Hippo parent brand applied via the brand skill. PR #12 rewrote the copy to lead with the destination-binding story (build the funnel page once, marketing edits prices and offers without a deploy) after the first pass over-rotated on typed DTOs vs. the actual internal audience.
+
+Related: `docs/superpowers/specs/2026-05-18-cluster-e-v1-lander-design.md`, PRs #11, #12
 
 ### Cluster B — v3.0.0 (deprecation removal + major-version cut)
 Status: done

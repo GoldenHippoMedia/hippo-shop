@@ -27,7 +27,7 @@ describe('isAllowedApiHost', () => {
 
 describe('parseScriptConfig', () => {
   const goodKey = 'gh_pk_netlify_gundry_a1b2c3';
-  const goodSrc = 'https://api-prod.goldenhippo.io/sdk/v1/gh.js';
+  const goodSrc = 'https://api-prod.goldenhippo.io/sdk/v3/gh.js';
 
   it('parses a valid config', () => {
     const s = makeScript({ key: goodKey, brand: 'Gundry MD', src: goodSrc });
@@ -65,7 +65,7 @@ describe('parseScriptConfig', () => {
   });
 
   it('rejects a script loaded from an unallowed host', () => {
-    const s = makeScript({ key: goodKey, brand: 'Gundry MD', src: 'https://evil.com/sdk/v1/gh.js' });
+    const s = makeScript({ key: goodKey, brand: 'Gundry MD', src: 'https://evil.com/sdk/v3/gh.js' });
     expect(() => parseScriptConfig(s)).toThrow(/disallowed host/);
   });
 
@@ -73,7 +73,7 @@ describe('parseScriptConfig', () => {
     const s = makeScript({
       key: goodKey,
       brand: 'Gundry MD',
-      src: 'https://api-uat.goldenhippo.io/sdk/v1/gh.js',
+      src: 'https://api-uat.goldenhippo.io/sdk/v3/gh.js',
     });
     expect(parseScriptConfig(s).apiBaseUrl).toBe('https://api-uat.goldenhippo.io');
   });
