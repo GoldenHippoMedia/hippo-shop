@@ -56,6 +56,50 @@ export function extractChangelogSection(markdown, version) {
   return body.join('\n').trim();
 }
 
+/** Quote every line of `body` with `> ` so Slack renders it as a blockquote. */
+function quoteLines(body) {
+  return body
+    .split('\n')
+    .map((line) => (line.length === 0 ? '>' : `> ${line}`))
+    .join('\n');
+}
+
+/** Truncate the raw body to EXCERPT_MAX_CHARS, appending an ellipsis if cut. */
+function truncate(body) {
+  if (body.length <= EXCERPT_MAX_CHARS) return body;
+  return body.slice(0, EXCERPT_MAX_CHARS - 1) + '…';
+}
+
+/**
+ * Build the Slack mrkdwn payload for a release.
+ *
+ * @param {{name: string, version: string}[]} publishedPackages
+ * @param {(name: string, version: string) => {excerpt: string, mapped: boolean}} getChangelog
+ *        Returns the raw (pre-truncation, pre-quote) excerpt for a package@version,
+ *        plus a `mapped` flag — false when the package is not in PACKAGE_DIRS.
+ * @param {string} repoFullName e.g. "GoldenHippoMedia/hippo-shop"
+ * @returns {{ text: string, mrkdwn: true }}
+ */
+export function buildPayload(publishedPackages, getChangelog, repoFullName) {
+  const sections = publishedPackages.map(({ name, version }) => {
+    const tag = `${name}@${version}`;
+    const releaseUrl = `https://github.com/${repoFullName}/releases/tag/${encodeURIComponent(tag)}`;
+    const headerLine = `*<${releaseUrl}|${tag}>*`;
+    const { excerpt, mapped } = getChangelog(name, version);
+    let body;
+    if (!mapped) {
+      body = '> _(see CHANGELOG)_';
+    } else if (!excerpt) {
+      body = '> _(no notable changes)_';
+    } else {
+      body = quoteLines(truncate(excerpt));
+    }
+    return `${headerLine}\n${body}`;
+  });
+  const text = [':package: *Hippo Shop released*', '', ...sections].join('\n\n');
+  return { text, mrkdwn: true };
+}
+
 async function main() {
   const webhookUrl = process.env['SLACK_WEBHOOK_URL'] ?? '';
   if (!webhookUrl && !DRY_RUN) {
@@ -67,7 +111,9 @@ async function main() {
   process.exit(0);
 }
 
-main().catch((err) => {
-  logSummary(`notify-slack-release: unexpected error: ${err?.message ?? err}`);
-  process.exit(0);
-});
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((err) => {
+    logSummary(`notify-slack-release: unexpected error: ${err?.message ?? err}`);
+    process.exit(0);
+  });
+}
