@@ -62,3 +62,11 @@ jobs:
         run: |
           npx --yes wrangler@4 pages project create gh-hippo-shop-sdk-v3 --production-branch=main || true
           npx --yes wrangler@4 pages deploy packages/sdk/dist --project-name=gh-hippo-shop-sdk-v3 --branch=main
+
+      - name: Notify Slack
+        if: steps.changesets.outputs.published == 'true'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          PUBLISHED_PACKAGES: ${{ steps.changesets.outputs.publishedPackages }}
+        run: node scripts/notify-slack-release.mjs
+
