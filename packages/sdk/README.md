@@ -493,6 +493,32 @@ Register your own formatter once on `gh:data-ready`, then bind any field through
 
 Formatters receive the bound value as their first argument; additional `:`-separated values from `data-format` are passed as string arguments (so the `:169.95` above arrives as a string and `Number()`'s back to a float).
 
+### Checkout handoff
+
+Capture attribution on landing and apply it to outbound checkout URLs:
+
+```html
+<script src="https://api-prod.goldenhippo.io/sdk/v3/gh.js"
+        data-key="gh_pk_internal_gundry_abc123"
+        data-brand="Gundry MD"
+        data-checkout-base="https://checkout.gundrymd.com"></script>
+
+<a data-gh-checkout="bio3-3p-sub">Buy now</a>
+```
+
+On click, the link navigates to `https://checkout.gundrymd.com/?order_form_id=…&session_id=…&utm_source=…&sub_id1=…` with attribution captured from the landing URL preserved.
+
+The SDK also exposes a programmatic API:
+
+```js
+// Always call directly — do NOT cache the function reference, as the SDK
+// swaps the underlying closure when the session resolves.
+const url = window.gh.checkoutUrl('bio3-3p-sub');
+const sid = window.gh.session.id();
+```
+
+See the [Cluster F design spec](../../docs/superpowers/specs/2026-05-19-cluster-f-session-utm-checkout-handoff-design.md) for the full data flow and configuration options.
+
 ## Evaluation order
 
 When multiple binding attributes appear on the same element, they evaluate in this order:
@@ -520,6 +546,10 @@ window.gh.data.product(slugOrId):     Promise<HippoShopProductDTO>;
 
 window.gh.bind(rootElement):    Promise<void>;
 window.gh.refresh():            Promise<void>;
+
+window.gh.checkoutUrl(slug): string;   // returns composed checkout URL for a destination
+window.gh.session.id():      string | undefined;  // current sessionId cookie value
+window.gh.session.params():  ParsedParams | null; // session parameters from landing URL
 
 window.gh.format: FormatRegistry; // see the Formatters section
 window.gh.debug?: boolean;        // set to true when data-debug="true" on the script tag
