@@ -9,6 +9,8 @@ const CONFIG: GhConfig = {
   brand: 'Gundry MD',
   debug: false,
   apiBaseUrl: 'https://api-prod.goldenhippo.io',
+  checkoutBase: null,
+  cookieDomain: null,
 };
 
 function mockFetchOnce(body: unknown, init: ResponseInit = {}): void {

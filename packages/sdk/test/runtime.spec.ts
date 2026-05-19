@@ -9,6 +9,8 @@ const CONFIG: GhConfig = {
   brand: 'Gundry MD',
   debug: false,
   apiBaseUrl: 'https://api-prod.goldenhippo.io',
+  checkoutBase: null,
+  cookieDomain: null,
 };
 
 const PRODUCT = {
