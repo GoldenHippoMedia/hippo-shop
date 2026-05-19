@@ -2,7 +2,7 @@
 "@goldenhippo/hippo-shop-types": minor
 ---
 
-Add optional `checkoutOverrideUrl: string | null` field to `HippoShopPricingDTO`.
+Add required `checkoutOverrideUrl: string | null` field to `HippoShopPricingDTO`.
 
 When non-null, the SDK uses this URL as the base for the checkout handoff on
 this destination, overriding the brand-level `data-checkout-base` script-tag
