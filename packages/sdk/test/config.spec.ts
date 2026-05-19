@@ -5,7 +5,7 @@ function makeScript(attrs: Record<string, string>): HTMLScriptElement {
   const s = document.createElement('script');
   for (const [k, v] of Object.entries(attrs)) {
     if (k === 'src') s.src = v;
-    else s.dataset[k] = v;
+    else s.setAttribute(`data-${k}`, v);
   }
   return s;
 }
@@ -37,6 +37,8 @@ describe('parseScriptConfig', () => {
       brand: 'Gundry MD',
       debug: false,
       apiBaseUrl: 'https://api-prod.goldenhippo.io',
+      checkoutBase: null,
+      cookieDomain: null,
     });
   });
 
@@ -76,5 +78,35 @@ describe('parseScriptConfig', () => {
       src: 'https://api-uat.goldenhippo.io/sdk/v3/gh.js',
     });
     expect(parseScriptConfig(s).apiBaseUrl).toBe('https://api-uat.goldenhippo.io');
+  });
+
+  it('parses data-checkout-base when present', () => {
+    const s = makeScript({
+      key: goodKey,
+      brand: 'Gundry MD',
+      'checkout-base': 'https://checkout.gundrymd.com',
+      src: goodSrc,
+    });
+    expect(parseScriptConfig(s).checkoutBase).toBe('https://checkout.gundrymd.com');
+  });
+
+  it('returns null checkoutBase when data-checkout-base is absent', () => {
+    const s = makeScript({ key: goodKey, brand: 'Gundry MD', src: goodSrc });
+    expect(parseScriptConfig(s).checkoutBase).toBeNull();
+  });
+
+  it('parses data-cookie-domain when present', () => {
+    const s = makeScript({
+      key: goodKey,
+      brand: 'Gundry MD',
+      'cookie-domain': '.gundrymd.com',
+      src: goodSrc,
+    });
+    expect(parseScriptConfig(s).cookieDomain).toBe('.gundrymd.com');
+  });
+
+  it('returns null cookieDomain when data-cookie-domain is absent', () => {
+    const s = makeScript({ key: goodKey, brand: 'Gundry MD', src: goodSrc });
+    expect(parseScriptConfig(s).cookieDomain).toBeNull();
   });
 });

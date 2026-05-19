@@ -9,6 +9,10 @@ export interface GhConfig {
   brand: string;
   debug: boolean;
   apiBaseUrl: string;
+  /** Brand-level default for the checkout handoff base URL. `null` if not supplied. */
+  checkoutBase: string | null;
+  /** Explicit cookie domain (e.g., `.gundrymd.com`). `null` triggers auto-detect at cookie-write time. */
+  cookieDomain: string | null;
 }
 
 const KEY_PATTERN = /^gh_pk_[a-z0-9_-]+_[a-f0-9]+$/;
@@ -47,7 +51,17 @@ export function parseScriptConfig(script: HTMLScriptElement): GhConfig {
     throw new ConfigError(`script loaded from disallowed host: ${parsed.hostname}`);
   }
 
-  return { key, brand: brand.trim(), debug, apiBaseUrl: parsed.origin };
+  const checkoutBase = (script.dataset['checkoutBase'] ?? '').trim() || null;
+  const cookieDomain = (script.dataset['cookieDomain'] ?? '').trim() || null;
+
+  return {
+    key,
+    brand: brand.trim(),
+    debug,
+    apiBaseUrl: parsed.origin,
+    checkoutBase,
+    cookieDomain,
+  };
 }
 
 export function isAllowedApiHost(hostname: string): boolean {
