@@ -50,6 +50,7 @@ The full attribute set:
 - `data-if="<path>"` — show the element only when the path resolves to a truthy value.
 - `data-if-not="<path>"` — hide the element (and skip its subtree) when the path resolves to a truthy value. Inverse of `data-if`.
 - `data-each="<path>"` on a `<template>` element — iterate over arrays; the SDK clones the template content per item with a scoped binding root.
+- `data-gh-checkout="<destination-slug>"` — marks the element as a checkout-handoff control. On `<a>` elements, the SDK populates `href` with the composed outbound checkout URL. On other elements (`<button>`, `<div>`, etc.), the SDK attaches a `click` handler that navigates the page to the composed URL. See [Checkout handoff](#checkout-handoff) for full details.
 
 All field values render through `textContent`, never `innerHTML`. Data can never inject markup, scripts, or styles. This is the single most important guarantee.
 
@@ -66,6 +67,51 @@ When multiple binding attributes appear on the same element, they evaluate in th
 5. `<template data-each>` — iterates; clones use the iteration item as their data context.
 6. `data-field`, `data-attr-<name>` — field/attribute writes against the narrowed scope.
 7. Recurse into children.
+
+## Checkout handoff
+
+### `data-gh-checkout="<destination-slug>"`
+
+Marks the element as a checkout-handoff control. On `<a>` elements, the SDK populates `href` with the composed outbound checkout URL. On other elements (`<button>`, `<div>`, etc.), the SDK attaches a `click` handler that navigates the page to the composed URL.
+
+The composed URL is `<base>?order_form_id=<id>&session_id=<sid>&...session-params`, where:
+
+- `<base>` is `destination.pricing.checkoutOverrideUrl` if set, else the `data-checkout-base` script-tag attribute.
+- `order_form_id` is `destination.pricing.orderFormId`.
+- `session_id` is the SDK's `sessionId` cookie value (empty until `gh:session-ready` fires).
+- `utm_*` and `sub_id1`–`sub_id5` come from the parsed landing URL (omitted if empty).
+
+Pre-existing query keys on the base URL are preserved; SDK-added keys do not clobber author-supplied ones. If no base URL is configured (no `data-checkout-base` AND no `checkoutOverrideUrl`), the SDK sets `href="#"` and logs a debug warning.
+
+### Script-tag attributes (Cluster F additions)
+
+- `data-checkout-base="https://checkout.brand.com"` — required if any page on this brand uses `[data-gh-checkout]` or `gh.checkoutUrl()` without per-destination overrides. Optional otherwise.
+- `data-cookie-domain=".brand.com"` — optional explicit override for the brand's root cookie domain. When absent, the SDK auto-detects via the safe-TLD allowlist: `com, net, org, io, app, dev, ai, co, us, store, shop`. Multi-part TLDs (`.co.uk`, `.com.au`) require this attribute.
+
+### `window.gh.checkoutUrl(slug: string): string`
+
+Returns the composed checkout URL for the destination identified by `slug`, without navigating. Throws if the destination is not yet cached or if no base URL is configured.
+
+**Important — closure-capture gotcha:** Always call `window.gh.checkoutUrl(slug)` directly on each use. Do NOT cache the function reference, e.g., `const fn = window.gh.checkoutUrl; fn('slug')`. The SDK swaps the underlying closure when the session resolves so subsequent calls pick up the real `session_id` — a cached reference would keep returning URLs with an empty `session_id` indefinitely.
+
+### `window.gh.session.id(): string | undefined`
+
+Returns the current `sessionId` cookie value, or `undefined` if `gh:session-ready` hasn't fired yet.
+
+### `window.gh.session.params(): ParsedParams | null`
+
+Returns the session parameters parsed from the landing URL and posted to `/session` during this visit, or `null` when the SDK skipped the POST (e.g., `connect.sid` cookie was already present).
+
+### Event: `gh:session-ready`
+
+Fires on `window` after `ensureSession` resolves (success or graceful failure). `event.detail` is `{ sessionId: string, hasConnectSid: boolean, params: ParsedParams | null }`. Useful for page authors who fire analytics events that need the session ID.
+
+### Cookies managed by the SDK (Cluster F)
+
+| Name | Lifetime | Domain | Owner |
+|---|---|---|---|
+| `sessionId` | 30 days | Auto-detected root domain or `data-cookie-domain` | SDK (writes on first visit) |
+| `connect.sid` | API-controlled | Set by API with `Domain=.brand.com` | API (SDK only reads) |
 
 ### Bookkeeping markers (stable CSS hooks)
 
@@ -112,6 +158,9 @@ Surface on `window.gh`:
 - `window.gh.bind(root?: Element | Document): Promise<void>` — manually trigger a binding pass against a subtree. Resolves after the post-fetch pass.
 - `window.gh.refresh(): Promise<void>` — clear the resource cache and the lifecycle-state map, then rebind the document. Equivalent to `bind(document)` after a cache wipe.
 - `window.gh.format` — the `FormatRegistry` for registering custom formatters and applying them programmatically.
+- `window.gh.checkoutUrl(slug: string): string` — returns the composed checkout URL for the destination identified by `slug`, without navigating. Throws if the destination is not yet cached or if no base URL is configured. See [Checkout handoff](#checkout-handoff) for the closure-capture gotcha.
+- `window.gh.session.id(): string | undefined` — returns the current `sessionId` cookie value, or `undefined` if `gh:session-ready` hasn't fired yet.
+- `window.gh.session.params(): ParsedParams | null` — returns the session parameters parsed from the landing URL and posted to `/session` during this visit, or `null` when the SDK skipped the POST.
 - `window.gh.debug` — `true` when the SDK booted with `data-debug="true"`. Absent otherwise.
 
 Errors thrown by the data methods are `GhError` instances with a typed `.code` (see "Error contract" below).
@@ -122,6 +171,7 @@ Dispatched on `window`:
 
 - **`gh:data-ready`** — fired once after the SDK has attached `window.gh.data` and is ready to accept calls, before the first bind pass. Payload: `Event` (no `detail`).
 - **`gh:bindings-ready`** — fired once per page lifetime, after the initial bind pass (including all initial fetches) completes. Payload: `Event` (no `detail`).
+- **`gh:session-ready`** — fired once after `ensureSession` resolves (success or graceful failure). Payload: `CustomEvent` with `detail: { sessionId: string, hasConnectSid: boolean, params: ParsedParams | null }`. Useful for page authors who fire analytics events that need the session ID.
 
 The runtime additionally installs a `MutationObserver` after the initial bind so late-arriving content gets bound automatically. Mutation-driven rebinds are coalesced via a single microtask and do not re-fire `gh:bindings-ready`.
 
@@ -144,6 +194,7 @@ The runtime additionally installs a `MutationObserver` after the initial bind so
 | `bad_request` | Other 4xx from the API. Malformed slug, unknown resource type, or a programmatic call with an empty argument. Rare for normal SDK callers and typically indicates an SDK-level bug. |
 | `network` | Client-side fetch rejection before getting a response (DNS, offline, CORS preflight rejection that surfaces as a fetch error, etc.). |
 | `bad_config` | Refusal at boot because the SDK config is invalid (missing / malformed `data-key`, missing `data-brand`, unrecognized API host, unparseable script `src`). Surfaces in the console, not as a rejected promise. |
+| `config` | Runtime configuration error — `gh.checkoutUrl()` or `data-gh-checkout` binding cannot compose a URL because no checkout base URL is configured (script tag has no `data-checkout-base` AND the destination DTO has no `checkoutOverrideUrl`). Thrown by `gh.checkoutUrl()`; `[data-gh-checkout]` elements fall back to `href="#"` instead of throwing. |
 | `server` | 5xx from the API, or a response whose body was not valid JSON. |
 
 The server may supply an explicit `code` in the error response body; when present, it overrides the status-based mapping above.

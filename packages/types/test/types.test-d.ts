@@ -40,12 +40,14 @@ const dest: HippoShopDestinationDTO = {
     price: usdPrice, rebillPrice: null,
     outOfStock: false, restrictedCountryCodes: [],
     shipping, bumpOffers: [],
+    checkoutOverrideUrl: null,
   },
 };
 expectType<HippoShopPriceDTO | null>(dest.pricing.rebillPrice);
 expectType<HippoShopFrequencyDTO | null>(dest.pricing.frequency);
 expectType<number | null>(dest.pricing.shipping.freeShippingThreshold);
 expectType<HippoShopBumpOfferDTO[]>(dest.pricing.bumpOffers);
+expectType<string | null>(dest.pricing.checkoutOverrideUrl);
 
 // --- bumpOffers entries have a full price shape, not just an amount ---
 const bump: HippoShopBumpOfferDTO = {

@@ -21,7 +21,7 @@ The package has one barrel export at `@goldenhippo/hippo-shop-types`. Every type
 | Type | What it represents |
 |---|---|
 | `HippoShopDestinationDTO` | An offer resolution — `slug`, `name`, optional `description`, `funnelSlug` (the funnel to enter), and a `pricing` block. Split tests are resolved server-side; the host page always sees the destination's `defaultFunnel`. Cross-brand requests return 404. |
-| `HippoShopPricingDTO` | The pricing block on a destination — Salesforce IDs (`familyOrBundleId`, `orderFormId`), human SKU, package quantity, `purchaseType` (`'subscription' \| 'one-time'`), optional rebill `frequency`, `price`, optional `rebillPrice`, `outOfStock`, `restrictedCountryCodes`, `shipping`, and any `bumpOffers`. |
+| `HippoShopPricingDTO` | The pricing block on a destination — Salesforce IDs (`familyOrBundleId`, `orderFormId`), human SKU, package quantity, `purchaseType` (`'subscription' \| 'one-time'`), optional rebill `frequency`, `price`, optional `rebillPrice`, optional `checkoutOverrideUrl`, `outOfStock`, `restrictedCountryCodes`, `shipping`, and any `bumpOffers`. |
 | `HippoShopPriceDTO` | A money amount — `amount` in decimal dollars, `currency` literal `'USD'` (reserved for forward compatibility), optional `savings` versus a documented baseline (`null` when not applicable). |
 | `HippoShopShippingDTO` | Shipping policy — `domestic` and `international` amounts in USD (0 means always free), optional `freeShippingThreshold` for domestic. |
 | `HippoShopBumpOfferDTO` | A checkout bump offer — Salesforce IDs, SKU, product name, unit-of-measure label, quantity, price, stock state, restricted country codes. |
@@ -42,6 +42,13 @@ The package has one barrel export at `@goldenhippo/hippo-shop-types`. Every type
 |---|---|
 | `HippoShopErrorDTO` | The wire shape returned by `/public/v1/*` errors — `code`, `message`, optional `retryAfterMs` for rate-limited responses. Both Kong and the commerce API emit this shape. |
 | `HippoShopErrorCode` | Closed enum: `'not_found' \| 'rate_limited' \| 'forbidden' \| 'bad_request' \| 'server'`. `not_found` is deliberately ambiguous between "doesn't exist" and "not authorized" — you cannot enumerate resources you don't own. |
+
+## Field details (Cluster F additions)
+
+### `HippoShopPricingDTO.checkoutOverrideUrl`
+
+- Type: `string | null`
+- Optional override for the checkout base URL on handoff. When non-null, the SDK uses this URL instead of the brand-level `data-checkout-base` script-tag attribute. When `null`, the brand default applies. See the SDK SPEC's [Checkout handoff](#checkout-handoff) section for full details on how this is used in URL composition.
 
 ## Invariants
 

@@ -39,6 +39,12 @@ export interface HippoShopPricingDTO {
   shipping: HippoShopShippingDTO;
   /** Bump offers presented at checkout. Empty array when none are configured. */
   bumpOffers: HippoShopBumpOfferDTO[];
+  /**
+   * Optional override for the checkout base URL on handoff. When set,
+   * overrides the brand-level `data-checkout-base`. `null` means use
+   * the brand default. Added in Cluster F.
+   */
+  checkoutOverrideUrl: string | null;
 }
 
 export interface HippoShopPriceDTO {

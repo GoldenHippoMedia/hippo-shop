@@ -10,17 +10,22 @@
  *   4. `gh:bindings-ready` fires once after the initial bind completes.
  */
 
+import type { HippoShopDestinationDTO } from '@goldenhippo/hippo-shop-types';
 import type { GhDataClient } from './client';
 import { applyBindings, collectResources, RESOURCE_ATTR, RESOURCE_KINDS, type ResourceState } from './bindings';
 import { FormatRegistry } from './format';
 import { GhError } from './errors';
 import type { Logger } from './log';
+import type { GhConfig } from './config';
+import { applyCheckoutBindings } from './checkout';
+import { getSessionState } from './session';
 
 export interface RuntimeOptions {
   doc?: Document;
   win?: Window;
   logger: Logger;
   client: GhDataClient;
+  config: GhConfig;
 }
 
 export class GhRuntime {
@@ -75,6 +80,17 @@ export class GhRuntime {
       resources: this.resources,
       resourceStates: this.resourceStates,
     });
+
+    // Cluster F: also bind [data-gh-checkout] elements.
+    const session = getSessionState() ?? { sessionId: '', hasConnectSid: false, params: null };
+    applyCheckoutBindings(target, {
+      config: this.opts.config,
+      session,
+      getDestination: (slug) => this.getCachedDestination(slug),
+      ensureDestination: (slug) => this.ensureDestination(slug),
+      logger: this.opts.logger,
+    });
+
     if (!this.bindingsReadyFired) {
       this.bindingsReadyFired = true;
       this.win.dispatchEvent(new Event('gh:bindings-ready'));
@@ -172,6 +188,16 @@ export class GhRuntime {
     return promise;
   }
 
+  /** Cluster F: synchronous lookup of a cached destination, or null. */
+  getCachedDestination(slug: string): HippoShopDestinationDTO | null {
+    return (this.resources.get(`destination:${slug}`) as HippoShopDestinationDTO | undefined) ?? null;
+  }
+
+  /** Cluster F: trigger a destination load (idempotent via in-flight dedup). */
+  ensureDestination(slug: string): Promise<void> {
+    return this.loadOne('destination', slug);
+  }
+
   /** Wire DOMContentLoaded → initial bind. Idempotent. */
   installAutoBind(): void {
     const run = (): void => {
@@ -187,5 +213,17 @@ export class GhRuntime {
       // queueMicrotask runs *between* script tags and would miss them.
       setTimeout(run, 0);
     }
+
+    // Cluster F: re-bind once the session resolves so checkout hrefs pick up
+    // the real session_id. Fire-and-forget; bind() handles its own errors.
+    this.win.addEventListener(
+      'gh:session-ready',
+      () => {
+        void this.bind(this.doc).catch((err) =>
+          this.opts.logger.error('session-ready rebind failed', err),
+        );
+      },
+      { once: true },
+    );
   }
 }

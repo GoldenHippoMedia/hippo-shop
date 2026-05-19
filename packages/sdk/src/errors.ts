@@ -5,6 +5,7 @@ export type GhErrorCode =
   | 'bad_request'
   | 'network'
   | 'bad_config'
+  | 'config'
   | 'server';
 
 export interface GhErrorOptions {

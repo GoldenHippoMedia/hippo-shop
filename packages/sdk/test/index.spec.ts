@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { boot } from '../src/index';
+import { _resetForTests } from '../src/session';
 
 function installScript(attrs: Record<string, string>): HTMLScriptElement {
   const s = document.createElement('script');
   for (const [k, v] of Object.entries(attrs)) {
     if (k === 'src') s.src = v;
-    else s.dataset[k] = v;
+    else s.setAttribute(`data-${k}`, v);
   }
   document.head.appendChild(s);
   return s;
@@ -16,6 +17,7 @@ describe('boot()', () => {
     document.head.innerHTML = '';
     delete (window as { gh?: unknown }).gh;
     vi.restoreAllMocks();
+    _resetForTests();
   });
 
   it('attaches window.gh.data + bind + refresh + format when given valid config', () => {
@@ -85,5 +87,39 @@ describe('boot()', () => {
     boot();
     expect((window.gh as { somethingElse?: string }).somethingElse).toBe('kept');
     expect(typeof window.gh!.data!.product).toBe('function');
+  });
+});
+
+describe('cluster F wiring on boot', () => {
+  beforeEach(() => {
+    document.head.innerHTML = '';
+    delete (window as { gh?: unknown }).gh;
+    vi.restoreAllMocks();
+    _resetForTests();
+  });
+
+  it('attaches window.gh.session and window.gh.checkoutUrl when booted', () => {
+    installScript({
+      key: 'gh_pk_internal_test_abc123',
+      brand: 'Gundry MD',
+      'checkout-base': 'https://checkout.gundrymd.com',
+      src: 'https://api-prod.goldenhippo.io/sdk/v3/gh.js',
+    });
+    boot();
+    expect(typeof window.gh!.session!.id).toBe('function');
+    expect(typeof window.gh!.session!.params).toBe('function');
+    expect(typeof window.gh!.checkoutUrl).toBe('function');
+  });
+
+  it('gh.session.id() returns undefined before ensureSession resolves', () => {
+    installScript({
+      key: 'gh_pk_internal_test_abc123',
+      brand: 'Gundry MD',
+      'checkout-base': 'https://checkout.gundrymd.com',
+      src: 'https://api-prod.goldenhippo.io/sdk/v3/gh.js',
+    });
+    boot();
+    // Synchronous immediately after boot — session resolution is async.
+    expect(window.gh!.session!.id()).toBeUndefined();
   });
 });
