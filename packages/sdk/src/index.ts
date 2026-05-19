@@ -3,6 +3,8 @@ import { parseScriptConfig, ConfigError } from './config';
 import { createLogger } from './log';
 import { GhRuntime } from './runtime';
 import { FormatRegistry } from './format';
+import { ensureSession, getSessionState } from './session';
+import { makeCheckoutUrlFn } from './checkout';
 
 export { GhDataClient } from './client';
 export { GhError, type GhErrorCode } from './errors';
@@ -24,6 +26,12 @@ export interface GhWindow {
   refresh: GhRuntime['refresh'];
   format: FormatRegistry;
   debug?: boolean;
+  checkoutUrl?: (slug: string) => string;
+  session?: {
+    id: () => string | undefined;
+    params: () => unknown; // ParsedParams is internal; expose as unknown to keep types clean
+  };
+  __sessionPromise?: Promise<unknown>;
 }
 
 declare global {
@@ -62,7 +70,7 @@ export function boot(doc: Document = document, win: Window = window): boolean {
   }
 
   const client = new GhDataClient(config, logger);
-  const runtime = new GhRuntime({ doc, win, logger, client });
+  const runtime = new GhRuntime({ doc, win, logger, client, config });
 
   root.data = {
     funnel: client.funnel.bind(client),
@@ -73,6 +81,29 @@ export function boot(doc: Document = document, win: Window = window): boolean {
   root.refresh = runtime.refresh.bind(runtime);
   root.format = runtime.formatters;
   if (config.debug) root.debug = true;
+
+  root.session = {
+    id: () => getSessionState()?.sessionId,
+    params: () => getSessionState()?.params ?? null,
+  };
+  root.checkoutUrl = makeCheckoutUrlFn({
+    config,
+    session: { sessionId: '', hasConnectSid: false, params: null }, // pre-resolve stub
+    getDestination: (slug) => runtime.getCachedDestination(slug),
+    ensureDestination: (slug) => runtime.ensureDestination(slug),
+  });
+
+  root.__sessionPromise = ensureSession(config, client).then((state) => {
+    // Refresh checkoutUrl closure with the resolved session so subsequent calls
+    // pick up the real sessionId + params.
+    root.checkoutUrl = makeCheckoutUrlFn({
+      config,
+      session: state,
+      getDestination: (slug) => runtime.getCachedDestination(slug),
+      ensureDestination: (slug) => runtime.ensureDestination(slug),
+    });
+    return state;
+  }).catch(() => undefined); // ensureSession itself handles errors; this is final defense
 
   logger.debug('booted', { brand: config.brand, apiBaseUrl: config.apiBaseUrl });
   win.dispatchEvent(new Event(DATA_READY_EVENT));

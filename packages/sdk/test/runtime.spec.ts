@@ -46,7 +46,7 @@ describe('GhRuntime.bind', () => {
         <span data-field="name"></span>
       </div>
     `;
-    const runtime = new GhRuntime({ logger: createLogger(false), client: freshClient() });
+    const runtime = new GhRuntime({ logger: createLogger(false), client: freshClient(), config: CONFIG });
     await runtime.bind(document);
     expect(fetchSpy).toHaveBeenCalledOnce(); // deduped
     expect(document.querySelector('h1')!.textContent).toBe('Bio Complete 3');
@@ -65,7 +65,7 @@ describe('GhRuntime.bind', () => {
       <div data-gh-product="known"><h1 data-field="name">x</h1></div>
       <div data-gh-product="unknown"><h2 data-field="name">untouched</h2></div>
     `;
-    const runtime = new GhRuntime({ logger: createLogger(false), client: freshClient() });
+    const runtime = new GhRuntime({ logger: createLogger(false), client: freshClient(), config: CONFIG });
     await runtime.bind(document);
     expect(document.querySelector('h1')!.textContent).toBe('Bio Complete 3');
     expect(document.querySelector('h2')!.textContent).toBe('untouched');
@@ -76,7 +76,7 @@ describe('GhRuntime.bind', () => {
       new Response(JSON.stringify(PRODUCT), { status: 200 }),
     );
     document.body.innerHTML = `<div data-gh-product="bio-complete-3"><span data-field="name"></span></div>`;
-    const runtime = new GhRuntime({ logger: createLogger(false), client: freshClient() });
+    const runtime = new GhRuntime({ logger: createLogger(false), client: freshClient(), config: CONFIG });
     const handler = vi.fn();
     window.addEventListener('gh:bindings-ready', handler);
     await runtime.bind(document);
@@ -98,7 +98,7 @@ describe('GhRuntime.refresh', () => {
       .mockResolvedValueOnce(new Response(JSON.stringify(first), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify(second), { status: 200 }));
     document.body.innerHTML = `<div data-gh-product="bio-complete-3"><h1 data-field="name"></h1></div>`;
-    const runtime = new GhRuntime({ logger: createLogger(false), client: freshClient() });
+    const runtime = new GhRuntime({ logger: createLogger(false), client: freshClient(), config: CONFIG });
     await runtime.bind(document);
     expect(document.querySelector('h1')!.textContent).toBe('First');
 
@@ -118,7 +118,7 @@ describe('GhRuntime — observer (late-arriving DOM)', () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify(PRODUCT), { status: 200 }),
     );
-    const runtime = new GhRuntime({ logger: createLogger(false), client: freshClient() });
+    const runtime = new GhRuntime({ logger: createLogger(false), client: freshClient(), config: CONFIG });
     await runtime.bind(document);
     runtime.attachObserver();
 
@@ -153,7 +153,7 @@ describe('GhRuntime — resource state tracking', () => {
         <div id="content" data-when="loaded"><span data-field="name"></span></div>
       </article>
     `;
-    const runtime = new GhRuntime({ logger: createLogger(false), client });
+    const runtime = new GhRuntime({ logger: createLogger(false), client, config: CONFIG });
     const bindPromise = runtime.bind(document);
 
     // Synchronously after bind() starts: skeleton should be visible, content hidden.
@@ -183,7 +183,7 @@ describe('GhRuntime — resource state tracking', () => {
         <div id="err" data-when="failed">Couldn't load.</div>
       </article>
     `;
-    const runtime = new GhRuntime({ logger: createLogger(false), client });
+    const runtime = new GhRuntime({ logger: createLogger(false), client, config: CONFIG });
     await runtime.bind(document);
     expect((document.getElementById('err') as HTMLElement).style.display).not.toBe('none');
   });
@@ -199,7 +199,7 @@ describe('GhRuntime — resource state tracking', () => {
         <div id="content" data-when="loaded"><span data-field="name"></span></div>
       </article>
     `;
-    const runtime = new GhRuntime({ logger: createLogger(false), client });
+    const runtime = new GhRuntime({ logger: createLogger(false), client, config: CONFIG });
     await runtime.bind(document);
     expect((document.getElementById('content') as HTMLElement).style.display).not.toBe('none');
 
