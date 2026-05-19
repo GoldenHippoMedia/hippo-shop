@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import {
   getCookieDomain,
   readCookie,
@@ -40,7 +40,7 @@ describe('getCookieDomain', () => {
     expect(getCookieDomain(makeConfig())).toBe('.gundrymd.com');
   });
 
-  it.each(SAFE_TLDS)('auto-detects for .%s hosts', (tld) => {
+  it.each(SAFE_TLDS.map((t) => [t] as const))('auto-detects for .%s hosts', (tld) => {
     setHostname(`info.example.${tld}`);
     expect(getCookieDomain(makeConfig())).toBe(`.example.${tld}`);
   });

@@ -48,8 +48,8 @@ export function getCookieDomain(config: GhConfig): string | null {
   if (host.startsWith('[') && host.endsWith(']')) return null; // IPv6 brackets
 
   const labels = host.split('.');
-  const tld = labels[labels.length - 1].toLowerCase();
-  if (!SAFE_TLDS.includes(tld as typeof SAFE_TLDS[number])) return null;
+  const tld = labels.at(-1)?.toLowerCase();
+  if (!tld || !SAFE_TLDS.includes(tld as typeof SAFE_TLDS[number])) return null;
 
   // Apex (e.g., `gundrymd.com`): 2 labels — return `.gundrymd.com`.
   // Subdomain (e.g., `info.gundrymd.com`): 3+ labels — strip one to
