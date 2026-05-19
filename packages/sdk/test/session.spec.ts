@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { ensureSession, generateSessionId, getSessionState, _resetForTests } from '../src/session';
-import { readCookie, writeCookie, deleteCookie } from '../src/cookies';
+import { readCookie, writeCookie } from '../src/cookies';
 import { GhDataClient } from '../src/client';
 import type { GhConfig } from '../src/config';
 import { createLogger } from '../src/log';
@@ -54,14 +54,15 @@ describe('generateSessionId', () => {
   });
 
   it('pads with YYYYMMDD when the random number is shorter than 12 digits', () => {
-    // If now * random produces something like 1, ceil → 1, toString → '1' (length 1).
-    // The pad branch appends year+month+day. Hard to assert exact value since the
-    // current date varies; assert length and that the head is the (very small) number.
-    vi.spyOn(Date, 'now').mockReturnValue(100); // tiny so result is short
-    vi.spyOn(Math, 'random').mockReturnValue(0.001); // ceil(100 * 0.001) = 1
+    // Choose Date.now and Math.random so that ceil(now * random) produces a
+    // SHORT base (triggers padding) but base + YYYYMMDD reaches >=12 chars.
+    // ceil(100000000 * 0.001) = 100000 (6 chars). +8 (YYYYMMDD) = 14 chars.
+    // sliced to 12 = '100000YYYYMM' or similar (12 chars, prefix '100000').
+    vi.spyOn(Date, 'now').mockReturnValue(100_000_000);
+    vi.spyOn(Math, 'random').mockReturnValue(0.001);
     const id = generateSessionId();
     expect(id.length).toBe(12);
-    expect(id.startsWith('1')).toBe(true);
+    expect(id.startsWith('100000')).toBe(true);
   });
 });
 

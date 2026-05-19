@@ -52,10 +52,6 @@ export function generateSessionId(): string {
     const month = new Intl.DateTimeFormat('en-US', { month: '2-digit' }).format(now);
     const day = new Intl.DateTimeFormat('en-US', { day: '2-digit' }).format(now);
     id += `${year}${month}${day}`;
-    // Pad with zeros if still short (edge case: very small random product).
-    while (id.length < SESSION_ID_LENGTH) {
-      id += '0';
-    }
   }
   return id.slice(0, SESSION_ID_LENGTH);
 }
