@@ -97,7 +97,7 @@ export function buildPayload(publishedPackages, getChangelog, repoFullName) {
     }
     return `${headerLine}\n${body}`;
   });
-  const text = [':package: *Hippo Shop released*', '', ...sections].join('\n\n');
+  const text = [':package: *Hippo Shop released*', ...sections].join('\n\n');
   return { text, mrkdwn: true };
 }
 
