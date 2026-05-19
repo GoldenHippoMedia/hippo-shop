@@ -38,19 +38,18 @@ Added: 2026-05-17
 
 Have the SDK manage a session cookie when one is not present and parse UTM parameters, including the Golden Hippo-specific click-id mapping (e.g. `fbclid` → `sub_id1=fb` and `sub_id5=fbcli`). On a `checkoutUrl` handoff — possibly supplied by destination details — auto-apply the correct UTM parameters. This would unlock a single per-brand checkout app at `checkout.brand_domain.com` consuming pages from anywhere. Large architectural commitment; probably warrants a spike before a full spec.
 
-### SDK script-tag fallback selector still matches `/sdk/v1/gh`
-Status: enhancement
-Added: 2026-05-18
-
-`packages/sdk/src/index.ts` lines 88–90 hard-code the v1 substring in the script-tag fallback selector. With v3 SDK loaded from `/sdk/v3/gh.js`, the primary `document.currentScript` path works fine, and the generic `[src$="/gh.js"]` second fallback catches v3 URLs — so the bug only fires in the narrow edge case where `document.currentScript` is null AND the page injects the SDK in a way the generic fallback doesn't reach. Make the v1-specific selector version-agnostic (or match any `/sdk/v\d+/gh`). Update `packages/sdk/test/{index,config}.spec.ts` fixtures to match.
-
-Pick up alongside any other small SDK change that warrants a v3.0.1 patch.
-
-Related: PR #10 (deferred this cleanup)
-
 ---
 
 ## Done
+
+### SDK v3.0.1 — version-agnostic script-tag fallback selector
+Status: done
+Added: 2026-05-18
+Shipped: 2026-05-19 (PR #13)
+
+Replaced the v1-substring selector in `packages/sdk/src/index.ts` `findScript()` with a version-agnostic `[src*="/sdk/"]` form so the production-CDN fallback works for every SDK major, not just v1. Refreshed the test fixtures in `packages/sdk/test/{index,config}.spec.ts` from `/sdk/v1/gh.js` to `/sdk/v3/gh.js` to match the current shipping URL. Patch released as `@goldenhippo/hippo-shop-sdk@3.0.1` via the changesets release PR #14.
+
+Related: PR #13
 
 ### Cluster C — Slack release webhook in CI
 Status: done
