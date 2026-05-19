@@ -55,11 +55,11 @@ Related: PR #10 (deferred this cleanup)
 ### Cluster C — Slack release webhook in CI
 Status: done
 Added: 2026-05-17
-Shipped: 2026-05-18 (PR #__)
+Shipped: 2026-05-18 (PR #15)
 
 Adds a `Notify Slack` step at the end of `.github/workflows/release.yml`, gated on `steps.changesets.outputs.published == 'true'`, that runs `scripts/notify-slack-release.mjs`. The script reads the published-packages JSON, slices each package's `## <version>` block out of its `CHANGELOG.md`, builds a Slack mrkdwn payload with per-package GitHub Release links, and POSTs to the `SLACK_WEBHOOK_URL` repo secret. Every failure path exits 0 so a Slack outage cannot paint a successful release red; if the secret is unset, the script logs and skips.
 
-Related: `docs/superpowers/specs/2026-05-18-cluster-c-slack-release-webhook-design.md`, `docs/superpowers/plans/2026-05-18-cluster-c-slack-release-webhook.md`, PR #__
+Related: `docs/superpowers/specs/2026-05-18-cluster-c-slack-release-webhook-design.md`, `docs/superpowers/plans/2026-05-18-cluster-c-slack-release-webhook.md`, PR #15
 
 ### npm deprecate v1.x and v2.x packages
 Status: done
