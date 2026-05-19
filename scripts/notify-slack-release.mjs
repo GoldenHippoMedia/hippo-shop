@@ -28,6 +28,34 @@ function logSummary(line) {
   }
 }
 
+/**
+ * Slice the body of a `## <version>` section out of a CHANGELOG.md.
+ * Stops at the next `## ` (H2) heading or end-of-file. `### ` (H3) headings
+ * inside the section are preserved — only true H2 boundaries terminate.
+ * Returns the trimmed body, or '' if the section is not found.
+ */
+export function extractChangelogSection(markdown, version) {
+  if (typeof markdown !== 'string' || !version) return '';
+  const lines = markdown.split('\n');
+  const target = `## ${version}`;
+  let startIdx = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].trim() === target) {
+      startIdx = i + 1;
+      break;
+    }
+  }
+  if (startIdx === -1) return '';
+  const body = [];
+  for (let i = startIdx; i < lines.length; i++) {
+    const line = lines[i];
+    // Match H2 (## ) but NOT H3+ (### , #### , ...).
+    if (line.startsWith('## ') && !line.startsWith('### ')) break;
+    body.push(line);
+  }
+  return body.join('\n').trim();
+}
+
 async function main() {
   const webhookUrl = process.env['SLACK_WEBHOOK_URL'] ?? '';
   if (!webhookUrl && !DRY_RUN) {
