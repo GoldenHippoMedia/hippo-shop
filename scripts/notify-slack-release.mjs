@@ -100,14 +100,73 @@ export function buildPayload(publishedPackages, getChangelog, repoFullName) {
   return { text, mrkdwn: true };
 }
 
+function readChangelogExcerpt(name, version) {
+  const dir = PACKAGE_DIRS[name];
+  if (!dir) {
+    logSummary(`Package ${name} is not in PACKAGE_DIRS; rendering '(see CHANGELOG)' fallback`);
+    return { excerpt: '', mapped: false };
+  }
+  const path = resolve(process.cwd(), dir, 'CHANGELOG.md');
+  let md;
+  try {
+    md = readFileSync(path, 'utf8');
+  } catch (err) {
+    logSummary(`Could not read ${path}: ${err?.message ?? err}; rendering '(see CHANGELOG)' fallback`);
+    return { excerpt: '', mapped: false };
+  }
+  return { excerpt: extractChangelogSection(md, version), mapped: true };
+}
+
 async function main() {
   const webhookUrl = process.env['SLACK_WEBHOOK_URL'] ?? '';
   if (!webhookUrl && !DRY_RUN) {
     logSummary('Slack webhook not configured; skipping');
     process.exit(0);
   }
-  // (Remainder filled in by later tasks.)
-  logSummary('notify-slack-release: skeleton invoked');
+
+  const repoFullName = process.env['GITHUB_REPOSITORY'] ?? 'GoldenHippoMedia/hippo-shop';
+
+  let publishedPackages;
+  try {
+    publishedPackages = JSON.parse(process.env['PUBLISHED_PACKAGES'] ?? '[]');
+  } catch (err) {
+    logSummary(`PUBLISHED_PACKAGES is not valid JSON: ${err?.message ?? err}; skipping`);
+    process.exit(0);
+  }
+  if (!Array.isArray(publishedPackages) || publishedPackages.length === 0) {
+    logSummary('PUBLISHED_PACKAGES is empty or not an array; skipping');
+    process.exit(0);
+  }
+
+  const payload = buildPayload(publishedPackages, readChangelogExcerpt, repoFullName);
+
+  if (DRY_RUN) {
+    process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
+    process.exit(0);
+  }
+
+  let res;
+  try {
+    res = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  } catch (err) {
+    logSummary(`Slack POST threw: ${err?.message ?? err}`);
+    process.exit(0);
+  }
+
+  if (!res.ok) {
+    let body = '';
+    try {
+      body = (await res.text()).slice(0, 500);
+    } catch {}
+    logSummary(`Slack POST returned ${res.status}: ${body}`);
+    process.exit(0);
+  }
+
+  logSummary(`Slack notification sent for ${publishedPackages.length} package(s)`);
   process.exit(0);
 }
 
