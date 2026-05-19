@@ -1,5 +1,24 @@
 # @goldenhippo/hippo-shop-sdk
 
+## 3.0.1
+
+### Patch Changes
+
+- de8be0f: Fix the script-tag fallback selector in `findScript()` so it works for every
+  SDK major, not just v1. Previously the production-CDN selector hard-coded
+  `[src*="/sdk/v1/gh"]`, which became stale after v3 moved to `/sdk/v3/gh.js`.
+
+  In practice the bug was dormant because `document.currentScript` covers the
+  hot path and the local-dev `[src$="/gh.js"]` fallback covers most server-side
+  cases. It would only fire on a page where `document.currentScript` is null
+  _and_ the SDK is served from a path the `/gh.js` suffix doesn't match.
+
+  The selector now uses `[src*="/sdk/"]`, which matches any `/sdk/vN/`
+  deployment. Test fixtures in `packages/sdk/test/{index,config}.spec.ts` are
+  updated from `/sdk/v1/gh.js` to `/sdk/v3/gh.js` to match the current major.
+
+  No runtime behavior change for existing callers.
+
 ## 3.0.0
 
 ### Major Changes
@@ -18,12 +37,10 @@
 - 6870806: Ship `llms.txt` and `llms-full.txt` alongside the SDK script. A build-time generator
   (`packages/sdk/scripts/build-llms.mjs`) reads `packages/sdk/README.md` and
   `packages/types/README.md` and writes two files into `dist/`:
-
   - `llms.txt` — curated index per [llmstxt.org](https://llmstxt.org), listing the canonical docs, npm packages, and source repo.
   - `llms-full.txt` — one-fetch concatenation of both READMEs with a provenance header, for LLMs that want a single download.
 
   After this release, both files are served at:
-
   - `https://api-prod.goldenhippo.io/sdk/v1/llms.txt`
   - `https://api-prod.goldenhippo.io/sdk/v1/llms-full.txt`
 
@@ -77,7 +94,6 @@
 - 82411f5: Reshape the public DTOs to match real funnel/destination data.
 
   **Funnel**
-
   - Drop `entryUrl` from `HippoShopFunnelDTO`.
   - Drop `url` from `HippoShopFunnelStepDTO`.
 
@@ -85,7 +101,6 @@
   is the entry point), so canonical entry/step URLs have no consumer use.
 
   **Product**
-
   - Drop `category` from `HippoShopProductDTO`. Not every product has one — a
     required string was frequently a meaningless placeholder.
   - `HippoShopProductVariantDTO.rebillPrice`, `savings`, and
@@ -96,7 +111,6 @@
 
   **Destination / pricing** — expanded to be landing-page-complete so a partner
   can render an offer card without a second call:
-
   - Drop `productSlug` from `HippoShopPricingDTO`. The source data has no public
     product slug — partners look the product family up via the new
     `familyOrBundleId`.
