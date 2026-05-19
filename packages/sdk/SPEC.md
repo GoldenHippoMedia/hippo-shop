@@ -194,6 +194,7 @@ The runtime additionally installs a `MutationObserver` after the initial bind so
 | `bad_request` | Other 4xx from the API. Malformed slug, unknown resource type, or a programmatic call with an empty argument. Rare for normal SDK callers and typically indicates an SDK-level bug. |
 | `network` | Client-side fetch rejection before getting a response (DNS, offline, CORS preflight rejection that surfaces as a fetch error, etc.). |
 | `bad_config` | Refusal at boot because the SDK config is invalid (missing / malformed `data-key`, missing `data-brand`, unrecognized API host, unparseable script `src`). Surfaces in the console, not as a rejected promise. |
+| `config` | Runtime configuration error — `gh.checkoutUrl()` or `data-gh-checkout` binding cannot compose a URL because no checkout base URL is configured (script tag has no `data-checkout-base` AND the destination DTO has no `checkoutOverrideUrl`). Thrown by `gh.checkoutUrl()`; `[data-gh-checkout]` elements fall back to `href="#"` instead of throwing. |
 | `server` | 5xx from the API, or a response whose body was not valid JSON. |
 
 The server may supply an explicit `code` in the error response body; when present, it overrides the status-based mapping above.

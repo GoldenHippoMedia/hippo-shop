@@ -517,7 +517,7 @@ const url = window.gh.checkoutUrl('bio3-3p-sub');
 const sid = window.gh.session.id();
 ```
 
-See the [Cluster F design spec](../../docs/superpowers/specs/2026-05-19-cluster-f-session-utm-checkout-handoff-design.md) for the full data flow and configuration options.
+See the [SDK SPEC for checkout handoff details](./SPEC.md#checkout-handoff) for the full contract and configuration options.
 
 ## Evaluation order
 
