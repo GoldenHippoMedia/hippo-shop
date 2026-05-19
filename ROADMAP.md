@@ -39,13 +39,13 @@ Now that Cluster E v1 has landed the public lander, layer an admin UI onto the s
 ### Cluster F — SDK session, UTM, and checkout handoff
 Status: done
 Added: 2026-05-17
-Shipped: 2026-05-19 (PR #__)
+Shipped: 2026-05-19 (PR #17)
 
 Adds a session/UTM/checkout-handoff layer to the SDK. On landing, the SDK parses UTM and click-id query params (v1 click-id registry has fbclid → subId1='fb', subId5=<value>; the registry is extensible), POSTs them to `/public/v1/session` wrapped in `affParameters` (gated on absence of `connect.sid` cookie), and manages a 30-day `sessionId` cookie at the brand's auto-detected root domain. New `data-gh-checkout` attribute on `<a>` / `<button>` / arbitrary elements composes outbound URLs with `order_form_id`, `session_id`, and the captured params; `gh.checkoutUrl(slug)` is the programmatic equivalent. `gh:session-ready` event lets page authors hook into session resolution. Every failure mode is non-fatal — the page never breaks.
 
 Has hard API-side prerequisites (new `/public/v1/session` Kong route, root-domain `Set-Cookie` for `connect.sid`, CORS-with-credentials) called out in the spec as parallel work.
 
-Related: `docs/superpowers/specs/2026-05-19-cluster-f-session-utm-checkout-handoff-design.md`, `docs/superpowers/plans/2026-05-19-cluster-f-session-utm-checkout-handoff.md`, PR #__
+Related: `docs/superpowers/specs/2026-05-19-cluster-f-session-utm-checkout-handoff-design.md`, `docs/superpowers/plans/2026-05-19-cluster-f-session-utm-checkout-handoff.md`, PR #17
 
 ### SDK v3.0.1 — version-agnostic script-tag fallback selector
 Status: done
