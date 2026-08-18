@@ -136,7 +136,7 @@ Marks the element as a checkout-handoff control. On `<a>` elements, the SDK popu
 
 **Appended parameters**, in this order, each omitted when its value is empty:
 
-`order_form_id` (from `destination.pricing.orderFormId`), `sessionid` (the resolved session id — see [Session identity](#session-identity-and-inbound-sessionid)), `utm_source`, `utm_medium`, `utm_campaign`, `utm_campaign_id`, `utm_content`, `utm_term`, `utm_chat`, `utm_action`, `off_id`, `aff_id`, `subid1`, `subid2`, `subid3`, `subid4`, `subid5`, `landing_url`, `referral_url`, `sales_funnel`, the seven raw click-ids (`fbclid`, `gclid`, `ScCid`, `qclid`, `twclid`, `ndclid`, `wbraid`), then `origdsidOrig` and `origsplitTestingFunnelIdOrig` forwarded verbatim from the current URL.
+`order_form_id` (from `destination.pricing.orderFormId`), `sessionid` (the resolved session id — see [Session identity](#session-identity-and-inbound-sessionid)), `utm_source`, `utm_medium`, `utm_campaign`, `utm_campaign_id`, `utm_content`, `utm_term`, `utm_chat`, `utm_action`, `off_id`, `aff_id`, `subid1`, `subid2`, `subid3`, `subid4`, `subid5`, `landing_url`, `referral_url`, `sales_funnel`, the seven raw click-ids (`fbclid`, `gclid`, `ScCid`, `qclid`, `twclid`, `ndclid`, `wbraid`), then `origmainFunnelIdOrig`, `origdsidOrig`, and `origsplitTestingFunnelIdOrig` forwarded verbatim from the current URL. `funnelSTPId` and `dsid` are deliberately never forwarded — the destination resolver re-mints `funnelSTPId` on every hop, so a forwarded value would be stale by the next page.
 
 The key is `sessionid` — one word, lowercase, matching the inbound handoff key the SDK itself reads. Affiliate sub-ids are `subid1`–`subid5`, not `sub_id1`–`sub_id5`.
 
@@ -226,13 +226,18 @@ Exactly **one** `Page View` per page load, however many destinations the page bi
 | Retries | **None**, including on `429`. A rate-limited event is a lost event, not a delayed one |
 | Credentials | Not sent. The body is self-sufficient for attribution |
 
-**Identity is read from the live DOM at emit time**, not snapshotted at boot:
+**Identity is read from the live DOM at emit time**, not snapshotted at boot, with a URL-param fallback for pages that bind nothing. Precedence is **destination DTO → author attribute → URL param**:
 
 | Source | Supplies |
 |---|---|
 | `data-gh-destination` / `data-gh-checkout` | The funnel and destination Salesforce IDs, out of the `HippoShopDestinationDTO` the page already fetched (`funnelId` and `id`). First match in document order wins, and `data-gh-destination` beats `data-gh-checkout` |
 | `data-gh-step` | The funnel step slug. A page element wins over the SDK `<script>` tag |
 | `data-gh-funnel-id` | The funnel Salesforce ID directly, for pages that bind no destination. Ignored when a bound destination already supplies one |
+| `?origmainFunnelIdOrig=` | Fallback for `funnelSTFId` / `mainFunnelId` when neither a destination DTO nor `data-gh-funnel-id` supplies one. Minted by the `/fst` destination resolver and forwarded verbatim through later hops |
+| `?origdsidOrig=`, else `?dsid=` | Fallback for `destinationId` when no destination DTO is cached |
+| `?funnelSTPId=` | Fallback for `funnelSTPId` when no funnel-step DTO resolves. **Known-stale**: this URL param is minted once at the `/fst` hop as the funnel's step-1 id and never refreshed, so it never overrides a DTO-resolved step id — only fills the gap when there is no DTO at all |
+
+All URL-param reads are **case-sensitive** (`URLSearchParams.get`, not the click-id table's case-insensitive lookup) — this matches both the funnel's own reader and the SDK's documented `?sessionid=` rule.
 
 **No funnel ID, no event.** If neither a bound destination nor `data-gh-funnel-id` yields one, the event is dropped rather than sent with a blank ID — an event with a blank funnel ID is discarded upstream anyway. With `data-debug="true"` the drop is logged with its reason.
 

@@ -155,10 +155,10 @@ Verbatim from `build-funnel-event.utility.ts:14-63` (interface) and `:102-150` (
 
 | Field | Source | Absent |
 |---|---|---|
-| `funnelSTFId` | destination DTO `funnelId`, else `data-gh-funnel-id` | **gate — do not emit** |
+| `funnelSTFId` | destination DTO `funnelId`, else `data-gh-funnel-id`, else `?origmainFunnelIdOrig=` | **gate — do not emit** |
 | `mainFunnelId` | same value as `funnelSTFId` | same |
-| `destinationId` | destination DTO `id`, else `?origdsidOrig=` | `null` |
-| `funnelSTPId` | funnel-step DTO `id` matched by `data-gh-step` | `null` |
+| `destinationId` | destination DTO `id`, else `?origdsidOrig=`, else `?dsid=` | `null` |
+| `funnelSTPId` | funnel-step DTO `id` matched by `data-gh-step`, else `?funnelSTPId=` (fallback only — this URL param is a stale step-1 snapshot minted once at the `/fst` hop, so it never overrides a DTO-resolved id) | `null` |
 | `splitTestingFunnelId` | `?origsplitTestingFunnelIdOrig=` | `null` |
 | `splitTestingPageId` | — | `null` (constant) |
 | `url` | `data-gh-step` (a **step slug**, not a URL) | `null` — note `\|\|` collapses `''` to `null` |

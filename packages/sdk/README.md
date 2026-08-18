@@ -425,7 +425,7 @@ The base URL resolves in this order, and the first one present wins:
 2. `destination.url` — the destination's own absolute URL. The normal case.
 3. `data-checkout-base` on the script tag — brand-level fallback.
 
-Onto that base the SDK appends, in this order and skipping anything empty: `order_form_id`, `sessionid`, `utm_source`, `utm_medium`, `utm_campaign`, `utm_campaign_id`, `utm_content`, `utm_term`, `utm_chat`, `utm_action`, `off_id`, `aff_id`, `subid1`…`subid5`, `landing_url`, `referral_url`, `sales_funnel`, the seven raw click-ids (`fbclid`, `gclid`, `ScCid`, `qclid`, `twclid`, `ndclid`, `wbraid`), then `origdsidOrig` and `origsplitTestingFunnelIdOrig` forwarded verbatim from the current URL.
+Onto that base the SDK appends, in this order and skipping anything empty: `order_form_id`, `sessionid`, `utm_source`, `utm_medium`, `utm_campaign`, `utm_campaign_id`, `utm_content`, `utm_term`, `utm_chat`, `utm_action`, `off_id`, `aff_id`, `subid1`…`subid5`, `landing_url`, `referral_url`, `sales_funnel`, the seven raw click-ids (`fbclid`, `gclid`, `ScCid`, `qclid`, `twclid`, `ndclid`, `wbraid`), then `origmainFunnelIdOrig`, `origdsidOrig`, and `origsplitTestingFunnelIdOrig` forwarded verbatim from the current URL. `funnelSTPId` and `dsid` are never forwarded — the destination resolver re-mints `funnelSTPId` on every hop, so forwarding it would hand the next page a stale step id.
 
 ```
 https://www.gundrymd.com/bio3-3pk-sub?order_form_id=OF_123&sessionid=3f6b2c11-…&utm_source=fb&subid1=IwAR…&fbclid=IwAR…
