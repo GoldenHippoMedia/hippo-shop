@@ -248,6 +248,14 @@ describe('parseLandingParams — canonical click-id table', () => {
     expect(out.scCid).toBe('S');
   });
 
+  it("ScCid + qclid: ScCid wins subId1 by table order, and its 'snap' marker wins — qclid's 'quora' must not overwrite it", () => {
+    const out = parseLandingParams(`${BASE}?ScCid=S&qclid=Q`, '');
+    expect(out.subId1).toBe('S');
+    expect(out.subId5).toBe('snap');
+    expect(out.scCid).toBe('S');
+    expect(out.qclid).toBe('Q');
+  });
+
   it('gclid + wbraid: distinct slots, no marker from either row', () => {
     const out = parseLandingParams(`${BASE}?gclid=G&wbraid=W`, '');
     expect(out.subId1).toBe('G');

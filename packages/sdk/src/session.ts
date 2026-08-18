@@ -106,6 +106,10 @@ export async function ensureSession(
   }
 
   const href = typeof window !== 'undefined' ? window.location.href : '';
+  // Read here but deliberately discarded by parseLandingParams: on this path
+  // referralUrl comes from ?referral_url= alone, not document.referrer — see
+  // the @param referrer note on parseLandingParams (url-params.ts) before
+  // wiring this value up to referralUrl.
   const referrer = typeof document !== 'undefined' ? document.referrer : '';
   const params = parseLandingParams(href, referrer);
 

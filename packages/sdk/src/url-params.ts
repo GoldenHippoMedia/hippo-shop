@@ -149,9 +149,7 @@ function clean(value: string): string {
  *  page on the second page view. The funnel-event payload derives its own
  *  `referralUrl` from `document.referrer` — a different call, different shape.
  */
-export function parseLandingParams(href: string, referrer: string): ParsedParams {
-  void referrer;
-
+export function parseLandingParams(href: string, _referrer: string): ParsedParams {
   const out: ParsedParams = {};
   const landingDefault = clean(href.split('?')[0] ?? href);
   if (landingDefault) out.landingUrl = landingDefault;
