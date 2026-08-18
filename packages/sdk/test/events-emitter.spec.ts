@@ -58,6 +58,18 @@ function setHead(html: string): void {
   document.head.innerHTML = html;
 }
 
+/** Mirrors checkout.spec.ts's helper: override window.location.search for one test. */
+function setSearch(search: string): void {
+  Object.defineProperty(window, 'location', {
+    value: {
+      ...window.location,
+      search,
+      href: `https://sf.gundrymd.com/offer${search}`,
+    },
+    writable: true,
+  });
+}
+
 beforeEach(() => {
   setBody('');
   setHead('');
@@ -262,6 +274,106 @@ describe('resolveEventIdentity', () => {
     expect(identity.stepId).toBe('a0Zstep2');
     expect(identity.funnelId).toBe('a0Xattr');
   });
+
+  it('funnelId falls back to ?origmainFunnelIdOrig= with no DTO and no attribute', () => {
+    const identity = resolveEventIdentity({
+      doc: document,
+      getDestination: () => null,
+      getFunnel: noFunnel,
+      stepSlug: null,
+      search: '?origmainFunnelIdOrig=a0Xurl',
+    });
+    expect(identity.funnelId).toBe('a0Xurl');
+  });
+
+  it('data-gh-funnel-id wins over ?origmainFunnelIdOrig=', () => {
+    setBody('<div data-gh-funnel-id="a0Xattr"></div>');
+    const identity = resolveEventIdentity({
+      doc: document,
+      getDestination: () => null,
+      getFunnel: noFunnel,
+      stepSlug: null,
+      search: '?origmainFunnelIdOrig=a0Xurl',
+    });
+    expect(identity.funnelId).toBe('a0Xattr');
+  });
+
+  it('destination DTO funnelId wins over data-gh-funnel-id and ?origmainFunnelIdOrig=', () => {
+    setBody(`
+      <div data-gh-funnel-id="a0Xattr"></div>
+      <div data-gh-destination="bio3-1p-ot"></div>
+    `);
+    const identity = resolveEventIdentity({
+      doc: document,
+      getDestination: (slug) => makeDestination(slug, 'a0Ydest1', 'a0Xfunnel1'),
+      getFunnel: noFunnel,
+      stepSlug: null,
+      search: '?origmainFunnelIdOrig=a0Xurl',
+    });
+    expect(identity.funnelId).toBe('a0Xfunnel1');
+  });
+
+  it('destinationId falls back to ?dsid=; origdsidOrig wins when both are present', () => {
+    expect(
+      resolveEventIdentity({
+        doc: document,
+        getDestination: () => null,
+        getFunnel: noFunnel,
+        stepSlug: null,
+        search: '?dsid=a0Yinternal',
+      }).destinationId,
+    ).toBe('a0Yinternal');
+    expect(
+      resolveEventIdentity({
+        doc: document,
+        getDestination: () => null,
+        getFunnel: noFunnel,
+        stepSlug: null,
+        search: '?origdsidOrig=a0Yorig&dsid=a0Yinternal',
+      }).destinationId,
+    ).toBe('a0Yorig');
+  });
+
+  // The regression test this fix exists for: a destination-bound page with no
+  // cached funnel DTO must still resolve funnelSTPId from the /fst-minted URL
+  // param rather than drop it to null.
+  it('stepId falls back to ?funnelSTPId= when the funnel DTO is not cached', () => {
+    setBody('<div data-gh-destination="bio3-1p-ot"></div>');
+    const identity = resolveEventIdentity({
+      doc: document,
+      getDestination: (slug) => makeDestination(slug, 'a0Ydest1', 'a0Xfunnel1'),
+      getFunnel: noFunnel,
+      stepSlug: 'offer-selector',
+      search: '?funnelSTPId=a0Zstep1',
+    });
+    expect(identity.stepId).toBe('a0Zstep1');
+  });
+
+  it('a resolved funnel-step DTO id wins over a conflicting ?funnelSTPId= (locks the staleness precedence)', () => {
+    setBody('<div data-gh-destination="bio3-1p-ot"></div>');
+    const identity = resolveEventIdentity({
+      doc: document,
+      getDestination: (slug) => makeDestination(slug, 'a0Ydest1', 'a0Xfunnel1', 'bio3-main'),
+      getFunnel: (slug) =>
+        slug === 'bio3-main'
+          ? makeFunnel(slug, [{ slug: 'upsell', id: 'a0Zstep2' }])
+          : null,
+      stepSlug: 'upsell',
+      search: '?funnelSTPId=a0Zstep1',
+    });
+    expect(identity.stepId).toBe('a0Zstep2');
+  });
+
+  it('?ORIGDSIDORIG=X does NOT resolve — case-sensitivity is deliberate', () => {
+    const identity = resolveEventIdentity({
+      doc: document,
+      getDestination: () => null,
+      getFunnel: noFunnel,
+      stepSlug: null,
+      search: '?ORIGDSIDORIG=X',
+    });
+    expect(identity.destinationId).toBeNull();
+  });
 });
 
 function emitterConfig(overrides: Partial<GhConfig> = {}): GhConfig {
@@ -319,6 +431,28 @@ describe('installPageViewEmitter', () => {
   afterEach(() => {
     vi.useRealTimers();
     _resetEventsForTests();
+    setSearch('');
+  });
+
+  it('emits one Page View with all five SFIDs from URL params alone when the page binds nothing', async () => {
+    setBody(''); // zero bindings: no destination, no checkout, no funnel-id attr, no step
+    setSearch(
+      '?origmainFunnelIdOrig=a0Xfunnel1&origdsidOrig=a0Ydest1&funnelSTPId=a0Zstep1&origsplitTestingFunnelIdOrig=a0Wsplit1',
+    );
+    const { opts, postEvent } = makeEmitterOpts({ getDestination: () => null });
+    installPageViewEmitter(opts);
+    window.dispatchEvent(new Event('gh:session-ready'));
+    window.dispatchEvent(new Event('gh:bindings-ready'));
+    await vi.advanceTimersByTimeAsync(PAGE_VIEW_QUIET_MS + 1);
+
+    expect(postEvent).toHaveBeenCalledOnce();
+    const [, event] = postEvent.mock.calls[0];
+    expect(event.funnelSTFId).toBe('a0Xfunnel1');
+    expect(event.mainFunnelId).toBe('a0Xfunnel1');
+    expect(event.mainFunnelId).toBe(event.funnelSTFId);
+    expect(event.destinationId).toBe('a0Ydest1');
+    expect(event.funnelSTPId).toBe('a0Zstep1');
+    expect(event.splitTestingFunnelId).toBe('a0Wsplit1');
   });
 
   it('emits after both readiness signals plus the quiet window', async () => {

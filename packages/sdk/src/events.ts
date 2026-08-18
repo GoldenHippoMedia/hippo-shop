@@ -175,11 +175,11 @@ export function detectUserAgent(ua: string): UaDetection {
 export interface PageViewContext {
   config: GhConfig;
   session: SessionState;
-  /** Destination DTO funnelId, else data-gh-funnel-id. Absent = do not emit. */
+  /** Destination DTO funnelId, else data-gh-funnel-id, else ?origmainFunnelIdOrig=. Absent = do not emit. */
   funnelId: string | null;
-  /** Destination DTO id, else ?origdsidOrig=. */
+  /** Destination DTO id, else ?origdsidOrig=, else ?dsid=. */
   destinationId: string | null;
-  /** Funnel-step DTO id matched by data-gh-step. */
+  /** Funnel-step DTO id matched by data-gh-step, else the (stale, step-1) ?funnelSTPId=. */
   stepId: string | null;
   /** data-gh-step — a step SLUG. Lands in the `url` field. */
   stepSlug: string | null;
@@ -187,7 +187,7 @@ export interface PageViewContext {
   splitTestId: string | null;
   /** document.referrer, raw. Query-stripped here (opposite of the D3 rule). */
   referrer: string;
-  /** location.search, for ?cid=. */
+  /** location.search, for ?cid= and the /fst-minted funnel-identity URL-param fallbacks. */
   search: string;
 }
 
@@ -461,6 +461,33 @@ const DESTINATION_ATTR = 'data-gh-destination';
 const CHECKOUT_ATTR = 'data-gh-checkout';
 const FUNNEL_ATTR = 'data-gh-funnel';
 
+// ---------------------------------------------------------------------------
+// URL-param fallbacks (D5 fix) — minted once, at the /fst hop
+// ---------------------------------------------------------------------------
+
+/**
+ * URL params the `/fst` destination→split-test→funnel resolver mints
+ * (`server.js:1553-1639`) and `translateParams` forwards verbatim through
+ * later hops. The `/cid/<campaign sfid>` lookup that precedes `/fst` sets
+ * none of these itself.
+ *
+ * The param names are NOT the payload field names — only `funnelSTPId`
+ * matches itself:
+ *
+ *   funnelSTFId / mainFunnelId  <- origmainFunnelIdOrig (same value; the aliasing is correct)
+ *   destinationId               <- origdsidOrig, plus dsid on the internal branch
+ *   funnelSTPId                 <- funnelSTPId
+ *   splitTestingFunnelId        <- origsplitTestingFunnelIdOrig (read correctly already)
+ *
+ * Two traps, deliberately not read anywhere in this module:
+ *   - `origspidOrig` is a DIFFERENT id (funnel-level, zero readers downstream).
+ *   - `_did` / `_fid` / `_stid` do not exist anywhere in the real flow.
+ */
+const FUNNEL_ID_PARAM = 'origmainFunnelIdOrig';
+const DESTINATION_ID_PARAM = 'origdsidOrig';
+const DESTINATION_ID_PARAM_INTERNAL = 'dsid';
+const STEP_ID_PARAM = 'funnelSTPId';
+
 /**
  * Read an attribute preferring a page element over the SDK script tag.
  *
@@ -519,11 +546,28 @@ export interface IdentityOptions {
   /** Synchronous cached-funnel lookup (runtime.getCachedFunnel). */
   getFunnel: (slug: string) => HippoShopFunnelDTO | null;
   stepSlug: string | null;
-  /** location.search, for the ?origdsidOrig= / ?origsplitTestingFunnelIdOrig= handoff. */
+  /**
+   * location.search — the /fst-minted funnel-identity fallbacks
+   * (?origmainFunnelIdOrig=, ?origdsidOrig= / ?dsid=, ?funnelSTPId=) plus the
+   * pre-existing ?origsplitTestingFunnelIdOrig= handoff.
+   */
   search: string;
 }
 
-/** Resolve the Salesforce ids a Page View needs from DOM + cached DTOs. */
+/**
+ * Resolve the Salesforce ids a Page View needs from DOM + cached DTOs + the
+ * /fst-minted URL params.
+ *
+ * Precedence is destination DTO -> author attribute -> URL param, for two
+ * grounded reasons:
+ *   1. The params are a one-time snapshot minted at the `/fst` hop and never
+ *      refreshed on later hops. `funnelSTPId` in particular is always
+ *      `defaultFunnels[0].variants[0].sfid` — hardcoded to step 1 — so an
+ *      inbound `funnelSTPId` must never outrank a `data-gh-step` that
+ *      resolved against a live funnel DTO (see the stepId fallback below).
+ *   2. Author-attribute-over-URL-param mirrors the rule this repo already
+ *      uses at `url-params.ts:179-180`.
+ */
 export function resolveEventIdentity(opts: IdentityOptions): EventIdentity {
   const slug = firstDestinationSlug(opts.doc);
   const destination = slug ? opts.getDestination(slug) : null;
@@ -535,9 +579,21 @@ export function resolveEventIdentity(opts: IdentityOptions): EventIdentity {
     params = new URLSearchParams('');
   }
 
+  // `URLSearchParams.get` is case-sensitive, DELIBERATELY: this matches both
+  // the funnel's own reader and the SDK's documented ?sessionid= rule. There
+  // is a `findCaseInsensitive` helper at url-params.ts:120-126 for the
+  // ad-platform click-id casing games — these are funnel-minted params, not
+  // that, so do not reach for it here.
   const funnelId =
-    destination?.funnelId || readAttrPreferringPage(opts.doc, FUNNEL_ID_ATTR) || null;
-  const destinationId = destination?.id || params.get('origdsidOrig') || null;
+    destination?.funnelId ||
+    readAttrPreferringPage(opts.doc, FUNNEL_ID_ATTR) ||
+    params.get(FUNNEL_ID_PARAM) ||
+    null;
+  const destinationId =
+    destination?.id ||
+    params.get(DESTINATION_ID_PARAM) ||
+    params.get(DESTINATION_ID_PARAM_INTERNAL) ||
+    null;
   const splitTestId = params.get('origsplitTestingFunnelIdOrig') || null;
 
   const funnelSlug =
@@ -547,6 +603,10 @@ export function resolveEventIdentity(opts: IdentityOptions): EventIdentity {
     const funnel = opts.getFunnel(funnelSlug);
     stepId = funnel?.steps.find((s) => s.slug === opts.stepSlug)?.id ?? null;
   }
+  // Fallback only: a resolved funnel-step DTO id is always live, while the
+  // URL's funnelSTPId is a stale step-1 snapshot (see the function doc
+  // comment) — it must never overwrite a DTO-resolved stepId.
+  if (!stepId) stepId = params.get(STEP_ID_PARAM) || null;
 
   return { funnelId, destinationId, stepId, splitTestId };
 }
