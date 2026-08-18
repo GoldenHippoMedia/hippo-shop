@@ -38,7 +38,18 @@ export interface ParsedParams {
   subId3?: string;
   subId4?: string;
   subId5?: string;
-  /** Raw click-id values, forwarded verbatim (session.model.ts:22-30). Note the mixed-case `scCid`. */
+  /**
+   * Raw click-id values, forwarded verbatim (session.model.ts:22-30). Note the
+   * mixed-case `scCid`.
+   *
+   * These have two consumers and a different fate on each, so do not conclude
+   * from either half alone that they are dead weight:
+   *  - Session POST: sent, but *not* persisted. The commerce session stores only
+   *    its own 18 attribution keys, so on that path it is the derived
+   *    `subId1`/`subId4`/`subId5` values that land, not these.
+   *  - Outbound checkout links: these DO land — `checkout.ts` forwards all seven
+   *    as query params, which is how the funnel receives the original click id.
+   */
   fbclid?: string;
   gclid?: string;
   scCid?: string;
@@ -137,26 +148,28 @@ function clean(value: string): string {
 /**
  * Parse a landing URL into a ParsedParams shape ready for
  * POST /public/v1/session under `affParameters`. Empty/undefined fields are
- * omitted from the output (never sent as `""`), because `affParameters` is
- * destructive-on-write.
+ * omitted from the output (never sent as `""`) — a blank and an absent key are
+ * equivalent upstream, so omitting is simply the smaller, unambiguous form.
  *
  * @param href The full landing URL, typically `window.location.href`.
  * @param referrer `document.referrer`. Accepted for signature stability and
  *  deliberately unused: on this path `referralUrl` comes from
- *  `?referral_url=` alone (D3). The POST fires on every page load and
- *  `affParameters` is destructive-on-write, so a `document.referrer`
- *  fallback would overwrite the real ad referrer with the previous internal
- *  page on the second page view. The funnel-event payload derives its own
- *  `referralUrl` from `document.referrer` — a different call, different shape.
+ *  `?referral_url=` alone (D3). Upstream storage is per-key
+ *  first-write-wins, so the hazard runs the other way: a `document.referrer`
+ *  fallback on a *first* page view would durably claim `referralUrl` with
+ *  whatever page linked in, and no later POST could correct it. The
+ *  funnel-event payload derives its own `referralUrl` from
+ *  `document.referrer` — a different call, different shape.
  * @param isReturningVisit I3: true when this page load reused an existing
  *  session (the `hippo_session_id` cookie was read rather than minted or
- *  adopted from `?sessionid=`). `affParameters` is destructive-on-write and
- *  the session POST fires unconditionally on every page load, so defaulting
- *  `landingUrl` to the *current* href on a returning visit would overwrite
- *  the real ad landing page with whatever internal page the visitor clicked
- *  to next. On a returning visit the default is skipped entirely — an
- *  explicit `?landing_url=` below still wins regardless, exactly like a
- *  first touch.
+ *  adopted from `?sessionid=`). The session POST fires unconditionally on
+ *  every page load and upstream storage is per-key first-write-wins. A
+ *  returning visitor can still meet a *fresh* commerce session — its cookie
+ *  expired or was blocked while `hippo_session_id` survived — and there the
+ *  current href would become the permanent `landingUrl` for that session,
+ *  uncorrectable by any later POST. On a returning visit the default is
+ *  skipped entirely — an explicit `?landing_url=` below still wins
+ *  regardless, exactly like a first touch.
  */
 export function parseLandingParams(
   href: string,

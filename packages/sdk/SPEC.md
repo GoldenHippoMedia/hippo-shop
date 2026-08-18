@@ -218,8 +218,13 @@ Registers this visit's attribution against the Commerce API's session. Sent once
 |---|---|
 | Body | `{ "affParameters": { …attribution, "sessionId": "<id>" } }` |
 | Credentials | `credentials: 'include'` — the API maintains its own session cookie on this call |
-| Empty values | **Omitted**, never sent as `""`. Every key present is treated as authoritative upstream, so a blank would erase stored attribution |
+| Empty values | **Omitted**, never sent as `""`. Not a safety measure: upstream cannot distinguish a blank, a whitespace-only value and an absent key — all three are discarded before storage, so a blank can neither set nor clear anything. Omitting is smaller on the wire and leaves one wire form for "no value" |
+| Storage | Per-key **first-write-wins**. The server merges as `{ ...incoming, ...storedSession }`, so a POST fills keys the session does not yet hold and never changes one it does |
+| Truncation | Server-side, at 255 characters — 18 for `offId` and `affId`. The SDK sends values uncapped and does not normalise whitespace; padding is stored verbatim |
+| Raw click-ids | `fbclid`, `gclid`, `scCid`, `qclid`, `twclid`, `ndclid`, `wbraid` are sent but **not persisted** — the commerce session stores only its own 18 attribution keys and discards the rest. The *derived* values do land, in `subId1` / `subId4` / `subId5` |
 | Failure | Swallowed. `gh:session-ready` still fires with a resolved `sessionId` |
+
+**First-write-wins bounds what always-POST can achieve.** Posting on every page load fills in a key the session is missing, but it cannot correct one that is already wrong. Whatever value reaches a key first is the value that key keeps for the life of the commerce session — up to 30 days. There is no client-side repair path: the SDK can add attribution, never fix it.
 
 ### `POST <base>/public/v1/funnel-event` — `Page View`
 

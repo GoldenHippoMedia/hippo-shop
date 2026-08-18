@@ -807,7 +807,7 @@ The three resource reads share one shape; v4 adds two write endpoints:
 | `GET` | `<base>/public/v1/funnel/<slugOrId>` | Returns `HippoShopFunnelDTO` |
 | `GET` | `<base>/public/v1/destination/<slugOrId>` | Returns `HippoShopDestinationDTO` |
 | `GET` | `<base>/public/v1/product/<slugOrId>` | Returns `HippoShopProductDTO` |
-| `POST` | `<base>/public/v1/session` | Registers this visit's attribution. Body is `{ "affParameters": { …attribution, "sessionId": "<id>" } }`. Fires once per page load. Empty values are **omitted**, never sent as `""` — the server treats every key present as authoritative, so a blank would erase real stored attribution. |
+| `POST` | `<base>/public/v1/session` | Registers this visit's attribution. Body is `{ "affParameters": { …attribution, "sessionId": "<id>" } }`. Fires once per page load. Empty values are **omitted**, never sent as `""` — a blank and an absent key are indistinguishable upstream, so omitting is simply smaller and unambiguous. Storage is per-key **first-write-wins**: a POST fills keys the session does not yet hold and cannot change one it already holds. Values are truncated server-side at 255 characters (18 for `offId`/`affId`). |
 | `POST` | `<base>/public/v1/funnel-event` | The `Page View` funnel event. Sent with `keepalive: true` and an `X-GH-Event-Id: <uuid>` correlation header. Never retried. |
 
 `<slugOrId>` is URL-encoded before insertion. Product responses arrive with `<tier>List` and `<tier>ByQuantity` fields already populated server-side.

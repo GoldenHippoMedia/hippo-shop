@@ -61,9 +61,13 @@ export function getSessionState(): SessionState | null {
 /**
  * Drops keys whose value is null, undefined, or whitespace-only.
  *
- * `affParameters` is destructive-on-write: the backend treats every key
- * present in the body as authoritative, so posting `utmSource: ''` blanks a
- * real stored value. Empty means omitted, never `""` (spec D3).
+ * This is a payload nicety, not a safety guard. The backend cannot tell a
+ * blank from an absent key: `''`, `'   '` and a missing key all collapse to
+ * `undefined` server-side and are filtered out before storage, so posting
+ * `utmSource: ''` can neither set nor clear a stored value. Omitting is kept
+ * because it is smaller on the wire and gives exactly one wire form for "no
+ * value" (spec D3, whose destructive-on-write premise was wrong; storage is
+ * per-key first-write-wins).
  */
 export function pruneEmpty(
   input: Record<string, string | null | undefined>,
