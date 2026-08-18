@@ -35,6 +35,7 @@
 | `packages/sdk/src/runtime.ts` | Bind lifecycle, resource collection, MutationObserver, rebind scheduling |
 | `packages/sdk/src/index.ts` | Boot, `window.gh` surface, session thunk wiring |
 | `packages/sdk/src/config.ts` | Script-tag attribute parsing — **no change**. D5 requires `data-gh-step` / `data-gh-funnel-id` to be read from the live DOM at emit time, not frozen into the boot-time `GhConfig` snapshot. |
+| `packages/sdk/src/bindings.ts` | Resource collection — treats `data-gh-checkout` as a destination reference (Task 30) |
 | `packages/sdk/test/helpers/cookie-jar.ts` *(new)* | Shared cookie fake that records `Domain`/`Max-Age`/`SameSite` |
 
 **`hippo-shop` — types**
@@ -52,6 +53,9 @@
 | `src/services/hippo-shop/HippoShop.service.ts` | Destination identity pass-through, destination URL SOQL, DTO serialization |
 | `src/services/session/Session.service.ts` | Response-key fix, negative visitor-lookup cache, log removal |
 | `src/controllers/session/Session.controller.ts` | Log removal |
+| `src/controllers/hippo-shop/HippoShop.spec.ts` | Zod DTO mirrors — must change in the same commit as the pin bump (bidirectional `Equals` guards) |
+| `src/services/destination/DestinationUrl.config.ts` *(new)* | The sObject/field strings, isolated so an empty value issues no query |
+| `src/services/destination/DestinationUrl.service.ts` *(new)* | Brand-scoped SOQL lookup for the destination URL; never fails the response |
 | `package.json` | Types pin `^3.0.0` → `^4.0.0` (same commit as the Zod change) |
 
 ---
@@ -65,7 +69,7 @@
 - Produces: `installCookieJar(): CookieJar`, `interface CookieJar { get(name: string): RecordedCookie | undefined; seed(name: string, value: string): void; writes: string[]; names(): string[]; clear(): void; restore(): void }`, `interface RecordedCookie { value: string; rawValue: string; domain: string | null; maxAge: number | null; path: string | null; sameSite: string | null; secure: boolean; raw: string }`
 - Consumes: `writeCookie`, `readCookie`, `deleteCookie` from `packages/sdk/src/cookies.ts` (unchanged)
 
-Three hand-rolled jars exist today (`test/cookies.spec.ts:70-101`, `test/session.spec.ts:73-98`, `test/session.spec.ts:183-203`); none records `Domain`, `Max-Age` or `SameSite`, so the D2 root-domain contract is currently unassertable. This task adds the recording jar; Tasks 4–6 delete the two copies in `session.spec.ts`.
+Three hand-rolled jars exist today (`test/cookies.spec.ts:70-101`, `test/session.spec.ts:73-98`, `test/session.spec.ts:183-203`); none records `Domain`, `Max-Age` or `SameSite`, so the D2 root-domain contract is currently unassertable. This task adds the recording jar; Task 4 deletes both copies; Tasks 5–6 use the shared jar in `session.spec.ts`.
 
 - [ ] **Step 1: Write the failing test** — replace line 1 of `/Users/stevenhall/Code/hippo-shop/packages/sdk/test/cookies.spec.ts` with the import below, then append the `describe` block to the end of that file (after line 129).
 
@@ -1967,7 +1971,7 @@ pnpm --filter @goldenhippo/hippo-shop-sdk typecheck
 pnpm --filter @goldenhippo/hippo-shop-sdk lint
 ```
 
-Expected: `Tests  188 passed (188)` when this task follows Tasks 4 and 5 in order, and clean output from `tsc --noEmit` and `eslint src`. If `tsc` reports `'MAX_VALUE_CHARS' is declared but its value is never read`, the constant line was not deleted — remove it.
+Expected: `Tests  188 passed (188)` when this task follows Tasks 7 and 8 in order, and clean output from `tsc --noEmit` and `eslint src`. If `tsc` reports `'MAX_VALUE_CHARS' is declared but its value is never read`, the constant line was not deleted — remove it.
 
 - [ ] **Step 6: Commit**
 
@@ -2170,7 +2174,7 @@ pnpm --filter @goldenhippo/hippo-shop-sdk typecheck
 pnpm --filter @goldenhippo/hippo-shop-sdk lint
 ```
 
-Expected: `Test Files  12 passed (12)` / `Tests  192 passed (192)` when this task follows Tasks 4–6 in order, and clean output from `tsc --noEmit` and `eslint src`.
+Expected: `Test Files  12 passed (12)` / `Tests  192 passed (192)` when this task follows Tasks 7–9 in order, and clean output from `tsc --noEmit` and `eslint src`.
 
 - [ ] **Step 6: Commit**
 
@@ -2200,9 +2204,9 @@ Part of Cluster G (D3 — attribution model corrections).
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 ```
 
----
 
 ---
+
 
 ### Task 11: `pruneEmpty` + `buildSessionPostBody` — the destructive-on-write guard for the session POST body
 
@@ -2211,7 +2215,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 - Create: `/Users/stevenhall/Code/hippo-shop/packages/sdk/test/session-post.spec.ts`
 
 **Interfaces:**
-- Consumes: `ParsedParams` from `packages/sdk/src/url-params.ts`
+- Consumes: `ParsedParams` from `packages/sdk/src/url-params.ts`; `SessionState` (Task 4); `resolveSessionId` (Task 6) — Step 6 edits the post-Task-6 `ensureSession`, so both must be committed first
 - Produces:
   ```ts
   export function pruneEmpty(input: Record<string, string | null | undefined>): Record<string, string>;
@@ -2381,10 +2385,10 @@ Rationale to keep in view while writing this: `affParameters` is destructive-on-
 In `/Users/stevenhall/Code/hippo-shop/packages/sdk/src/session.ts`, replace the POST call inside `ensureSession`:
 
 ```ts
-    await client.postJson('session', buildSessionPostBody(params, sessionId));
+    await client.postJson('session', buildSessionPostBody(params, resolved.sessionId));
 ```
 
-It previously read `client.postJson('session', { affParameters: params })`, which never told the API which session it was — the defect described in the spec's Background. `buildSessionPostBody` nests `sessionId` inside `affParameters` and omits empty values.
+The anchor to replace is the post-Task-6 line `await client.postJson('session', { affParameters: params });`. Note `resolved` — Task 6 replaced the old `sessionId` binding with `const resolved = resolveSessionId(search, logger);`, so a bare `sessionId` is undeclared here. It previously read `client.postJson('session', { affParameters: params })`, which never told the API which session it was — the defect described in the spec's Background. `buildSessionPostBody` nests `sessionId` inside `affParameters` and omits empty values.
 
 - [ ] **Step 7: Run the session suite to verify it passes**
 
@@ -2629,9 +2633,9 @@ nothing joined them, so outbound links carried an id the API had never seen."
   HippoShopFunnelStepDTO requires id."
   ```
 
----
 
 ---
+
 
 ### Task 13: `resolveDestinationBase` — three-source resolution for the navigation target
 
@@ -2821,7 +2825,7 @@ The destination URL *is* the checkout navigation target (spec D7) — one compos
 - Modify: `/Users/stevenhall/Code/hippo-shop/packages/sdk/test/checkout.spec.ts` (`composeCheckoutUrl` describe block, lines 56–128)
 
 **Interfaces:**
-- Consumes: `ParsedParams` (all 25 fields incl. the seven raw click-ids), `SessionState` (Task 12), `resolveDestinationBase` (Task 13)
+- Consumes: `ParsedParams` (all 25 fields incl. the seven raw click-ids), `SessionState` (Task 4), `resolveDestinationBase` (Task 13)
 - Produces: `export function composeCheckoutUrl(d: HippoShopDestinationDTO, c: GhConfig, s: SessionState): string;`
 
 `session_id` → `sessionid` and `sub_idN` → `subidN` are the load-bearing renames: the funnel reads `sessionid` case-sensitively and `session_id` appears nowhere in its repository, so a `?session_id=` handoff is silently ignored and the funnel mints a fresh session. `setIfAbsent` semantics are retained — a param already on the base URL wins.
@@ -3183,7 +3187,7 @@ The destination URL *is* the checkout navigation target (spec D7) — one compos
 - Modify: `/Users/stevenhall/Code/hippo-shop/packages/sdk/test/checkout.spec.ts` (`applyCheckoutBindings` describe block, lines 130–207)
 
 **Interfaces:**
-- Consumes: `composeCheckoutUrl` (Task 14), `SessionState` (Task 12), `getSessionState` from `packages/sdk/src/session.ts`
+- Consumes: `composeCheckoutUrl` (Task 14), `SessionState` (Task 4), `getSessionState` from `packages/sdk/src/session.ts`
 - Produces:
   ```ts
   export interface CheckoutBindingsOptions {
@@ -6555,9 +6559,9 @@ cd /Users/stevenhall/Code/hippo-shop/packages/sdk && pnpm exec vitest run && pnp
 cd /Users/stevenhall/Code/hippo-shop && git add packages/sdk/test/events-emitter.spec.ts && git commit -m "test(sdk): offer-selector page emits exactly one Page View for six bound destinations"
 ```
 
----
 
 ---
+
 
 ### Task 27: Docblock and SPEC corrections (Corrections 5 and 6)
 
@@ -6659,7 +6663,7 @@ What is still broken after Task 16: `GhRuntime` has no way to receive that promi
 
 **Files:**
 - Test: create `/Users/stevenhall/Code/hippo-shop/packages/sdk/test/session-promise-wiring.spec.ts`
-- Modify: `/Users/stevenhall/Code/hippo-shop/packages/sdk/src/runtime.ts` (field block, lines 31–45; the `sessionPromise` argument inside the `applyCheckoutBindings(target, { … })` call Task 15 left at lines 84–95)
+- Modify: `/Users/stevenhall/Code/hippo-shop/packages/sdk/src/runtime.ts` (field block, located by the quoted anchors — Task 24 shifts these; the `sessionPromise` argument inside the `applyCheckoutBindings(target, { … })` call Task 15 left at lines 84–95)
 - Modify: `/Users/stevenhall/Code/hippo-shop/packages/sdk/src/index.ts` (one inserted line after `root.__sessionPromise = sessionPromise;`)
 - Modify: `/Users/stevenhall/Code/hippo-shop/packages/sdk/SPEC.md` (lines 91–95 and line 161 — Task 27 touched 103 and 163, so these are untouched)
 
@@ -6849,7 +6853,7 @@ What is still broken after Task 16: `GhRuntime` has no way to receive that promi
 
 - [ ] **Step 3: Give `GhRuntime` a session-promise field**
 
-  In `/Users/stevenhall/Code/hippo-shop/packages/sdk/src/runtime.ts`, add the field immediately after `private readonly win: Window;` (line 40):
+  In `/Users/stevenhall/Code/hippo-shop/packages/sdk/src/runtime.ts`, add the field immediately after `private readonly win: Window;` (locate by the quoted text — Task 24 Step 9 inserts lines into this block, so the pristine line numbers no longer hold):
 
   ```ts
     /**
@@ -6861,7 +6865,7 @@ What is still broken after Task 16: `GhRuntime` has no way to receive that promi
     private sessionPromise: Promise<unknown> = Promise.resolve();
   ```
 
-  Then add this method immediately after the constructor's closing `}` (line 45):
+  Then add this method immediately after the constructor's closing `}` (locate by structure, not line number — Task 24 runs first):
 
   ```ts
     /**
@@ -9724,7 +9728,7 @@ Covers the Workstream 1 row `apps/integration-harness/src/public-v1.test.ts` —
 - Consumes: `HippoShopFunnelDTO`, `HippoShopFunnelStepDTO`, `HippoShopDestinationDTO`, `HippoShopPricingDTO`, `HippoShopPriceDTO`, `HippoShopShippingDTO`, `HippoShopBumpOfferDTO`, `HippoShopFrequencyDTO`, `HippoShopProductDTO` from `@goldenhippo/hippo-shop-types` — **post-Task 12**, i.e. `HippoShopDestinationDTO` already carries `id: string`, `funnelId: string`, `url: string | null` and `HippoShopFunnelStepDTO` already carries `id: string`. Task 12 must be committed and `packages/types/dist` rebuilt before this task typechecks; the harness resolves the workspace link through `"types": "dist/index.d.ts"` (`packages/types/package.json:13`), there is no `paths` mapping in `tsconfig.base.json`.
 - Consumes: the deployed `/public/v1/funnel/:slug` and `/public/v1/destination/:slug` responses (Tasks 38 and 39).
 - Produces, inside the test file only (not exported, no runtime dependency added):
-  - `keysOf<T>()(keys): readonly string[]` — a curried helper whose argument is a compile error unless `keys` lists **every** string key of `T` exactly once and nothing else.
+  - `keysOf<T>()(keys): readonly string[]` — a curried helper whose argument is a compile error unless `keys` lists **every** string key of `T` and nothing else; duplicates compile clean and are caught by `expectExactKeys` at runtime, not by tsc.
   - `expectExactKeys(actual: unknown, expected: readonly string[], label: string): void`
 - Produces: an nx `typecheck` target on the `integration-harness` project. `nx show project integration-harness --json` currently reports only `test` and `test:watch` under `"NPM Scripts"`; adding the script is what pulls this file into root `pnpm typecheck`.
 
@@ -10140,23 +10144,25 @@ curl -s -H "X-GH-Key: <uat publishable key>" -H "X-GH-Brand: Gundry MD" \
 
 A `null` here after the deploy means the `DESTINATION_URL_SOBJECT` value in `DestinationUrl.config.ts` is still empty or wrong — see the open input on Task 39.
 
----
 
 ---
+
 
 ### Task 41: Documentation for the v4 surface
+
+> **Locate edits by the quoted text, not by line number.** Every line citation in this task is against the *pristine* file; the task's own earlier steps shift them (Step 2 is +1, Step 3 is +2, Step 4 is +4, and so on cumulatively). Each quoted anchor is unique within its file, so search for it rather than seeking to a line.
 
 Covers the `Docs` row of Workstream 1 and the "Reconcile the routing doc" item of Workstream 3. No unit test exists for prose, so every step is verified by grep plus a real `pnpm build` — the SDK build concatenates both READMEs into `dist/llms-full.txt` (`packages/sdk/scripts/build-llms.mjs:68-88`), so a README edit that does not land there did not land at all.
 
 **Files:**
 - Modify: `/Users/stevenhall/Code/hippo-shop/packages/sdk/README.md` (Contents lines 20–40; observer bullet line 117; script-config table lines 131–135; attribute reference table lines 160–173; new section inserted between line 367 and `## Recipes` at line 369; checkout recipe lines 496–520; `window.gh` block lines 542–556; lifecycle events lines 595–602; HTTP endpoints lines 658–664 and line 676; Safety line 750)
-- Modify: `/Users/stevenhall/Code/hippo-shop/packages/sdk/SPEC.md` (new section inserted before `## Checkout handoff` at line 71; cookie table lines 109–114; CDN URL line 12)
-- Modify: `/Users/stevenhall/Code/hippo-shop/packages/types/README.md` (version note line 9; funnel example lines 65–78; destination example lines 80–119)
-- Modify: `/Users/stevenhall/Code/hippo-shop/docs/architecture/kong-public-routing.md` (header line 3; diagram lines 7–18; new section after the Route table which ends line 77; new section before `## Verification` at line 192; smoke test lines 234–263)
+- Modify: `/Users/stevenhall/Code/hippo-shop/packages/sdk/SPEC.md` (CDN URL line 12; `data-gh-checkout` bullet line 53; new section inserted before `## Checkout handoff` at line 71; composed-URL contract lines 75–84; script-tag attributes lines 86–89; `checkoutUrl` lines 91–95; session accessors and `gh:session-ready` lines 97–107; cookie table lines 109–114; new `## Write calls` section inserted before `## Formatters` at line 128; Programmatic API bullets lines 161–163; lifecycle bullet line 174; `config` error row line 197; Deprecated surface lines 218–222)
+- Modify: `/Users/stevenhall/Code/hippo-shop/packages/types/README.md` (version note line 9; funnel example lines 70–78; destination example lines 83–119)
+- Modify: `/Users/stevenhall/Code/hippo-shop/docs/architecture/kong-public-routing.md` (header line 3; diagram lines 7–18; Service table `Path` row line 62; Route table `Strip Path` row line 75 and `Path Handling` row line 77; new section after the Route table which ends line 77; new section before `## Verification` at line 192; smoke test lines 234–263)
 
 **Interfaces:**
 - Consumes (documents, does not define): `window.gh.checkoutUrl(slug: string): Promise<string>` (Task 16); `window.gh.track(eventType: 'Page View'): Promise<void>` (Tasks 24–25); `window.gh.session.id(): string | undefined`; `window.gh.session.params(): ParsedParams | null`; `SESSION_ID_PATTERN: RegExp` = `/^[A-Za-z0-9._-]{1,128}$/` and `readSessionIdFromUrl(search: string): string | null` (Task 2); `SESSION_COOKIE_NAME: 'hippo_session_id'` (Task 5); `STEP_ATTR = 'data-gh-step'` / `FUNNEL_ID_ATTR = 'data-gh-funnel-id'` (Task 23); `HippoShopDestinationDTO.{id, funnelId, url}` and `HippoShopFunnelStepDTO.id` (Task 12); `GhConfig.{checkoutBase, cookieDomain}` (`packages/sdk/src/config.ts:12-15`); `PUBLIC_SDK_PATH_PREFIX = '/hippo-shop/'` (`errorHandler.middleware.ts:15`); `HippoShopController.basePath = 'hippo-shop'` (`HippoShop.controller.ts:12`)
-- Produces: two new link anchors that other docs and the changesets point at — `packages/sdk/README.md#session-attribution-and-events` and `packages/sdk/SPEC.md#session-identity-and-inbound-sessionid`. No code.
+- Produces: three new link anchors that other docs point at — `packages/sdk/README.md#session-attribution-and-events`, `packages/sdk/SPEC.md#session-identity-and-inbound-sessionid`, and `packages/sdk/SPEC.md#write-calls-session-and-funnel-events`. No code.
 
 - [ ] **Step 1: Confirm the four documents still describe the v3 surface**
 
@@ -10462,7 +10468,7 @@ Covers the `Docs` row of Workstream 1 and the "Reconcile the routing doc" item o
 
 - [ ] **Step 10: Document the two POST endpoints and what the SDK actually sends**
 
-  In `/Users/stevenhall/Code/hippo-shop/packages/sdk/README.md`, replace the Endpoints intro and table (lines 656–664):
+  In `/Users/stevenhall/Code/hippo-shop/packages/sdk/README.md`, replace the Endpoints intro and table (lines 656–666):
 
   ```md
   ### Endpoints
@@ -10515,7 +10521,7 @@ Covers the `Docs` row of Workstream 1 and the "Reconcile the routing doc" item o
     sed -i '' 's#That covers the active CDN URL (`/sdk/v4/gh.js`), the frozen v1 URL (`/sdk/v1/gh.js`), and local-dev paths.#That covers the active CDN URL (`/sdk/v4/gh.js`), the frozen `/sdk/v3/gh.js` and `/sdk/v1/gh.js` URLs, and local-dev paths.#' packages/sdk/README.md
   ```
 
-  The first `sed` rewrites four occurrences in the README (quickstart, the fallback-locator prose, the checkout recipe, and both halves of the base-URL derivation sentence) and one in `SPEC.md`'s boot example. The second updates the version-context note in both package READMEs. The third fixes the sentence that names the frozen line by name, which the blanket substitution would otherwise leave claiming v1 is the only frozen URL.
+  The first `sed` rewrites the three occurrences left in the README (quickstart, the fallback-locator prose, and both halves of the base-URL derivation sentence — the checkout recipe was already cut to v4 by Step 7) plus one in `SPEC.md`'s boot example. The second updates the version-context note in both package READMEs. The third fixes the sentence that names the frozen line by name, which the blanket substitution would otherwise leave claiming v1 is the only frozen URL. That sentence is the **one** deliberate `sdk/v3` mention left in the README — Step 31 asserts it survives.
 
 - [ ] **Step 13: Insert the session-identity section into `SPEC.md`**
 
@@ -10592,7 +10598,271 @@ Covers the `Docs` row of Workstream 1 and the "Reconcile the routing doc" item o
   The SDK does **not** read, write, or reason about `connect.sid`. That cookie is `httpOnly` and belongs to the API, so `document.cookie` can never observe it; any logic conditioned on its presence is dead code by construction.
   ```
 
-- [ ] **Step 15: Document destination identity and URL in the types README**
+- [ ] **Step 15: Add `data-gh-step` and `data-gh-funnel-id` to the SPEC's declarative attribute set**
+
+  `SPEC.md` is the contract the README's new section links to for the details, so the two new attributes have to exist here too. In `/Users/stevenhall/Code/hippo-shop/packages/sdk/SPEC.md`, replace line 53:
+
+  ```md
+  - `data-gh-checkout="<destination-slug>"` — marks the element as a checkout-handoff control. On `<a>` elements, the SDK populates `href` with the composed outbound checkout URL. On other elements (`<button>`, `<div>`, etc.), the SDK attaches a `click` handler that navigates the page to the composed URL. See [Checkout handoff](#checkout-handoff) for full details.
+  ```
+
+  with:
+
+  ```md
+  - `data-gh-checkout="<destination-slug>"` — marks the element as a checkout-handoff control. On `<a>` elements, the SDK populates `href` with the composed outbound checkout URL. On other elements (`<button>`, `<div>`, etc.), the SDK attaches a `click` handler that navigates the page to the composed URL. See [Checkout handoff](#checkout-handoff) for full details.
+  - `data-gh-step="<step-slug>"` — names the funnel step reported on the `Page View` funnel event. Accepted on any element **and** on the SDK `<script>` tag; a page element wins over the script tag. Read from the live DOM at emit time, never snapshotted at boot, so changing it is how a single-page app reports a new step. See [Write calls: session and funnel events](#write-calls-session-and-funnel-events).
+  - `data-gh-funnel-id="<salesforce-id>"` — supplies the funnel's Salesforce ID directly, for pages that bind no destination. Ignored when a bound destination already yields one. Accepted on any element and on the SDK `<script>` tag. See [Write calls: session and funnel events](#write-calls-session-and-funnel-events).
+  ```
+
+  Neither attribute participates in the [Evaluation order](#evaluation-order) list — they carry no binding scope and write nothing into the DOM.
+
+- [ ] **Step 16: Rewrite the composed outbound URL contract for v4**
+
+  This block is still the v3 contract: it names `session_id` and `sub_id1`, and it knows only two base sources. In `/Users/stevenhall/Code/hippo-shop/packages/sdk/SPEC.md`, replace lines 75–84 (from the paragraph under `### \`data-gh-checkout="<destination-slug>"\`` through the `Pre-existing query keys…` paragraph):
+
+  ```md
+  Marks the element as a checkout-handoff control. On `<a>` elements, the SDK populates `href` with the composed outbound checkout URL. On other elements (`<button>`, `<div>`, etc.), the SDK attaches a `click` handler that navigates the page to the composed URL.
+
+  The composed URL is `<base>?order_form_id=<id>&session_id=<sid>&...session-params`, where:
+
+  - `<base>` is `destination.pricing.checkoutOverrideUrl` if set, else the `data-checkout-base` script-tag attribute.
+  - `order_form_id` is `destination.pricing.orderFormId`.
+  - `session_id` is the SDK's `sessionId` cookie value (empty until `gh:session-ready` fires).
+  - `utm_*` and `sub_id1`–`sub_id5` come from the parsed landing URL (omitted if empty).
+
+  Pre-existing query keys on the base URL are preserved; SDK-added keys do not clobber author-supplied ones. If no base URL is configured (no `data-checkout-base` AND no `checkoutOverrideUrl`), the SDK sets `href="#"` and logs a debug warning.
+  ```
+
+  with:
+
+  ```md
+  Marks the element as a checkout-handoff control. On `<a>` elements, the SDK populates `href` with the composed outbound checkout URL. On other elements (`<button>`, `<div>`, etc.), the SDK attaches a `click` handler that navigates the page to the composed URL.
+
+  **Base resolution — three sources, first one present wins:**
+
+  | Order | Source | When it applies |
+  |---|---|---|
+  | 1 | `destination.pricing.checkoutOverrideUrl` | Per-destination override on the DTO |
+  | 2 | `destination.url` | The destination's own absolute URL. The normal case |
+  | 3 | `data-checkout-base` on the script tag | Brand-level fallback for destinations Salesforce has no URL for |
+
+  **Appended parameters**, in this order, each omitted when its value is empty:
+
+  `order_form_id` (from `destination.pricing.orderFormId`), `sessionid` (the resolved session id — see [Session identity](#session-identity-and-inbound-sessionid)), `utm_source`, `utm_medium`, `utm_campaign`, `utm_campaign_id`, `utm_content`, `utm_term`, `utm_chat`, `utm_action`, `off_id`, `aff_id`, `subid1`, `subid2`, `subid3`, `subid4`, `subid5`, `landing_url`, `referral_url`, `sales_funnel`, the seven raw click-ids (`fbclid`, `gclid`, `ScCid`, `qclid`, `twclid`, `ndclid`, `wbraid`), then `origdsidOrig` and `origsplitTestingFunnelIdOrig` forwarded verbatim from the current URL.
+
+  The key is `sessionid` — one word, lowercase, matching the inbound handoff key the SDK itself reads. Affiliate sub-ids are `subid1`–`subid5`, not `sub_id1`–`sub_id5`.
+
+  Pre-existing query keys on the base URL are preserved; SDK-added keys do not clobber author-supplied ones. Values are never truncated. If none of the three base sources yields a URL, the SDK sets `href="#"` on `[data-gh-checkout]` elements and logs a debug warning; `gh.checkoutUrl()` rejects with a `config` `GhError` instead (see [Error contract](#error-contract)).
+  ```
+
+- [ ] **Step 17: Rewrite the SPEC's script-tag attributes subsection**
+
+  In `/Users/stevenhall/Code/hippo-shop/packages/sdk/SPEC.md`, replace lines 86–89:
+
+  ```md
+  ### Script-tag attributes (Cluster F additions)
+
+  - `data-checkout-base="https://checkout.brand.com"` — required if any page on this brand uses `[data-gh-checkout]` or `gh.checkoutUrl()` without per-destination overrides. Optional otherwise.
+  - `data-cookie-domain=".brand.com"` — optional explicit override for the brand's root cookie domain. When absent, the SDK auto-detects via the safe-TLD allowlist: `com, net, org, io, app, dev, ai, co, us, store, shop`. Multi-part TLDs (`.co.uk`, `.com.au`) require this attribute.
+  ```
+
+  with:
+
+  ```md
+  ### Script-tag attributes
+
+  - `data-checkout-base="https://checkout.brand.com"` — brand-level fallback base URL, source 3 of the ladder above. Required only if a page uses `[data-gh-checkout]` or `gh.checkoutUrl()` against destinations that carry neither a `checkoutOverrideUrl` nor a `url`. Optional otherwise.
+  - `data-cookie-domain=".brand.com"` — optional explicit `Domain` for the `hippo_session_id` cookie. When absent, the SDK auto-detects the registrable root via the safe-TLD allowlist: `com, net, org, io, app, dev, ai, co, us, store, shop`. Multi-part TLDs (`.co.uk`, `.com.au`, `.co.jp`) require this attribute; without it the cookie falls back to host-only and the cross-subdomain handoff stops working.
+  - `data-gh-step` / `data-gh-funnel-id` — also accepted on the script tag as page-wide defaults for funnel events. See [Write calls: session and funnel events](#write-calls-session-and-funnel-events).
+  ```
+
+- [ ] **Step 18: Make `checkoutUrl` async in the SPEC and document `gh.track`**
+
+  The closure-capture warning describes v3 behaviour that v4 inverts: the identity is now stable and the function is async. In `/Users/stevenhall/Code/hippo-shop/packages/sdk/SPEC.md`, replace lines 91–95:
+
+  ```md
+  ### `window.gh.checkoutUrl(slug: string): string`
+
+  Returns the composed checkout URL for the destination identified by `slug`, without navigating. Throws if the destination is not yet cached or if no base URL is configured.
+
+  **Important — closure-capture gotcha:** Always call `window.gh.checkoutUrl(slug)` directly on each use. Do NOT cache the function reference, e.g., `const fn = window.gh.checkoutUrl; fn('slug')`. The SDK swaps the underlying closure when the session resolves so subsequent calls pick up the real `session_id` — a cached reference would keep returning URLs with an empty `session_id` indefinitely.
+  ```
+
+  with:
+
+  ````md
+  ### `window.gh.checkoutUrl(slug: string): Promise<string>`
+
+  Resolves with the composed checkout URL for the destination identified by `slug`, without navigating. It awaits session resolution and fetches the destination when it is not already cached, so it can never resolve with a URL whose `sessionid` or attribution is silently missing. Rejects with a `config` `GhError` when no base URL resolves, and with the usual data-layer `GhError` codes when the destination fetch fails.
+
+  **The function identity is stable.** Capturing the reference — `const buy = window.gh.checkoutUrl`, a GTM variable, a React prop — is supported. The function reads live session state through a thunk rather than closing over a snapshot, so a captured reference behaves identically to a fresh property read for the life of the page. This reverses the v3 rule and is one of the reasons v4 is a major.
+
+  **Awaiting inside a click handler breaks the user-gesture chain**, so `window.open(await window.gh.checkoutUrl(slug))` is popup-blocked in every major browser. Assign `window.location.href` instead, or resolve the URL before the click and keep the handler synchronous. The README carries the worked example.
+
+  ### `window.gh.track(eventType: 'Page View'): Promise<void>`
+
+  Emits a funnel event programmatically, for single-page apps whose route change does not alter the DOM in a way the `MutationObserver` catches. `'Page View'` is the only accepted event type in v4; any other value rejects with `bad_request`.
+
+  It honours the same per-page-load dedupe guard as the automatic emit — keyed on the session id, the event type, and the step — so calling it without first changing `data-gh-step` is a deliberate no-op, not an error. Resolves (never rejects) when the event is dropped for a missing funnel ID. See [Write calls: session and funnel events](#write-calls-session-and-funnel-events).
+  ````
+
+- [ ] **Step 19: Correct the session accessors and the `gh:session-ready` detail shape**
+
+  `params` is no longer nullable-on-skip and the detail no longer carries `hasConnectSid`. In `/Users/stevenhall/Code/hippo-shop/packages/sdk/SPEC.md`, replace lines 97–107:
+
+  ```md
+  ### `window.gh.session.id(): string | undefined`
+
+  Returns the current `sessionId` cookie value, or `undefined` if `gh:session-ready` hasn't fired yet.
+
+  ### `window.gh.session.params(): ParsedParams | null`
+
+  Returns the session parameters parsed from the landing URL and posted to `/session` during this visit, or `null` when the SDK skipped the POST (e.g., `connect.sid` cookie was already present).
+
+  ### Event: `gh:session-ready`
+
+  Fires on `window` after `ensureSession` resolves (success or graceful failure). `event.detail` is `{ sessionId: string, hasConnectSid: boolean, params: ParsedParams | null }`. Useful for page authors who fire analytics events that need the session ID.
+  ```
+
+  with:
+
+  ```md
+  ### `window.gh.session.id(): string | undefined`
+
+  Returns the resolved session id — the value of the `hippo_session_id` cookie — or `undefined` before `gh:session-ready` fires.
+
+  ### `window.gh.session.params(): ParsedParams | null`
+
+  Returns the attribution parsed from the landing URL for this visit. `null` only before session resolution settles; after `gh:session-ready` it is always an object, empty when the landing URL carried no attribution at all. It is **not** gated on the session POST succeeding — parsing is client-side.
+
+  ### Event: `gh:session-ready`
+
+  Fires once on `window` after session resolution settles, on success **and** on swallowed failure. `event.detail` is `{ sessionId: string, adopted: boolean, params: ParsedParams }`:
+
+  | Field | Type | Meaning |
+  |---|---|---|
+  | `sessionId` | `string` | The resolved id. Always populated — the id resolves client-side, so a failed session POST does not blank it |
+  | `adopted` | `boolean` | `true` exactly when the id came from `?sessionid=` on this page load, i.e. step 1 of the [resolution ladder](#session-identity-and-inbound-sessionid) |
+  | `params` | `ParsedParams` | The attribution parsed from the landing URL. Never `null` on this event |
+
+  There is no `hasConnectSid` field. `connect.sid` is `httpOnly`, so the SDK could never observe it — see [Cookies managed by the SDK](#cookies-managed-by-the-sdk).
+  ```
+
+- [ ] **Step 20: Add the write-call section to the SPEC**
+
+  The SDK now writes. In `/Users/stevenhall/Code/hippo-shop/packages/sdk/SPEC.md`, insert the following between the closing line of the bookkeeping-markers section (line 126, `These markers are part of the contract — they will not change in a minor release.`) and the `## Formatters` heading at line 128:
+
+  ````md
+  ## Write calls: session and funnel events
+
+  v4 makes two `POST`s. Both are fire-and-forget: a failure degrades attribution and never surfaces as a rejected promise to page code, and neither one blocks rendering or binding.
+
+  ### `POST <base>/public/v1/session`
+
+  Registers this visit's attribution against the Commerce API's session. Sent once per page load, after the session id resolves.
+
+  | | |
+  |---|---|
+  | Body | `{ "affParameters": { …attribution, "sessionId": "<id>" } }` |
+  | Credentials | `credentials: 'include'` — the API maintains its own session cookie on this call |
+  | Empty values | **Omitted**, never sent as `""`. Every key present is treated as authoritative upstream, so a blank would erase stored attribution |
+  | Failure | Swallowed. `gh:session-ready` still fires with a resolved `sessionId` |
+
+  ### `POST <base>/public/v1/funnel-event` — `Page View`
+
+  Exactly **one** `Page View` per page load, however many destinations the page binds. Six offers on a selector are six variants of one page view.
+
+  | | |
+  |---|---|
+  | Headers | `X-GH-Event-Id: <uuid>` correlation header, in addition to the standard `X-GH-Key` / `X-GH-Brand` |
+  | Transport | `keepalive: true`, so the event survives page unload |
+  | Retries | **None**, including on `429`. A rate-limited event is a lost event, not a delayed one |
+  | Credentials | Not sent. The body is self-sufficient for attribution |
+
+  **Identity is read from the live DOM at emit time**, not snapshotted at boot:
+
+  | Source | Supplies |
+  |---|---|
+  | `data-gh-destination` / `data-gh-checkout` | The funnel and destination Salesforce IDs, out of the `HippoShopDestinationDTO` the page already fetched (`funnelId` and `id`). First match in document order wins, and `data-gh-destination` beats `data-gh-checkout` |
+  | `data-gh-step` | The funnel step slug. A page element wins over the SDK `<script>` tag |
+  | `data-gh-funnel-id` | The funnel Salesforce ID directly, for pages that bind no destination. Ignored when a bound destination already supplies one |
+
+  **No funnel ID, no event.** If neither a bound destination nor `data-gh-funnel-id` yields one, the event is dropped rather than sent with a blank ID — an event with a blank funnel ID is discarded upstream anyway. With `data-debug="true"` the drop is logged with its reason.
+
+  **Timing.** The event fires once session resolution and the first bind pass have both settled, plus a short quiet window so late-injected attributes land in the same event rather than producing a second one.
+
+  **Dedupe.** One guard per page load, keyed on session id + event type + step. It applies to the automatic emit and to [`gh.track`](#windowghtrackeventtype-page-view-promisevoid) alike, which is why changing `data-gh-step` is the precondition for a second event.
+  ````
+
+- [ ] **Step 21: Bring the Programmatic API and Lifecycle events lists in line**
+
+  Both lists still describe the v3 signatures. In `/Users/stevenhall/Code/hippo-shop/packages/sdk/SPEC.md`, replace lines 161–163:
+
+  ```md
+  - `window.gh.checkoutUrl(slug: string): string` — returns the composed checkout URL for the destination identified by `slug`, without navigating. Throws if the destination is not yet cached or if no base URL is configured. See [Checkout handoff](#checkout-handoff) for the closure-capture gotcha.
+  - `window.gh.session.id(): string | undefined` — returns the current `sessionId` cookie value, or `undefined` if `gh:session-ready` hasn't fired yet.
+  - `window.gh.session.params(): ParsedParams | null` — returns the session parameters parsed from the landing URL and posted to `/session` during this visit, or `null` when the SDK skipped the POST.
+  ```
+
+  with:
+
+  ```md
+  - `window.gh.checkoutUrl(slug: string): Promise<string>` — resolves with the composed checkout URL for the destination identified by `slug`, without navigating. Awaits session resolution and fetches the destination if needed. Rejects with a `config` `GhError` when no base URL resolves. The function identity is stable and safe to capture. See [Checkout handoff](#checkout-handoff).
+  - `window.gh.track(eventType: 'Page View'): Promise<void>` — emits a funnel event programmatically, subject to the per-page-load dedupe guard. See [Write calls: session and funnel events](#write-calls-session-and-funnel-events).
+  - `window.gh.session.id(): string | undefined` — returns the resolved session id (the `hippo_session_id` cookie value), or `undefined` before `gh:session-ready` fires.
+  - `window.gh.session.params(): ParsedParams | null` — returns the attribution parsed from the landing URL; `null` only before session resolution settles.
+  ```
+
+  Then replace line 174:
+
+  ```md
+  - **`gh:session-ready`** — fired once after `ensureSession` resolves (success or graceful failure). Payload: `CustomEvent` with `detail: { sessionId: string, hasConnectSid: boolean, params: ParsedParams | null }`. Useful for page authors who fire analytics events that need the session ID.
+  ```
+
+  with:
+
+  ```md
+  - **`gh:session-ready`** — fired once per page lifetime after session resolution settles (success or swallowed failure). Payload: `CustomEvent` with `detail: { sessionId: string, adopted: boolean, params: ParsedParams }`. `adopted` is `true` exactly when the id arrived via `?sessionid=`. This is the only point at which `window.gh.session.id()` is guaranteed to be populated, so it is the hook for page-owned analytics.
+  ```
+
+- [ ] **Step 22: Correct the `config` error row and the deprecated-surface note**
+
+  The `config` row still describes two base sources, and the deprecation section still speaks as v3. In `/Users/stevenhall/Code/hippo-shop/packages/sdk/SPEC.md`, replace line 197:
+
+  ```md
+  | `config` | Runtime configuration error — `gh.checkoutUrl()` or `data-gh-checkout` binding cannot compose a URL because no checkout base URL is configured (script tag has no `data-checkout-base` AND the destination DTO has no `checkoutOverrideUrl`). Thrown by `gh.checkoutUrl()`; `[data-gh-checkout]` elements fall back to `href="#"` instead of throwing. |
+  ```
+
+  with:
+
+  ```md
+  | `config` | Runtime configuration error — `gh.checkoutUrl()` or a `data-gh-checkout` binding cannot compose a URL because **none** of the three base sources resolved: the destination DTO has no `pricing.checkoutOverrideUrl`, no `url`, and the script tag has no `data-checkout-base`. `gh.checkoutUrl()` rejects with it; `[data-gh-checkout]` elements fall back to `href="#"` instead. |
+  ```
+
+  Then replace lines 218–222:
+
+  ```md
+  ## Deprecated surface
+
+  None in v3.0.0.
+
+  Historical note: pre-v3 SDK builds carried a client-side shim (`enrichProduct`) that built `*List` and `*ByQuantity` fields from legacy DTO arrays. v3 removed both the legacy DTO arrays and the shim — the SDK is now a thin pass-through for product responses.
+  ```
+
+  with:
+
+  ```md
+  ## Deprecated surface
+
+  None in v4.0.0. Two v3 surfaces were **removed** rather than deprecated, which is what makes v4 a major:
+
+  - `window.gh.checkoutUrl(slug): string` is now `Promise<string>`. A v3 caller that used the return value directly receives a `Promise` where it expected a string. The v3 closure-capture warning is also retired — the identity is stable now.
+  - The `sessionId` cookie is replaced by `hippo_session_id`. Nothing reads the old name, so a visitor carrying only the v3 cookie is treated as new on their first v4 page load.
+
+  Historical note: pre-v3 SDK builds carried a client-side shim (`enrichProduct`) that built `*List` and `*ByQuantity` fields from legacy DTO arrays. v3 removed both the legacy DTO arrays and the shim — the SDK is now a thin pass-through for product responses.
+  ```
+
+- [ ] **Step 23: Document destination identity and URL in the types README**
 
   In `/Users/stevenhall/Code/hippo-shop/packages/types/README.md`, replace the opening of the `HippoShopDestinationDTO` example (lines 83–88):
 
@@ -10633,9 +10903,21 @@ Covers the `Docs` row of Workstream 1 and the "Reconcile the routing doc" item o
   Everything else in the public contract is slug-keyed. These are the deliberate exception: together with `HippoShopFunnelStepDTO.id` they carry the record identity a funnel-event payload needs (`funnelSTFId`, `mainFunnelId`, `destinationId`, `funnelSTPId`) out of a destination fetch a page is already making. All three are **required** on the DTO — `url` is nullable, but the key is always present.
   ```
 
-- [ ] **Step 16: Document the funnel-step `id` in the types README**
+- [ ] **Step 24: Document the funnel-step `id` in the types README**
 
   In `/Users/stevenhall/Code/hippo-shop/packages/types/README.md`, replace the `steps` array of the `HippoShopFunnelDTO` example (lines 70–76):
+
+  ```json
+    "steps": [
+      { "stepNumber": 1, "slug": "vsl", "name": "Video Sales Letter", "kind": "landing" },
+      { "stepNumber": 2, "slug": "checkout", "name": "Order Form", "kind": "order-form" },
+      { "stepNumber": 3, "slug": "discount-bump", "name": "10% Off Bump", "kind": "bump" },
+      { "stepNumber": 4, "slug": "upsell-3mo", "name": "3-Month Upsell", "kind": "upsell" },
+      { "stepNumber": 5, "slug": "thank-you", "name": "Thank You", "kind": "thank-you" }
+    ]
+  ```
+
+  with:
 
   ```json
     "steps": [
@@ -10647,13 +10929,25 @@ Covers the `Docs` row of Workstream 1 and the "Reconcile the routing doc" item o
     ]
   ```
 
-  and add this sentence directly beneath that example's closing fence (currently line 78):
+  Then insert a sentence between that example's closing fence (line 78) and the next heading. Current text:
 
-  ```md
-  `HippoShopFunnelStepDTO.id` is the step's Salesforce ID — required, and the counterpart to `HippoShopDestinationDTO.funnelId`. A consumer matches a step by `slug` and reads `id` off it.
+  ````md
   ```
 
-- [ ] **Step 17: Read the live Kong route and service config for the public-v1 stack**
+  ### `HippoShopDestinationDTO`
+  ````
+
+  Replacement:
+
+  ````md
+  ```
+
+  `HippoShopFunnelStepDTO.id` is the step's Salesforce ID — required, and the counterpart to `HippoShopDestinationDTO.funnelId`. A consumer matches a step by `slug` and reads `id` off it.
+
+  ### `HippoShopDestinationDTO`
+  ````
+
+- [ ] **Step 25: Read the live Kong route and service config for the public-v1 stack**
 
   ```bash
   KONG_ADMIN=<uat-gateway-admin-url> \
@@ -10663,26 +10957,50 @@ Covers the `Docs` row of Workstream 1 and the "Reconcile the routing doc" item o
     | jq '{protocol, host, port, path}'
   ```
 
-  Record the four values that determine the rewrite: route `paths`, route `strip_path`, route `path_handling`, and service `path`. The next step's prose asserts the standard OSS mechanism — route `strip_path: on` with a service `path` of `/hippo-shop` — which is the only plugin-free way to produce the observed upstream path on Kong OSS 3.9.1. **If the Admin API returns something else** (a `pre-function` plugin doing `kong.service.request.set_path`, or a different `path_handling` mode), replace the "How the rewrite is done" paragraph with what it actually returned, and correct the `Path` row of the [Service](#service) table and the `Strip Path` row of the [Route](#route) table to match. Do not leave the tables describing a pass-through that the gateway does not perform.
+  Record the four values that determine the rewrite: route `paths`, route `strip_path`, route `path_handling`, and service `path`. Steps 26–28 assert the standard OSS mechanism — route `paths: ["/public/v1"]` with `strip_path: on` and a service `path` of `/hippo-shop/v1`, which joins to the observed upstream `/hippo-shop/v1/product/x` and is the only plugin-free way to produce it on Kong OSS 3.9.1.
 
-- [ ] **Step 18: Correct the Kong doc's header line and At-a-glance diagram**
+  **If the Admin API returns something else** — a `pre-function` plugin calling `kong.service.request.set_path`, a different `path_handling`, or a service path of `/hippo-shop` paired with a route path of `/public` — then edit the table rows in Step 27 and the "How the rewrite is done" paragraph in Step 28 to the values you just recorded. Those two edits are **not optional**; only their content is negotiable. The one outcome that is not acceptable is leaving the tables describing a pass-through the gateway does not perform.
+
+- [ ] **Step 26: Correct the Kong doc's header line and At-a-glance diagram**
 
   In `/Users/stevenhall/Code/hippo-shop/docs/architecture/kong-public-routing.md`, replace line 3:
+
+  ```md
+  How the public `/public/v1/*` route is wired in Kong — the service, the route, the six plugins, and the order they run in. Companion to [`cloudflare-deploy.md`](./cloudflare-deploy.md), which covers the SDK delivery path (active: `/sdk/v3/gh.js`; frozen: `/sdk/v1/gh.js`).
+  ```
+
+  with:
 
   ```md
   How the public `/public/v1/*` routes are wired in Kong — the service, the path rewrite onto the Commerce API's internal `/hippo-shop/v1/*` mount, the read route's six plugins and the order they run in, and the two Cluster G write routes. Companion to [`cloudflare-deploy.md`](./cloudflare-deploy.md), which covers the SDK delivery path (active: `/sdk/v4/gh.js`; frozen: `/sdk/v3/gh.js` and `/sdk/v1/gh.js`).
   ```
 
-  and replace the diagram at lines 7–18:
+  Then replace the diagram at lines 7–18. Current content:
 
   ```
   Embedding page                Kong (api-{uat,prod}.goldenhippo.io)         Commerce API (private)
-  ────────────────────────  ─────────────────────────────────────────────  ──────────────────────────
-  GET /public/v1/product/x  ─►  Route /public/v1 matches                  ─►  GET /hippo-shop/v1/product/x
-  X-GH-Key: gh_pk_…             0.  path rewrite   /public/… → /hippo-shop/…  X-Brand: Gundry MD
-  X-GH-Brand: Gundry MD         1.  cors           preflight + headers        (consumer headers from
-  Origin: https://…             2.  key-auth       gh_pk_* → consumer          Kong: X-Consumer-Id,
-                                3.  rate-limiting  per-consumer 60/min         X-Consumer-Username)
+  ────────────────────────  ─────────────────────────────────────────────  ────────────────────────
+  GET /public/v1/product/x  ─►  Route /public/v1 matches                  ─►  GET /public/v1/product/x
+  X-GH-Key: gh_pk_…             1.  cors           preflight + headers        X-Brand: Gundry MD
+  X-GH-Brand: Gundry MD         2.  key-auth       gh_pk_* → consumer         (consumer headers from
+  Origin: https://…             3.  rate-limiting  per-consumer 60/min         Kong: X-Consumer-Id,
+                                4.  request-trans. rename X-GH-Brand→X-Brand   X-Consumer-Username)
+                                5.  proxy-cache    serve hit / store miss
+                                6.  response-trans. strip leak-prone headers
+                                (response phase: cors adds Access-Control-*)
+  ```
+
+  Replacement:
+
+  ```
+  Embedding page                Kong (api-{uat,prod}.goldenhippo.io)            Commerce API (private)
+  ────────────────────────  ────────────────────────────────────────────────  ──────────────────────────
+  GET /public/v1/product/x  ─►  Route /public/v1 matches                     ─►  GET /hippo-shop/v1/product/x
+  X-GH-Key: gh_pk_…             0.  path rewrite   strip /public/v1,             X-Brand: Gundry MD
+  X-GH-Brand: Gundry MD             prepend service path /hippo-shop/v1          (consumer headers from
+  Origin: https://…             1.  cors           preflight + headers            Kong: X-Consumer-Id,
+                                2.  key-auth       gh_pk_* → consumer             X-Consumer-Username)
+                                3.  rate-limiting  per-consumer 60/min
                                 4.  request-trans. rename X-GH-Brand→X-Brand
                                 5.  proxy-cache    serve hit / store miss
                                 6.  response-trans. strip leak-prone headers
@@ -10691,7 +11009,47 @@ Covers the `Docs` row of Workstream 1 and the "Reconcile the routing doc" item o
 
   Step 0 is not a plugin — it is route/service path configuration, applied before any plugin runs. It is numbered here only so the hop is visible in the same picture as the plugins.
 
-- [ ] **Step 19: Document the path rewrite and its coupling to `PUBLIC_SDK_PATH_PREFIX`**
+- [ ] **Step 27: Correct the Service and Route tables to describe the rewrite, not a pass-through**
+
+  These two rows are the source of the doc's central false claim: they say the path reaches the upstream unchanged, which no `/public/v1` request has ever done. The corrections are unconditional — the only variable is the values, per Step 25.
+
+  In `/Users/stevenhall/Code/hippo-shop/docs/architecture/kong-public-routing.md`, replace the Service table's `Path` row (line 62):
+
+  ```md
+  | Path | *empty* — paths flow through unchanged |
+  ```
+
+  with:
+
+  ```md
+  | Path | `/hippo-shop/v1` — prepended to the stripped request path. This is where the Commerce API actually mounts these handlers; see [Path rewrite](#path-rewrite--publicv1--hippo-shopv1) |
+  ```
+
+  Then replace the Route table's `Strip Path` row (line 75):
+
+  ```md
+  | Strip Path | **off** | Upstream needs the full `/public/v1/…` path — that's where its handlers are mounted |
+  ```
+
+  with:
+
+  ```md
+  | Strip Path | **on** | Kong removes the matched `/public/v1` prefix before proxying, and the service `path` above supplies `/hippo-shop/v1` in its place. `/public` is not a path any Express router in the Commerce API answers |
+  ```
+
+  And replace the Route table's `Path Handling` row (line 77):
+
+  ```md
+  | Path Handling | `v0` (default) | Service has no path; v0/v1 behave identically here |
+  ```
+
+  with:
+
+  ```md
+  | Path Handling | `v0` (default) | The service now has a path. With `strip_path` on, the stripped remainder always begins with `/`, so `v0` and `v1` join service path + remainder to the same upstream path. Leave it at the default and confirm against the value recorded in Step 25 |
+  ```
+
+- [ ] **Step 28: Document the path rewrite and its coupling to `PUBLIC_SDK_PATH_PREFIX`**
 
   In `/Users/stevenhall/Code/hippo-shop/docs/architecture/kong-public-routing.md`, insert the following between the end of the `## Route` table (line 77) and the `## Plugin priorities (the order things run in)` heading (line 79):
 
@@ -10707,7 +11065,7 @@ Covers the `Docs` row of Workstream 1 and the "Reconcile the routing doc" item o
 
   **Why the upstream path is `/hippo-shop`.** `HippoShopController.basePath = 'hippo-shop'` (`src/controllers/hippo-shop/HippoShop.controller.ts:12`) and its routes are declared as `/v1/product/:productSlugOrId`, `/v1/funnel/:funnelSlugOrId`, `/v1/destination/:destinationSlugOrId`. The controller mounts at `/hippo-shop`; `/public` is not a path any Express router in the Commerce API answers. The public prefix exists only at the edge.
 
-  **How the rewrite is done.** Route `strip_path: on` with a service `path` of `/hippo-shop`: Kong strips the matched `/public` prefix from the incoming path and prepends the service path, yielding `/hippo-shop/v1/…`. No plugin is involved, and nothing in the request body or headers is touched.
+  **How the rewrite is done.** Route `strip_path: on` with a service `path` of `/hippo-shop/v1`. Kong strips the matched route path `/public/v1` from the incoming path, leaving `/product/bio-complete-3`, then prepends the service path, yielding `/hippo-shop/v1/product/bio-complete-3`. No plugin is involved, and nothing in the request body or headers is touched. The [Service](#service) and [Route](#route) tables above carry exactly these two values.
 
   > **This documents behaviour that shipped before it was written down.** The rewrite has been live in UAT and production since the first `/public/v1` route was published. Earlier revisions of this file described a straight pass-through, which never matched the running gateway — the SDK calls `/public/v1/*` and works, and the only handlers that exist are at `/hippo-shop/v1/*`.
 
@@ -10728,13 +11086,13 @@ Covers the `Docs` row of Workstream 1 and the "Reconcile the routing doc" item o
 
   | Side | Value | Where |
   |---|---|---|
-  | Kong rewrite target | `/hippo-shop/v1/…` | Route `strip_path` + service `path`, above |
+  | Kong rewrite target | `/hippo-shop/v1/…` | Service `path` + route `strip_path`, above |
   | Commerce prefix test | `/hippo-shop/` | `errorHandler.middleware.ts:15` |
 
   Step 8 of the smoke test below is the check that catches drift.
   ````
 
-- [ ] **Step 20: Document the two Cluster G write routes**
+- [ ] **Step 29: Document the two Cluster G write routes**
 
   In `/Users/stevenhall/Code/hippo-shop/docs/architecture/kong-public-routing.md`, insert the following between the end of the `## 6. response-transformer` section (the paragraph ending `Don't list nested paths here and assume they're stripped.`, line 190) and the `## Verification — the consolidated smoke test` heading (line 192):
 
@@ -10794,7 +11152,7 @@ Covers the `Docs` row of Workstream 1 and the "Reconcile the routing doc" item o
   Follow-up rather than pilot scope: six sequential destination `GET`s per page is an N+1 shape. A batch destination endpoint would cut a page load from eight requests to three. Flagged here because the tier is being sized against the unbatched number.
   ````
 
-- [ ] **Step 21: Add the error-shape drift check to the smoke test**
+- [ ] **Step 30: Add the error-shape drift check to the smoke test**
 
   In `/Users/stevenhall/Code/hippo-shop/docs/architecture/kong-public-routing.md`, add this block inside the smoke-test fenced script, immediately after step 7's `done | sort | uniq -c` line:
 
@@ -10816,23 +11174,58 @@ Covers the `Docs` row of Workstream 1 and the "Reconcile the routing doc" item o
   | SDK reports `server` for every API error and never `not_found` / `forbidden`; `retryAfterMs` is always `null` | The rewrite target no longer starts with `/hippo-shop/`, so `errorHandler.middleware.ts:15` emits the internal `IError` shape and the SDK finds no `body.code` |
   ```
 
-- [ ] **Step 22: Verify every claim landed, and that the built docs bundle carries it**
+- [ ] **Step 31: Verify every claim landed, and that the built docs bundle carries it**
+
+  **(a) The new v4 content is present in all four documents.** Each `grep -c` must print a non-zero count, and the two `grep -n` calls must each print their heading line:
 
   ```bash
   cd /Users/stevenhall/Code/hippo-shop && \
     grep -c "Three events fire\|gh:session-ready\|hippo_session_id\|?sessionid=\|data-gh-step\|data-gh-funnel-id\|window.open\|data-checkout-base\|data-cookie-domain" packages/sdk/README.md && \
     grep -n "^## Session identity and inbound" packages/sdk/SPEC.md && \
+    grep -n "^## Write calls: session and funnel events" packages/sdk/SPEC.md && \
     grep -c "SESSION_ID_PATTERN\|session fixation\|analytics only\|adopting ?sessionid= handoff" packages/sdk/SPEC.md && \
+    grep -c "hippo_session_id\|subid1\|destination.url\|Promise<string>\|gh.track\|adopted" packages/sdk/SPEC.md && \
     grep -c "funnelId\|\"url\"\|a0P0m000002Stp1EAC" packages/types/README.md && \
-    grep -c "hippo-shop/v1\|PUBLIC_SDK_PATH_PREFIX\|funnel-event\|/public/v1/session" docs/architecture/kong-public-routing.md && \
-    grep -rn "sdk/v3\|Two events fire\|sends no analytics\|Cookies managed by the SDK (Cluster F)" packages/sdk/README.md packages/sdk/SPEC.md packages/types/README.md docs/architecture/kong-public-routing.md; \
+    grep -c "hippo-shop/v1\|PUBLIC_SDK_PATH_PREFIX\|funnel-event\|/public/v1/session" docs/architecture/kong-public-routing.md
+  ```
+
+  **(b) No page is still told to load v3, but the historical mentions survive.** These are two different questions and the earlier draft of this step conflated them — Step 12 *deliberately* keeps a `sdk/v3` mention (the frozen-URL sentence), so a blanket `sdk/v3` ban can never pass. Check the live `src=` separately from the prose:
+
+  ```bash
+  cd /Users/stevenhall/Code/hippo-shop && \
+    grep -rn 'src="[^"]*sdk/v3' packages/sdk/README.md packages/sdk/SPEC.md; \
+    grep -c 'sdk/v4/gh.js' packages/sdk/README.md packages/sdk/SPEC.md; \
+    grep -c 'sdk/v3' packages/sdk/README.md packages/sdk/SPEC.md packages/types/README.md docs/architecture/kong-public-routing.md; \
+    grep -n 'the frozen `/sdk/v3/gh.js` and `/sdk/v1/gh.js` URLs' packages/sdk/README.md; \
+    grep -n 'frozen: `/sdk/v3/gh.js` and `/sdk/v1/gh.js`' docs/architecture/kong-public-routing.md
+  ```
+
+  Expected output, exactly:
+
+  - The first `grep -rn` prints **nothing** and exits 1 — no `<script src=…>` anywhere still points at v3.
+  - The second prints `packages/sdk/README.md:4` and `packages/sdk/SPEC.md:1` — the quickstart tag, the fallback-locator sentence, the checkout recipe tag, and the base-URL derivation sentence in the README; the boot example in the SPEC.
+  - The third prints `packages/sdk/README.md:1`, `packages/sdk/SPEC.md:0`, `packages/types/README.md:0`, `docs/architecture/kong-public-routing.md:1` — exactly two surviving `sdk/v3` mentions repo-wide, both of them the frozen-URL prose.
+  - The last two `grep -n` calls each print **one** line: the README's fallback-locator sentence (its line number has shifted from 137 by the insertions above it) and `3:` in the Kong doc. Zero hits from either means Step 12's third `sed` or Step 26 did not land and the frozen line was lost.
+
+  **(c) No retired v3 claim survives.** This grep must print **nothing** and exit 1, which is why it is `;`-separated. `connect.sid` and `sessionId` are deliberately absent from the list — Step 14 keeps a `connect.sid` sentence on purpose, and `sessionId` remains as the `gh:session-ready` detail field and the session POST body key:
+
+  ```bash
+  cd /Users/stevenhall/Code/hippo-shop; \
+    grep -rn 'Two events fire\|sends no analytics\|Cookies managed by the SDK (Cluster F)\|Script-tag attributes (Cluster F additions)\|hasConnectSid\|sub_id1\|session_id\|closure-capture\|sessionId` cookie value\|None in v3.0.0\|paths flow through unchanged\|Upstream needs the full' \
+    packages/sdk/README.md packages/sdk/SPEC.md packages/types/README.md docs/architecture/kong-public-routing.md
+  ```
+
+  **(d) The published documentation bundle carries the README edits:**
+
+  ```bash
+  cd /Users/stevenhall/Code/hippo-shop && \
     pnpm --filter @goldenhippo/hippo-shop-sdk build && \
     grep -c "Session, attribution, and events\|hippo_session_id\|popup-blocked\|funnelId" packages/sdk/dist/llms-full.txt
   ```
 
-  Expect non-zero counts from each of the five `grep -c` calls; the `grep -rn` for the retired strings must print **nothing** (exit 1, which is why it is `;`-separated rather than `&&`); `build-llms` must log `wrote …/llms-full.txt`; and the final count must be non-zero — `dist/llms-full.txt` is the concatenation of both READMEs that ships to `/sdk/v4/llms-full.txt`, so a zero there means the README edits are not in the published documentation bundle.
+  `build-llms` must log `wrote …/llms-full.txt` and the count must be non-zero — `dist/llms-full.txt` is the concatenation of both READMEs that ships to `/sdk/v4/llms-full.txt`, so a zero there means the README edits are not in the published documentation bundle.
 
-- [ ] **Step 23: Commit**
+- [ ] **Step 32: Commit**
 
   ```bash
   cd /Users/stevenhall/Code/hippo-shop && \
@@ -10848,22 +11241,30 @@ Covers the `Docs` row of Workstream 1 and the "Reconcile the routing doc" item o
   gh:session-ready joins the lifecycle events, and the 'read-only, no analytics'
   claim is corrected — v4 posts a session and a funnel event.
 
-  SPEC: a session-identity section covering the D1 ladder, SESSION_ID_PATTERN,
-  and the fact that the SDK trusts and adopts a URL-supplied id. That note is
-  one of D1's three named mitigations for accepting session fixation, so it is
-  required, not editorial. The Cluster F cookie table it supersedes named
-  sessionId and connect.sid, both of which v4 removes.
+  SPEC: brought to the v4 contract, not just extended. New session-identity
+  section covering the D1 ladder, SESSION_ID_PATTERN, and the fact that the SDK
+  trusts and adopts a URL-supplied id — that note is one of D1's three named
+  mitigations for accepting session fixation, so it is required, not editorial.
+  The v3 body is rewritten to match: the outbound param set is sessionid and
+  subid1-5 (not session_id / sub_id1) with base resolution through
+  destination.url, checkoutUrl is async with a stable identity instead of the
+  closure-capture gotcha, gh:session-ready carries { sessionId, adopted, params }
+  with no hasConnectSid, gh.track and the two write calls are documented, and the
+  Cluster F cookie table naming sessionId and connect.sid is retired. Without
+  this the README's new text linked readers to a spec describing v3.
 
   types: destination id, funnelId and url, and the funnel-step id — the record
   identity a funnel event needs out of a fetch the page already makes.
 
   kong-public-routing: the /public/v1/* -> /hippo-shop/v1/* rewrite has been
   live since the first public route shipped and was never written down; the doc
-  described a pass-through the gateway has never performed. Adds the two write
-  routes, and pins the coupling to PUBLIC_SDK_PATH_PREFIX
-  (errorHandler.middleware.ts:15) — if the prefix drifts from the rewrite,
-  success responses stay green while error responses silently regress to the
-  internal IError shape and the SDK's body.code parsing finds nothing."
+  described a pass-through the gateway has never performed. The Service Path and
+  Route Strip Path rows now say what Kong actually does instead of contradicting
+  the prose beneath them. Adds the two write routes, and pins the coupling to
+  PUBLIC_SDK_PATH_PREFIX (errorHandler.middleware.ts:15) — if the prefix drifts
+  from the rewrite, success responses stay green while error responses silently
+  regress to the internal IError shape and the SDK's body.code parsing finds
+  nothing."
   ```
 
 ---
@@ -11012,77 +11413,77 @@ Covers the `Docs` row of Workstream 1 and the "Reconcile the routing doc" item o
 
 - [ ] **Step 10: Push the branch**
 
-  ```bash
-  cd /Users/stevenhall/Code/hippo-shop && git push -u origin feat/cluster-g-superfunnel-pilot
-  ```
+```bash
+cd /Users/stevenhall/Code/hippo-shop && git push -u origin feat/cluster-g-superfunnel-pilot
+```
 
   The branch has no remote yet — `origin` currently holds only `main`, `changeset-release/main`, and `feat/cluster-f-session-utm-checkout-handoff`.
 
 - [ ] **Step 11: Write the PR body**
 
-  ```bash
-  cat > /tmp/cluster-g-pr-body.md <<'MD'
-  ## Summary
+```bash
+cat > /tmp/cluster-g-pr-body.md <<'MD'
+## Summary
 
-  Cluster G realigns the Hippo Shop SDK with Golden Hippo's canonical session and attribution model (`hippo-builder-funnel`) so Superfunnel.ai-hosted pages on a brand subdomain hand off to checkout with attribution intact, and adds `Page View` funnel events and destination-URL navigation on top.
+Cluster G realigns the Hippo Shop SDK with Golden Hippo's canonical session and attribution model (`hippo-builder-funnel`) so Superfunnel.ai-hosted pages on a brand subdomain hand off to checkout with attribution intact, and adds `Page View` funnel events and destination-URL navigation on top.
 
-  **This supersedes #17 (Cluster F), which closes unmerged.** Cluster F built the first cut of this layer without access to the canonical table and guessed several contracts wrong. `feat/cluster-g-superfunnel-pilot` is branched off `feat/cluster-f-session-utm-checkout-handoff`, so this single PR carries corrected-F plus G to `main`. Nothing of either has ever been on `main` and no npm version shipped it, so there is nothing to migrate — merging a known-wrong implementation first and correcting it in the next release would buy nothing. `ROADMAP.md` recorded F as `done (PR #17)`; that entry is corrected here and folded into a Cluster G entry.
+**This supersedes #17 (Cluster F), which closes unmerged.** Cluster F built the first cut of this layer without access to the canonical table and guessed several contracts wrong. `feat/cluster-g-superfunnel-pilot` is branched off `feat/cluster-f-session-utm-checkout-handoff`, so this single PR carries corrected-F plus G to `main`. Nothing of either has ever been on `main` and no npm version shipped it, so there is nothing to migrate — merging a known-wrong implementation first and correcting it in the next release would buy nothing. `ROADMAP.md` recorded F as `done (PR #17)`; that entry is corrected here and folded into a Cluster G entry.
 
-  ## Breaking — both packages cut as v4
+## Breaking — both packages cut as v4
 
-  No compatibility shims, dual-writes, or deprecation aliases: the 3.x line has no production consumers, so wrong behaviour is replaced rather than deprecated.
+No compatibility shims, dual-writes, or deprecation aliases: the 3.x line has no production consumers, so wrong behaviour is replaced rather than deprecated.
 
-  **`@goldenhippo/hippo-shop-types@4.0.0`**
+**`@goldenhippo/hippo-shop-types@4.0.0`**
 
-  - `HippoShopDestinationDTO` gains required `id` and `funnelId`, and `url: string | null` (the absolute landing URL; `null` when Salesforce has none, in which case callers fall back to their own configured checkout base).
-  - `HippoShopFunnelStepDTO` gains required `id`.
-  - Producers must supply all four. Consumers gain the identity a funnel-event payload needs (`funnelSTFId`, `mainFunnelId`, `destinationId`, `funnelSTPId`) from a destination fetch they were already making — the upstream Salesforce record carried every one and the serializer discarded them.
-  - Corrects the `HippoShopDestinationDTO` docblock, which claimed "Pre-Purchase only" after being pasted from `funnel.ts`.
+- `HippoShopDestinationDTO` gains required `id` and `funnelId`, and `url: string | null` (the absolute landing URL; `null` when Salesforce has none, in which case callers fall back to their own configured checkout base).
+- `HippoShopFunnelStepDTO` gains required `id`.
+- Producers must supply all four. Consumers gain the identity a funnel-event payload needs (`funnelSTFId`, `mainFunnelId`, `destinationId`, `funnelSTPId`) from a destination fetch they were already making — the upstream Salesforce record carried every one and the serializer discarded them.
+- Corrects the `HippoShopDestinationDTO` docblock, which claimed "Pre-Purchase only" after being pasted from `funnel.ts`.
 
-  **`@goldenhippo/hippo-shop-sdk@4.0.0`**
+**`@goldenhippo/hippo-shop-sdk@4.0.0`**
 
-  - `window.gh.checkoutUrl(slug)` is **async** — it returns `Promise<string>`, awaits session resolution and warms a cold destination, so it can no longer hand back an unattributed URL. `window.open(await gh.checkoutUrl(x))` inside a click handler breaks the user-gesture chain and will be popup-blocked; assign `window.location.href` instead.
-  - Outbound links emit `sessionid` (was `session_id`) and `subid1`…`subid5` (was `sub_id1`…`sub_id5`), plus `landing_url`, `referral_url`, `sales_funnel`, the seven raw click-ids, and `origdsidOrig` / `origsplitTestingFunnelIdOrig` forwarded from the current URL. A `?session_id=` handoff was silently ignored downstream, which showed up as duplicate sessions and orphaned attribution.
-  - The session cookie is `hippo_session_id` (was `sessionId`) and its value is a UUID v4 (was a 12-character numeric string).
-  - `?sessionid=` on the landing URL is validated and adopted over any existing cookie value.
-  - The session POST is unconditional and carries `affParameters.sessionId`, so the SDK's identifier and the server's `hippoSessionId` are the same value.
-  - Click-id mapping is the canonical seven-row table (`fbclid`, `gclid`, `ScCid`, `qclid`, `twclid`, `ndclid`, `wbraid`) with correct slot semantics. 3.x wrote `subId1='fb'` and the click value into `subId5` — the two slots reversed, and a literal no platform ever emits. Values are no longer truncated at 255 characters.
-  - `connect.sid` is never read or reasoned about: it is `httpOnly`, so the gate that read it was dead code. `gh:session-ready` detail is `{ sessionId, adopted, params }` — `hasConnectSid` is gone and `params` is never `null`.
-  - Requires `@goldenhippo/hippo-shop-types@4.x`. A new major means a new CDN line: `/sdk/v4/gh.js`.
+- `window.gh.checkoutUrl(slug)` is **async** — it returns `Promise<string>`, awaits session resolution and warms a cold destination, so it can no longer hand back an unattributed URL. `window.open(await gh.checkoutUrl(x))` inside a click handler breaks the user-gesture chain and will be popup-blocked; assign `window.location.href` instead.
+- Outbound links emit `sessionid` (was `session_id`) and `subid1`…`subid5` (was `sub_id1`…`sub_id5`), plus `landing_url`, `referral_url`, `sales_funnel`, the seven raw click-ids, and `origdsidOrig` / `origsplitTestingFunnelIdOrig` forwarded from the current URL. A `?session_id=` handoff was silently ignored downstream, which showed up as duplicate sessions and orphaned attribution.
+- The session cookie is `hippo_session_id` (was `sessionId`) and its value is a UUID v4 (was a 12-character numeric string).
+- `?sessionid=` on the landing URL is validated and adopted over any existing cookie value.
+- The session POST is unconditional and carries `affParameters.sessionId`, so the SDK's identifier and the server's `hippoSessionId` are the same value.
+- Click-id mapping is the canonical seven-row table (`fbclid`, `gclid`, `ScCid`, `qclid`, `twclid`, `ndclid`, `wbraid`) with correct slot semantics. 3.x wrote `subId1='fb'` and the click value into `subId5` — the two slots reversed, and a literal no platform ever emits. Values are no longer truncated at 255 characters.
+- `connect.sid` is never read or reasoned about: it is `httpOnly`, so the gate that read it was dead code. `gh:session-ready` detail is `{ sessionId, adopted, params }` — `hasConnectSid` is gone and `params` is never `null`.
+- Requires `@goldenhippo/hippo-shop-types@4.x`. A new major means a new CDN line: `/sdk/v4/gh.js`.
 
-  ## New
+## New
 
-  - `Page View` funnel events: the 36-field payload posted to `/public/v1/funnel-event` with `keepalive: true`, gated on a resolvable funnel id, deduped in memory per page load, every error swallowed.
-  - `data-gh-step` and `data-gh-funnel-id` attributes, and `window.gh.track('Page View')` as the programmatic escape hatch.
-  - `data-gh-checkout` resolves through `destination.url`, so binding an offer navigates the visitor to that destination with attribution attached.
+- `Page View` funnel events: the 36-field payload posted to `/public/v1/funnel-event` with `keepalive: true`, gated on a resolvable funnel id, deduped in memory per page load, every error swallowed.
+- `data-gh-step` and `data-gh-funnel-id` attributes, and `window.gh.track('Page View')` as the programmatic escape hatch.
+- `data-gh-checkout` resolves through `destination.url`, so binding an offer navigates the visitor to that destination with attribution attached.
 
-  ## Fixed — latent defects in the unreleased 3.x line
+## Fixed — latent defects in the unreleased 3.x line
 
-  - `gh.checkoutUrl` is one stable function identity reading the session through a thunk. It used to be installed as a stub and then *reassigned*, so any captured reference (a GTM variable, a React prop, `const f = gh.checkoutUrl`) composed URLs with no session id and no UTMs for the life of the page, silently.
-  - The `gh:session-ready` rebind listener is registered before `ensureSession` runs, so a synchronously-resolved session still triggers a rebind.
-  - `data-gh-checkout` slugs are collected as destination resources, both `data-gh-checkout` and `data-gh-step` are in the MutationObserver's `attributeFilter`, and a completed destination load schedules a rebind — checkout links no longer strand at `href="#"`.
-  - `SPEC.md` named `/session` where the client posts `/public/v1/session`.
+- `gh.checkoutUrl` is one stable function identity reading the session through a thunk. It used to be installed as a stub and then *reassigned*, so any captured reference (a GTM variable, a React prop, `const f = gh.checkoutUrl`) composed URLs with no session id and no UTMs for the life of the page, silently.
+- The `gh:session-ready` rebind listener is registered before `ensureSession` runs, so a synchronously-resolved session still triggers a rebind.
+- `data-gh-checkout` slugs are collected as destination resources, both `data-gh-checkout` and `data-gh-step` are in the MutationObserver's `attributeFilter`, and a completed destination load schedules a rebind — checkout links no longer strand at `href="#"`.
+- `SPEC.md` named `/session` where the client posts `/public/v1/session`.
 
-  ## Release ordering — do not reorder
+## Release ordering — do not reorder
 
-  1. The `gh-hippo-shop-sdk-v4` Cloudflare Pages project and the Kong `/sdk/v4/*` route **must exist before** this merges and publishes. `wrangler@4 pages deploy` does not create the project in non-interactive CI; the v3 cut failed on exactly this and needed the rollforward in #10.
-  2. Merge here → `@goldenhippo/hippo-shop-types@4.0.0` and `@goldenhippo/hippo-shop-sdk@4.0.0` publish; the SDK deploys to `/sdk/v4/gh.js`.
-  3. **Only then** the `GH-Commerce-Service` PR (`feat/cluster-g-hippo-shop-session-destination-url`, off `prerelease`) bumps its types pin. The types release **gates** that work, and within it the pin bump (`^3.0.0` → `^4.0.0`) and the Zod schema change must be the **same commit** — `HippoShop.spec.ts:503-519` asserts bidirectional `Equals<z.infer<typeof ZHippoShopDestinationDTO>, HippoShopDestinationDTO>`, so either change alone fails `tsc`.
-  4. npm-deprecate the 3.x versions of both packages, following the 1.x/2.x precedent.
+1. The `gh-hippo-shop-sdk-v4` Cloudflare Pages project and the Kong `/sdk/v4/*` route **must exist before** this merges and publishes. `wrangler@4 pages deploy` does not create the project in non-interactive CI; the v3 cut failed on exactly this and needed the rollforward in #10.
+2. Merge here → `@goldenhippo/hippo-shop-types@4.0.0` and `@goldenhippo/hippo-shop-sdk@4.0.0` publish; the SDK deploys to `/sdk/v4/gh.js`.
+3. **Only then** the `GH-Commerce-Service` PR (`feat/cluster-g-hippo-shop-session-destination-url`, off `prerelease`) bumps its types pin. The types release **gates** that work, and within it the pin bump (`^3.0.0` → `^4.0.0`) and the Zod schema change must be the **same commit** — `HippoShop.spec.ts:503-519` asserts bidirectional `Equals<z.infer<typeof ZHippoShopDestinationDTO>, HippoShopDestinationDTO>`, so either change alone fails `tsc`.
+4. npm-deprecate the 3.x versions of both packages, following the 1.x/2.x precedent.
 
-  Genuinely parallel, owned outside these repos: the Kong `/public/v1/session` and `/public/v1/funnel-event` routes, and a rate-limit tier sized for the offer selector — roughly eight requests per page load (six destination `GET`s, one session `POST`, one event `POST`) against a documented 60/min per-consumer default, which is about seven page loads per minute for an entire brand. `proxy-cache` does not relieve it: rate limiting runs in the access phase, before the cache.
+Genuinely parallel, owned outside these repos: the Kong `/public/v1/session` and `/public/v1/funnel-event` routes, and a rate-limit tier sized for the offer selector — roughly eight requests per page load (six destination `GET`s, one session `POST`, one event `POST`) against a documented 60/min per-consumer default, which is about seven page loads per minute for an entire brand. `proxy-cache` does not relieve it: rate limiting runs in the access phase, before the cache.
 
-  ## Test plan
+## Test plan
 
-  - [x] `pnpm build && pnpm test && pnpm lint && pnpm typecheck && pnpm size` — all green
-  - [x] `pnpm changeset status --verbose` lists both packages at major `4.0.0`, nothing at minor or patch
-  - [ ] **Post-merge, once the Kong routes and the commerce PR are live** — end-to-end handoff: land on a `sf.<brand>.com` page with `?sessionid=<known>` plus UTM parameters; confirm the cookie is written at `.<brand>.com`, the POST body carries the id inside `affParameters`, clicking an offer navigates to the destination URL, and the same id arrives as `?sessionid=` and is adopted rather than re-minted.
-  - [ ] **Post-merge** — UAT reconciliation: emit a known number of `Page View` events for a fixed session id and count the rows that land in Salesforce. A `200` through the chain is not evidence: the proxy forwards the body verbatim and Salesforce triggers drop unrecognised input silently.
+- [x] `pnpm build && pnpm test && pnpm lint && pnpm typecheck && pnpm size` — all green
+- [x] `pnpm changeset status --verbose` lists both packages at major `4.0.0`, nothing at minor or patch
+- [ ] **Post-merge, once the Kong routes and the commerce PR are live** — end-to-end handoff: land on a `sf.<brand>.com` page with `?sessionid=<known>` plus UTM parameters; confirm the cookie is written at `.<brand>.com`, the POST body carries the id inside `affParameters`, clicking an offer navigates to the destination URL, and the same id arrives as `?sessionid=` and is adopted rather than re-minted.
+- [ ] **Post-merge** — UAT reconciliation: emit a known number of `Page View` events for a fixed session id and count the rows that land in Salesforce. A `200` through the chain is not evidence: the proxy forwards the body verbatim and Salesforce triggers drop unrecognised input silently.
 
-  Spec: `docs/superpowers/specs/2026-08-18-cluster-g-superfunnel-pilot-design.md`
-  Plan: `docs/superpowers/plans/2026-08-18-cluster-g-superfunnel-pilot.md`
-  MD
-  ```
+Spec: `docs/superpowers/specs/2026-08-18-cluster-g-superfunnel-pilot-design.md`
+Plan: `docs/superpowers/plans/2026-08-18-cluster-g-superfunnel-pilot.md`
+MD
+```
 
   The quoted heredoc (`<<'MD'`) is required — the body is dense with backticks and `$`-free but shell-expandable sequences.
 
@@ -11158,7 +11559,7 @@ Covers the `Docs` row of Workstream 1 and the "Reconcile the routing doc" item o
   0
   ```
 
-  `5` is the surviving `Status: done` count — SDK v3.0.1, Cluster C, npm deprecate v1.x/v2.x, Cluster A, Cluster E v1, Cluster B is six… count the `## Done` entries in the file after Step 5 and expect exactly that number, with **no** Cluster F among them; `0` confirms the fold. `git status --porcelain` prints nothing.
+  `6` is the surviving `Status: done` count — SDK v3.0.1, Cluster C, npm deprecate v1.x/v2.x, Cluster A, Cluster E v1, Cluster B is six… count the `## Done` entries in the file after Step 5 and expect exactly that number, with **no** Cluster F among them; `0` confirms the fold. `git status --porcelain` prints nothing.
 
 ---
 
@@ -11173,7 +11574,7 @@ pnpm build && pnpm test && pnpm lint && pnpm typecheck && pnpm size
 Run in the commerce worktree:
 
 ```bash
-npm run build && npx jest src/tests/unit-tests/components --runInBand
+npm run build && npx tsc --noEmit && npm run lint && npm test
 ```
 
 Two acceptance steps that unit tests cannot replace:
