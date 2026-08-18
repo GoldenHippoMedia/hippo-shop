@@ -8,7 +8,6 @@ import type { HippoShopDestinationDTO, HippoShopFunnelDTO } from '@goldenhippo/h
 import {
   installPageViewEmitter,
   makeTrackFn,
-  emitPageViewOnce,
   _resetEventsForTests,
   PAGE_VIEW_QUIET_MS,
   PAGE_VIEW_DEADLINE_MS,
@@ -116,6 +115,26 @@ describe('firstDestinationSlug', () => {
     setBody('<div data-gh-destination="   "></div>');
     expect(firstDestinationSlug(document)).toBeNull();
   });
+
+  // A blank value must not defeat the tier: bindings.ts collectResources skips
+  // blanks and binds the other five offers, so the page looks perfect while
+  // funnel-event identity silently gives up.
+  it('skips a blank data-gh-destination and keeps searching the tier', () => {
+    setBody(`
+      <div data-gh-destination="   "></div>
+      <div data-gh-destination="bio3-1p-ot"></div>
+      <div data-gh-destination="bio3-3p-sub"></div>
+    `);
+    expect(firstDestinationSlug(document)).toBe('bio3-1p-ot');
+  });
+
+  it('skips a blank data-gh-checkout and keeps searching the fallback tier', () => {
+    setBody(`
+      <a data-gh-checkout=""></a>
+      <a data-gh-checkout="bio3-3p-sub">Buy</a>
+    `);
+    expect(firstDestinationSlug(document)).toBe('bio3-3p-sub');
+  });
 });
 
 describe('readStepSlug', () => {
@@ -139,6 +158,18 @@ describe('readStepSlug', () => {
     expect(readStepSlug(document)).toBeNull();
     setBody('<section data-gh-step="  "></section>');
     expect(readStepSlug(document)).toBeNull();
+  });
+
+  // Same blank-value trap as firstDestinationSlug, on the page tier of
+  // readAttrPreferringPage: a blank first element must not hand the answer
+  // to the script tag.
+  it('skips a blank page element instead of falling through to the script tag', () => {
+    setHead('<script data-gh-step="from-script"></script>');
+    setBody(`
+      <section data-gh-step=" "></section>
+      <section data-gh-step="offer-selector"></section>
+    `);
+    expect(readStepSlug(document)).toBe('offer-selector');
   });
 });
 
@@ -446,7 +477,7 @@ describe('installPageViewEmitter', () => {
     await vi.advanceTimersByTimeAsync(PAGE_VIEW_QUIET_MS + 1);
 
     expect(postEvent).toHaveBeenCalledOnce();
-    const [, event] = postEvent.mock.calls[0];
+    const [, event] = postEvent.mock.calls[0]!;
     expect(event.funnelSTFId).toBe('a0Xfunnel1');
     expect(event.mainFunnelId).toBe('a0Xfunnel1');
     expect(event.mainFunnelId).toBe(event.funnelSTFId);
@@ -537,7 +568,7 @@ describe('installPageViewEmitter', () => {
       await vi.advanceTimersByTimeAsync(PAGE_VIEW_QUIET_MS + 1);
 
       expect(postEvent).toHaveBeenCalledOnce();
-      const [, event] = postEvent.mock.calls[0];
+      const [, event] = postEvent.mock.calls[0]!;
       expect(event.destinationId).toBe('a0Ydest1');
       expect(event.mainFunnelId).toBe('a0Xfunnel1');
     } finally {

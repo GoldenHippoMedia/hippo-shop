@@ -489,6 +489,27 @@ const DESTINATION_ID_PARAM_INTERNAL = 'dsid';
 const STEP_ID_PARAM = 'funnelSTPId';
 
 /**
+ * First non-blank trimmed value of `attr` among the elements `selector` matches.
+ *
+ * `querySelectorAll`, not `querySelector`: the latter returns the first element
+ * that merely HAS the attribute, so one blank value defeats the whole tier —
+ * while `collectResources` (bindings.ts:63-91) skips empty attribute values and
+ * binds the rest, so the page looks perfect while identity silently degrades.
+ *
+ * Not an exact mirror of that guard: `collectResources` tests `if (!slug)`
+ * (bindings.ts:75), which skips empty and absent values but still collects a
+ * whitespace-only one. This helper trims first — the safer side of the
+ * difference, and the reason it is spelled "non-blank" and not "non-empty".
+ */
+function firstNonBlankAttr(doc: Document, selector: string, attr: string): string | null {
+  for (const el of Array.from(doc.querySelectorAll<Element>(selector))) {
+    const value = el.getAttribute(attr)?.trim();
+    if (value) return value;
+  }
+  return null;
+}
+
+/**
  * Read an attribute preferring a page element over the SDK script tag.
  *
  * `:not(script)` first, script second — not plain document order: the script
@@ -497,10 +518,10 @@ const STEP_ID_PARAM = 'funnelSTPId';
  * the script tag").
  */
 function readAttrPreferringPage(doc: Document, attr: string): string | null {
-  const fromPage = doc.querySelector(`[${attr}]:not(script)`)?.getAttribute(attr)?.trim();
-  if (fromPage) return fromPage;
-  const fromScript = doc.querySelector(`script[${attr}]`)?.getAttribute(attr)?.trim();
-  return fromScript ? fromScript : null;
+  return (
+    firstNonBlankAttr(doc, `[${attr}]:not(script)`, attr) ??
+    firstNonBlankAttr(doc, `script[${attr}]`, attr)
+  );
 }
 
 /**
@@ -513,23 +534,18 @@ export function readStepSlug(doc: Document): string | null {
 }
 
 /**
- * The destination slug that identity comes from: first `[data-gh-destination]`
- * in document order, else first `[data-gh-checkout]`.
+ * The destination slug that identity comes from: first non-blank
+ * `[data-gh-destination]` in document order, else first non-blank
+ * `[data-gh-checkout]`.
  *
  * The canonical offer-selector page binds six destinations. They are six
  * variants of ONE page view, not six page views.
  */
 export function firstDestinationSlug(doc: Document): string | null {
-  const direct = doc
-    .querySelector(`[${DESTINATION_ATTR}]`)
-    ?.getAttribute(DESTINATION_ATTR)
-    ?.trim();
-  if (direct) return direct;
-  const checkout = doc
-    .querySelector(`[${CHECKOUT_ATTR}]`)
-    ?.getAttribute(CHECKOUT_ATTR)
-    ?.trim();
-  return checkout ? checkout : null;
+  return (
+    firstNonBlankAttr(doc, `[${DESTINATION_ATTR}]`, DESTINATION_ATTR) ??
+    firstNonBlankAttr(doc, `[${CHECKOUT_ATTR}]`, CHECKOUT_ATTR)
+  );
 }
 
 export interface EventIdentity {
