@@ -13,6 +13,7 @@ function makeConfig(overrides: Partial<GhConfig> = {}): GhConfig {
     apiBaseUrl: 'https://api-prod.goldenhippo.io',
     checkoutBase: 'https://checkout.gundrymd.com',
     cookieDomain: null,
+    brandToken: null,
     ...overrides,
   };
 }
@@ -353,6 +354,7 @@ describe('composeCheckoutUrl', () => {
 });
 
 import { applyCheckoutBindings, type CheckoutBindingsOptions } from '../src/checkout';
+import { createLogger } from '../src/log';
 
 describe('applyCheckoutBindings', () => {
   function setupDom(html: string): HTMLElement {
@@ -462,6 +464,44 @@ describe('applyCheckoutBindings', () => {
     );
     const a = document.querySelector<HTMLAnchorElement>('a[data-gh-checkout]')!;
     expect(a.getAttribute('href')).toBe('#');
+    expect(warn).toHaveBeenCalled();
+  });
+
+  // Privacy tools and some tag managers stub or null `console.warn`. A stub that
+  // throws used to escape `applyCheckoutBindings`, and this test asserted that
+  // escape — encoding the defect instead of the contract. The guard now lives in
+  // the logger (`emit` in log.ts), so the contract is the whole degradation: the
+  // anchor ends up inert *and* nothing throws out of the binding pass. Both
+  // halves matter — an anchor left on its author-supplied href would navigate to
+  // a stale offer with no sessionid and no attribution, strictly worse than the
+  // dead link the fallback exists to guarantee, and a throw here would abandon
+  // every later `data-gh-checkout` element on the page unbound. Uses the real
+  // `createLogger`, not a `vi.fn()`, because the hazard is how that logger
+  // reaches `console.warn`.
+  it('makes the anchor inert and does not throw when console.warn throws', () => {
+    setupDom(
+      '<a data-gh-checkout="bio3-3p-sub" href="https://www.gundrymd.com/stale-offer">Buy</a>',
+    );
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {
+      throw new Error('console.warn stubbed by a privacy tool');
+    });
+
+    // No base URL resolves, so `composeCheckoutUrl` throws and `bindOne` takes
+    // the degradation path.
+    expect(() =>
+      applyCheckoutBindings(
+        document,
+        makeOptions({
+          config: makeConfig({ checkoutBase: null }),
+          getDestination: () => makeDestination({ checkoutOverrideUrl: null }, { url: null }),
+          logger: createLogger(false),
+        }),
+      ),
+    ).not.toThrow();
+
+    const a = document.querySelector<HTMLAnchorElement>('a[data-gh-checkout]')!;
+    expect(a.getAttribute('href')).toBe('#');
+    // The warn was still attempted; only the host page's throw was swallowed.
     expect(warn).toHaveBeenCalled();
   });
 });

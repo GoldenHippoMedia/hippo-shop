@@ -174,6 +174,13 @@ function setIfAbsent(url: URL, name: string, value: string | undefined | null): 
 function setSdkOwned(url: URL, name: string, value: string | undefined | null, logger?: Logger): void {
   if (!value) return;
   const existing = url.searchParams.get(name);
+  // Overwrite first, warn second, matching the `bindOne` catch above. The
+  // ordering is no longer load-bearing — `createLogger`'s `emit` cannot throw
+  // whatever the host page has done to `console` — but it is the right shape:
+  // the write this function exists to perform should not depend on a
+  // diagnostic. Historically a throwing `console.warn` could escape here and
+  // leave the foreign `sessionid`/`order_form_id` sitting on the URL.
+  url.searchParams.set(name, value);
   if (existing !== null && existing !== value) {
     logger?.warn(
       `checkout: destination base URL already had "${name}=${existing}" — overwriting with the ` +
@@ -181,7 +188,6 @@ function setSdkOwned(url: URL, name: string, value: string | undefined | null, l
         `live funnel link); fix the destination URL/checkoutOverrideUrl in Salesforce.`,
     );
   }
-  url.searchParams.set(name, value);
 }
 
 // ---------------------------------------------------------------------------
@@ -266,8 +272,14 @@ function bindOne(el: HTMLElement, slug: string, opts: CheckoutBindingsOptions): 
   try {
     url = composeCheckoutUrl(destination, opts.config, session, opts.logger);
   } catch (err) {
-    opts.logger.warn(`checkout: cannot compose URL for "${slug}"`, err);
+    // Inert first, warn second — never the reverse. `createLogger`'s `emit`
+    // now makes a throwing or absent `console` harmless, so this ordering is
+    // defence in depth rather than the only thing holding the guarantee up.
+    // Keep it: stopping a click from navigating to a stale offer is the entire
+    // point of this fallback, and it should not sit downstream of a log line.
+    // Same shape as the post-failure warn in `ensureSession` (session.ts).
     if (el instanceof HTMLAnchorElement) el.setAttribute('href', '#');
+    opts.logger.warn(`checkout: cannot compose URL for "${slug}"`, err);
     return;
   }
 

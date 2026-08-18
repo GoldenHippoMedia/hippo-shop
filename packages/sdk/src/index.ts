@@ -54,10 +54,26 @@ const DATA_READY_EVENT = 'gh:data-ready';
  * Boot is exported for tests; in the browser it runs immediately when the
  * IIFE bundle is evaluated. Returns whether boot attached the API.
  */
+/**
+ * Report a boot failure without ever throwing. These two call sites run before
+ * `createLogger` exists, so they cannot use its guard (`emit` in log.ts) — and
+ * `boot()` is invoked unwrapped at IIFE top level, so an escaping throw here
+ * surfaces as an uncaught error on a third-party page. A host that has stubbed,
+ * nulled, or removed `console` must still get a clean `return false`.
+ */
+function bootError(...args: unknown[]): void {
+  try {
+    const c = (globalThis as { console?: { error?: (...a: unknown[]) => void } }).console;
+    if (typeof c?.error === 'function') c.error(...args);
+  } catch {
+    /* a host page's broken console must never break boot */
+  }
+}
+
 export function boot(doc: Document = document, win: Window = window): boolean {
   const script = findScript(doc);
   if (!script) {
-    console.error('[gh] could not locate the SDK <script> tag — refusing to attach');
+    bootError('[gh] could not locate the SDK <script> tag — refusing to attach');
     return false;
   }
 
@@ -66,7 +82,7 @@ export function boot(doc: Document = document, win: Window = window): boolean {
     config = parseScriptConfig(script);
   } catch (err) {
     const msg = err instanceof ConfigError ? err.message : String(err);
-    console.error('[gh] bad config —', msg);
+    bootError('[gh] bad config —', msg);
     return false;
   }
 

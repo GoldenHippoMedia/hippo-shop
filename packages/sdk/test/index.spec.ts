@@ -62,9 +62,62 @@ describe('boot()', () => {
     expect(err).toHaveBeenCalled();
   });
 
+  // `boot()` runs before `createLogger` exists, so its two failure reports cannot
+  // use the guard in log.ts. It is also invoked unwrapped at IIFE top level, so an
+  // escaping throw here surfaces as an uncaught error on a third-party page —
+  // exactly what Goal 8 forbids. Both paths go through `bootError`.
+  it('returns false rather than throwing when console.error throws (no script tag)', () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {
+      throw new Error('privacy tool');
+    });
+    let attached: boolean | undefined;
+    expect(() => {
+      attached = boot();
+    }).not.toThrow();
+    expect(attached).toBe(false);
+    expect(err).toHaveBeenCalled();
+    err.mockRestore();
+  });
+
+  it('returns false rather than throwing when console.error throws (bad config)', () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {
+      throw new Error('privacy tool');
+    });
+    installScript({
+      key: 'not-a-key',
+      brand: 'Gundry MD',
+      src: 'https://api-prod.goldenhippo.io/sdk/v4/gh.js',
+    });
+    let attached: boolean | undefined;
+    expect(() => {
+      attached = boot();
+    }).not.toThrow();
+    expect(attached).toBe(false);
+    expect(window.gh?.data).toBeUndefined();
+    expect(err).toHaveBeenCalled();
+    err.mockRestore();
+  });
+
+  it('returns false rather than throwing when console is removed entirely', () => {
+    const real = globalThis.console;
+    // Deleted, not stubbed to undefined: only deletion exercises the
+    // ReferenceError path a bare `console` identifier would take.
+    // @ts-expect-error — deliberately removing a global to model a hostile host page
+    delete globalThis.console;
+    let attached: boolean | undefined;
+    try {
+      expect(() => {
+        attached = boot();
+      }).not.toThrow();
+    } finally {
+      globalThis.console = real;
+    }
+    expect(attached).toBe(false);
+  });
+
   it('does not overwrite an existing window.gh.data', () => {
     const existing = { funnel: vi.fn(), destination: vi.fn(), product: vi.fn() };
-    (window as { gh?: { data: typeof existing } }).gh = { data: existing };
+    window.gh = { data: existing };
     installScript({
       key: 'gh_pk_internal_test_abc123',
       brand: 'Gundry MD',
