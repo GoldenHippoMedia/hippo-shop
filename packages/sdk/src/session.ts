@@ -19,7 +19,15 @@ import type { GhDataClient } from './client';
 import { getCookieDomain, readCookie, writeCookie } from './cookies';
 import { parseLandingParams, type ParsedParams } from './url-params';
 
-export const SESSION_COOKIE_NAME = 'sessionId';
+/**
+ * D2. Same name as the funnel app (`hippo-builder-funnel` session.service.ts:11)
+ * so a visitor arriving from a funnel page keeps one identity — but written
+ * root-domain scoped rather than host-only, which is what makes the
+ * `sf.brand.com` -> `www.brand.com` handoff work without the URL. The resulting
+ * two-scope collision is benign only because the funnel's own ladder puts
+ * `?sessionid=` above the cookie, which is why every outbound link must carry it.
+ */
+export const SESSION_COOKIE_NAME = 'hippo_session_id';
 const SESSION_TTL_SEC = 30 * 24 * 60 * 60; // 30 days
 const SESSION_READY_EVENT = 'gh:session-ready';
 

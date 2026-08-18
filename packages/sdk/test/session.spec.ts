@@ -200,3 +200,48 @@ describe('getSessionState', () => {
     expect(getSessionState()?.adopted).toBe(false);
   });
 });
+
+describe('session cookie contract (D2)', () => {
+  let client: GhDataClient;
+  let jar: CookieJar;
+
+  beforeEach(() => {
+    jar = installCookieJar();
+    client = new GhDataClient(makeConfig(), createLogger(false));
+    client.postJson = vi.fn().mockResolvedValue({}) as never;
+  });
+
+  afterEach(() => {
+    jar.restore();
+  });
+
+  it('uses the funnel-canonical cookie name', () => {
+    expect(SESSION_COOKIE_NAME).toBe('hippo_session_id');
+  });
+
+  it('writes the cookie at the registrable root domain from a subdomain host', async () => {
+    setLocation('https://sf.example.com/offer');
+    const state = await ensureSession(makeConfig(), client);
+    const rec = jar.get('hippo_session_id');
+    expect(rec).toBeDefined();
+    expect(rec!.value).toBe(state.sessionId);
+    expect(rec!.domain).toBe('.example.com');
+    expect(rec!.maxAge).toBe(2_592_000); // 30 days
+    expect(rec!.path).toBe('/');
+    expect(rec!.sameSite).toBe('Lax');
+    expect(rec!.secure).toBe(true);
+  });
+
+  it('honours an explicit data-cookie-domain override for multi-part TLDs', async () => {
+    setLocation('https://sf.brand.co.uk/offer');
+    await ensureSession(makeConfig({ cookieDomain: '.brand.co.uk' }), client);
+    expect(jar.get('hippo_session_id')!.domain).toBe('.brand.co.uk');
+  });
+
+  it('never writes the Cluster F sessionId cookie name', async () => {
+    setLocation('https://sf.example.com/offer');
+    await ensureSession(makeConfig(), client);
+    expect(jar.names()).toContain('hippo_session_id');
+    expect(jar.names()).not.toContain('sessionId');
+  });
+});
