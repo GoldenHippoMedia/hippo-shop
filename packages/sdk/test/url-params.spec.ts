@@ -51,12 +51,6 @@ describe('parseLandingParams', () => {
     expect(out.subId5).toBe('IwAR1abc');
   });
 
-  it('direct sub_id values take precedence over click-id-derived values', () => {
-    const out = parseLandingParams(`${BASE}?fbclid=xyz&sub_id1=manual`, '');
-    expect(out.subId1).toBe('manual'); // direct wins over click-id-derived
-    expect(out.subId5).toBe('xyz');     // no direct sub_id5; click-id fills it
-  });
-
   it('truncates values longer than 255 chars', () => {
     const longValue = 'a'.repeat(300);
     const out = parseLandingParams(`${BASE}?utm_source=${longValue}`, '');
@@ -99,6 +93,42 @@ describe('parseLandingParams', () => {
     const longValue = 'b'.repeat(300);
     const out = parseLandingParams(`${BASE}?fbclid=${longValue}`, '');
     expect(out.subId5!.length).toBe(255);
+  });
+});
+
+describe('parseLandingParams — inbound sub-id spelling', () => {
+  it('captures the canonical subid1–5 spelling', () => {
+    const out = parseLandingParams(
+      `${BASE}?subid1=a&subid2=b&subid3=c&subid4=d&subid5=e`,
+      '',
+    );
+    expect(out.subId1).toBe('a');
+    expect(out.subId2).toBe('b');
+    expect(out.subId3).toBe('c');
+    expect(out.subId4).toBe('d');
+    expect(out.subId5).toBe('e');
+  });
+
+  it('still captures the legacy sub_id1–5 spelling', () => {
+    const out = parseLandingParams(`${BASE}?sub_id1=a&sub_id2=b&sub_id3=c&sub_id4=d&sub_id5=e`, '');
+    expect(out.subId1).toBe('a');
+    expect(out.subId5).toBe('e');
+  });
+
+  it('canonical subid1 wins when it appears after legacy sub_id1', () => {
+    const out = parseLandingParams(`${BASE}?sub_id1=legacy&subid1=canonical`, '');
+    expect(out.subId1).toBe('canonical');
+  });
+
+  it('canonical subid1 wins when it appears before legacy sub_id1', () => {
+    const out = parseLandingParams(`${BASE}?subid1=canonical&sub_id1=legacy`, '');
+    expect(out.subId1).toBe('canonical');
+  });
+
+  it('matches inbound sub-id keys case-insensitively', () => {
+    const out = parseLandingParams(`${BASE}?SubID1=x&SUB_ID2=y`, '');
+    expect(out.subId1).toBe('x');
+    expect(out.subId2).toBe('y');
   });
 });
 

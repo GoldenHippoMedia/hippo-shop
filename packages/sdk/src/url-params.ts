@@ -62,7 +62,17 @@ const UTM_KEY_MAP: Record<string, keyof ParsedParams> = {
   utm_action: 'utmAction',
 };
 
+/** Canonical inbound spelling. Wins over the legacy `sub_idN` spelling. */
 const SUB_ID_KEY_MAP: Record<string, keyof ParsedParams> = {
+  subid1: 'subId1',
+  subid2: 'subId2',
+  subid3: 'subId3',
+  subid4: 'subId4',
+  subid5: 'subId5',
+};
+
+/** Legacy inbound spelling, accepted but never overwriting a canonical value. */
+const LEGACY_SUB_ID_KEY_MAP: Record<string, keyof ParsedParams> = {
   sub_id1: 'subId1',
   sub_id2: 'subId2',
   sub_id3: 'subId3',
@@ -124,6 +134,13 @@ export function parseLandingParams(href: string, referrer: string): ParsedParams
     const subIdKey = SUB_ID_KEY_MAP[lower];
     if (subIdKey) {
       out[subIdKey] = cleanValue;
+      continue;
+    }
+
+    const legacySubIdKey = LEGACY_SUB_ID_KEY_MAP[lower];
+    if (legacySubIdKey) {
+      // Canonical `subidN` wins regardless of query-string order.
+      if (out[legacySubIdKey] === undefined) out[legacySubIdKey] = cleanValue;
       continue;
     }
 
