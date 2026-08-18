@@ -26,7 +26,7 @@ export interface GhWindow {
   refresh: GhRuntime['refresh'];
   format: FormatRegistry;
   debug?: boolean;
-  checkoutUrl?: (slug: string) => string;
+  checkoutUrl?: (slug: string) => Promise<string>;
   session?: {
     id: () => string | undefined;
     params: () => unknown; // ParsedParams is internal; expose as unknown to keep types clean
@@ -86,24 +86,19 @@ export function boot(doc: Document = document, win: Window = window): boolean {
     id: () => getSessionState()?.sessionId,
     params: () => getSessionState()?.params ?? null,
   };
+  // One session promise, one stable checkoutUrl identity. Cluster F installed a
+  // stub session here and reassigned root.checkoutUrl when the session
+  // resolved, so any captured reference kept the un-attributed stub forever.
+  const sessionPromise = ensureSession(config, client).catch(() => undefined);
+  root.__sessionPromise = sessionPromise;
+
   root.checkoutUrl = makeCheckoutUrlFn({
     config,
-    session: { sessionId: '', adopted: false, params: {} }, // pre-resolve stub
+    getSession: () => getSessionState(),
+    sessionPromise,
     getDestination: (slug) => runtime.getCachedDestination(slug),
     ensureDestination: (slug) => runtime.ensureDestination(slug),
   });
-
-  root.__sessionPromise = ensureSession(config, client).then((state) => {
-    // Refresh checkoutUrl closure with the resolved session so subsequent calls
-    // pick up the real sessionId + params.
-    root.checkoutUrl = makeCheckoutUrlFn({
-      config,
-      session: state,
-      getDestination: (slug) => runtime.getCachedDestination(slug),
-      ensureDestination: (slug) => runtime.ensureDestination(slug),
-    });
-    return state;
-  }).catch(() => undefined); // ensureSession itself handles errors; this is final defense
 
   logger.debug('booted', { brand: config.brand, apiBaseUrl: config.apiBaseUrl });
   win.dispatchEvent(new Event(DATA_READY_EVENT));

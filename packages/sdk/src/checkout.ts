@@ -252,29 +252,41 @@ function bindOne(el: HTMLElement, slug: string, opts: CheckoutBindingsOptions): 
 }
 
 /**
- * Programmatic equivalent of `<a data-gh-checkout="slug">`. Returns the
- * composed checkout URL for `slug` synchronously. Throws if the destination
- * is not yet cached or if no base URL is configured.
+ * Programmatic equivalent of `<a data-gh-checkout="slug">`. Async by design
+ * (spec D8): it awaits the session before composing, so it never returns the
+ * params-less URL that a pre-resolve snapshot used to produce, and it warms a
+ * cold destination cache instead of making the caller catch, subscribe to
+ * `gh:bindings-ready`, and retry.
  *
- * Page authors who need to retrieve a checkout URL outside of the
- * declarative attribute (e.g., SPA route push, analytics-instrumented
- * click) call `gh.checkoutUrl(slug)`. The wire-up to `window.gh` happens
- * in `index.ts` (Task 9).
+ * The returned function keeps one stable identity for the life of the page —
+ * it must never be reassigned, or anything holding a reference (a GTM
+ * variable, a React prop, `const f = gh.checkoutUrl`) keeps a stale closure.
+ *
+ * Known cost: `window.open(await gh.checkoutUrl(x))` inside a click handler
+ * breaks the user-gesture chain and will be popup-blocked. Assigning
+ * `window.location.href` is unaffected.
  */
 export function makeCheckoutUrlFn(
   opts: Omit<CheckoutBindingsOptions, 'logger'>,
-): (slug: string) => string {
-  return function checkoutUrl(slug: string): string {
-    const destination = opts.getDestination(slug);
+): (slug: string) => Promise<string> {
+  return async function checkoutUrl(slug: string): Promise<string> {
+    // Session first. A rejection here is not fatal — ensureSession swallows
+    // its own failures and still resolves a state.
+    await Promise.resolve(opts.sessionPromise).catch(() => undefined);
+
+    let destination = opts.getDestination(slug);
     if (!destination) {
-      // Trigger a load for the next call; throw to make the missing-cache
-      // case visible to the caller.
-      opts.ensureDestination(slug);
+      await opts.ensureDestination(slug);
+      destination = opts.getDestination(slug);
+    }
+    if (!destination) {
       throw new GhError(
         'not_found',
-        `gh.checkoutUrl("${slug}"): destination not yet loaded — try again after gh:bindings-ready`,
+        `gh.checkoutUrl("${slug}"): destination could not be loaded`,
       );
     }
-    return composeCheckoutUrl(destination, opts.config, opts.session);
+
+    const session = opts.getSession() ?? { sessionId: '', adopted: false, params: {} };
+    return composeCheckoutUrl(destination, opts.config, session);
   };
 }

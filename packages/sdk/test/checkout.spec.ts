@@ -419,3 +419,89 @@ describe('applyCheckoutBindings', () => {
     expect(warn).toHaveBeenCalled();
   });
 });
+
+import { makeCheckoutUrlFn } from '../src/checkout';
+
+describe('makeCheckoutUrlFn', () => {
+  beforeEach(() => {
+    setSearch('');
+  });
+
+  it('returns a promise, not a string', () => {
+    const fn = makeCheckoutUrlFn({
+      config: makeConfig(),
+      getSession: () => makeSession(),
+      sessionPromise: Promise.resolve(),
+      getDestination: () => makeDestination(),
+      ensureDestination: () => Promise.resolve(),
+    });
+    const result = fn('bio3-3p-sub');
+    expect(result).toBeInstanceOf(Promise);
+    return expect(result).resolves.toContain('sessionid=174710238129');
+  });
+
+  it('resolves after an initially-cold cache instead of throwing', async () => {
+    let cached: ReturnType<typeof makeDestination> | null = null;
+    const ensure = vi.fn().mockImplementation(async () => {
+      cached = makeDestination();
+    });
+    const fn = makeCheckoutUrlFn({
+      config: makeConfig(),
+      getSession: () => makeSession(),
+      sessionPromise: Promise.resolve(),
+      getDestination: () => cached,
+      ensureDestination: ensure,
+    });
+
+    const url = await fn('bio3-3p-sub');
+
+    expect(ensure).toHaveBeenCalledWith('bio3-3p-sub');
+    expect(url).toContain('order_form_id=OF_123');
+    expect(url).toContain('sessionid=174710238129');
+  });
+
+  it('awaits sessionPromise before composing, so the URL is never params-less', async () => {
+    let session: ReturnType<typeof makeSession> | null = null;
+    const sessionPromise = new Promise<void>((resolve) => {
+      setTimeout(() => {
+        session = makeSession({ sessionId: 'late-resolved-id', params: { utmSource: 'fb' } });
+        resolve();
+      }, 5);
+    });
+    const fn = makeCheckoutUrlFn({
+      config: makeConfig(),
+      getSession: () => session,
+      sessionPromise,
+      getDestination: () => makeDestination(),
+      ensureDestination: () => Promise.resolve(),
+    });
+
+    const url = await fn('bio3-3p-sub');
+
+    expect(url).toContain('sessionid=late-resolved-id');
+    expect(url).toContain('utm_source=fb');
+  });
+
+  it('still resolves when sessionPromise rejects', async () => {
+    const fn = makeCheckoutUrlFn({
+      config: makeConfig(),
+      getSession: () => makeSession(),
+      sessionPromise: Promise.reject(new Error('session blew up')),
+      getDestination: () => makeDestination(),
+      ensureDestination: () => Promise.resolve(),
+    });
+    await expect(fn('bio3-3p-sub')).resolves.toContain('order_form_id=OF_123');
+  });
+
+  it('rejects with GhError("not_found") when the destination cannot be loaded at all', async () => {
+    const fn = makeCheckoutUrlFn({
+      config: makeConfig(),
+      getSession: () => makeSession(),
+      sessionPromise: Promise.resolve(),
+      getDestination: () => null,
+      ensureDestination: () => Promise.resolve(),
+    });
+    await expect(fn('nope')).rejects.toThrow(GhError);
+    await expect(fn('nope')).rejects.toMatchObject({ code: 'not_found' });
+  });
+});
