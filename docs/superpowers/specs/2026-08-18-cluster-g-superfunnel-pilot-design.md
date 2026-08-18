@@ -4,7 +4,7 @@
 **Date:** 2026-08-18
 **Cluster:** G (see [`/ROADMAP.md`](../../../ROADMAP.md))
 **Branches:**
-- `hippo-shop`: `feat/cluster-g-superfunnel-pilot` (off `main`)
+- `hippo-shop`: `feat/cluster-g-superfunnel-pilot`, branched off `feat/cluster-f-session-utm-checkout-handoff` — **Cluster F is unmerged** (PR #17 is still open; `ROADMAP.md` wrongly records it as shipped). Cluster G supersedes it: one PR to `main` carrying corrected-F plus G, and #17 closes as superseded. Merging a known-wrong implementation and correcting it in the next release buys nothing when there are no consumers.
 - `GH-Commerce-Service`: `feat/cluster-g-hippo-shop-session-destination-url` (off `prerelease`)
 - Kong: owned by Steven, specified here as parallel work
 
