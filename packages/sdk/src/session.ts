@@ -22,11 +22,16 @@ import { createLogger, type Logger } from './log';
 
 /**
  * D2. Same name as the funnel app (`hippo-builder-funnel` session.service.ts:11)
- * so a visitor arriving from a funnel page keeps one identity — but written
- * root-domain scoped rather than host-only, which is what makes the
- * `sf.brand.com` -> `www.brand.com` handoff work without the URL. The resulting
- * two-scope collision is benign only because the funnel's own ladder puts
- * `?sessionid=` above the cookie, which is why every outbound link must carry it.
+ * so a visitor arriving from a funnel page keeps one identity.
+ *
+ * The `sf.brand.com` -> `www.brand.com` handoff works via the **URL**
+ * (`?sessionid=`), not the cookie — which is why every outbound link must
+ * carry it. That means root-domain, 30-day persistence of an *adopted* id
+ * serves no purpose: it only pins whatever `?sessionid=` one clicked link
+ * carried to the whole brand for a month (I4). So a minted id is written
+ * root-domain scoped, for returning-visit continuity across subdomains, but
+ * an adopted id is written host-only — see the `domain` computation in
+ * `ensureSession`.
  */
 export const SESSION_COOKIE_NAME = 'hippo_session_id';
 const SESSION_TTL_SEC = 30 * 24 * 60 * 60; // 30 days
@@ -122,11 +127,18 @@ export async function ensureSession(
   if (cachedState) return cachedState;
 
   const logger = createLogger(config.debug);
-  const domain = getCookieDomain(config);
   const search = typeof window !== 'undefined' ? window.location.search : '';
 
   const resolved = resolveSessionId(search, logger);
   if (resolved.persist) {
+    // I4: an adopted id (from `?sessionid=`) is written host-only — the
+    // sf -> www handoff already works via the URL (see the
+    // SESSION_COOKIE_NAME comment above), so root-domain persistence of an
+    // adopted id has no purpose and would otherwise pin every subdomain to
+    // one visitor's chosen session for the full 30-day TTL. Minted ids keep
+    // root-domain scoping, which is what makes returning-visit continuity
+    // work across subdomains.
+    const domain = resolved.adopted ? null : getCookieDomain(config);
     try {
       writeCookie(SESSION_COOKIE_NAME, resolved.sessionId, {
         maxAgeSec: SESSION_TTL_SEC,

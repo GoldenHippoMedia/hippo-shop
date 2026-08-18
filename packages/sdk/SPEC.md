@@ -96,11 +96,13 @@ The charset is not incidental. An adopted value flows into a `document.cookie` w
 | Value | The resolved session id |
 | `Max-Age` | `2592000` (30 days) |
 | `Path` | `/` |
-| `Domain` | `data-cookie-domain` when set; else the auto-detected registrable root (`.brand.com`); host-only when neither resolves |
+| `Domain` | For a **minted** id: `data-cookie-domain` when set, else the auto-detected registrable root (`.brand.com`), else host-only. For an **adopted** id (from `?sessionid=`): always host-only — see below. |
 | `SameSite` | `Lax` |
 | `Secure` | Set when the page is `https:` |
 
-Root-domain scoping is deliberate: it is what makes a handoff between two hosts under one registrable domain (`sf.brand.com` → `www.brand.com`) work without depending on the URL. A blocked or failed cookie write is non-fatal — the id still resolves for this page load and still travels on outbound links.
+The handoff between two hosts under one registrable domain (`sf.brand.com` → `www.brand.com`) works via the **URL** (`?sessionid=` on every outbound link), not the cookie — the resolution ladder puts the URL above the cookie for exactly this reason. Root-domain scoping on a *minted* id exists only for returning-visit continuity across subdomains within one brand.
+
+That distinction is why an **adopted** id is persisted host-only: writing an adopted id root-domain-scoped would serve no purpose (the handoff doesn't need it) while pinning every subdomain of the brand to whichever session id one clicked link happened to carry, for the full 30-day `Max-Age`. A blocked or failed cookie write is non-fatal — the id still resolves for this page load and still travels on outbound links.
 
 ### The SDK trusts the inbound URL
 

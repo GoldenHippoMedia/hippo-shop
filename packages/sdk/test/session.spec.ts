@@ -291,6 +291,27 @@ describe('session cookie contract (D2)', () => {
     expect(jar.names()).toContain('hippo_session_id');
     expect(jar.names()).not.toContain('sessionId');
   });
+
+  // I4: the sf -> www handoff works via the URL, not the cookie, so a
+  // root-domain, 30-day cookie for an *adopted* id serves no purpose and
+  // only pins the whole brand to one clicked link's session for a month.
+  it('I4: writes an adopted (?sessionid=) id host-only, with no Domain attribute', async () => {
+    setLocation('https://sf.example.com/offer?sessionid=3f6b2c11-1c2a-4b1d-9f0a-77c1d2e3f455');
+    const state = await ensureSession(makeConfig(), client);
+    expect(state.adopted).toBe(true);
+    const rec = jar.get('hippo_session_id');
+    expect(rec).toBeDefined();
+    expect(rec!.value).toBe('3f6b2c11-1c2a-4b1d-9f0a-77c1d2e3f455');
+    expect(rec!.domain).toBeNull();
+    expect(rec!.maxAge).toBe(2_592_000); // TTL unchanged — only the scope narrows
+  });
+
+  it('I4: writes a minted id root-domain scoped, unlike an adopted id', async () => {
+    setLocation('https://sf.example.com/offer');
+    const state = await ensureSession(makeConfig(), client);
+    expect(state.adopted).toBe(false);
+    expect(jar.get('hippo_session_id')!.domain).toBe('.example.com');
+  });
 });
 
 describe('ensureSession — D1 resolution ladder', () => {
@@ -318,13 +339,17 @@ describe('ensureSession — D1 resolution ladder', () => {
     expect(state.adopted).toBe(true);
   });
 
-  it('persists the adopted id to the cookie at the root domain', async () => {
+  // I4: root-domain persistence of an adopted id served no purpose (the
+  // sf -> www handoff works via the URL, not the cookie) and pinned every
+  // subdomain of the brand to whichever session id one clicked link
+  // happened to carry, for the full 30-day TTL. Adopted ids are host-only.
+  it('persists the adopted id to the cookie host-only, not at the root domain', async () => {
     jar.seed('hippo_session_id', 'cookie-value-111');
     setLocation('https://sf.example.com/offer?sessionid=url-value-222');
     await ensureSession(makeConfig(), client);
     const rec = jar.get('hippo_session_id');
     expect(rec!.value).toBe('url-value-222');
-    expect(rec!.domain).toBe('.example.com');
+    expect(rec!.domain).toBeNull();
     expect(rec!.maxAge).toBe(2_592_000);
     expect(rec!.sameSite).toBe('Lax');
   });
