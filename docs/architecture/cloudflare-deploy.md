@@ -4,7 +4,7 @@ How the SDK bundle gets to the public URL, what Kong should point at, and how to
 
 ## What it does
 
-The release workflow uploads `packages/sdk/dist/` to a Cloudflare Pages project named **`gh-hippo-shop-sdk-v3`** (the active project for the current SDK major) after every successful npm publish. The contents:
+The release workflow uploads `packages/sdk/dist/` to a Cloudflare Pages project named **`gh-hippo-shop-sdk-v4`** (the active project for the current SDK major) after every successful npm publish. The contents:
 
 | File | Purpose |
 |------|---------|
@@ -21,9 +21,9 @@ Cloudflare Pages assigns every successful deployment three URL forms.
 
 | Layer | Example | Lifetime | Use for |
 |-------|---------|----------|---------|
-| **Per-deploy hash** | `https://<hash>.gh-hippo-shop-sdk-v3.pages.dev` | Immutable, retained forever | Audit, rollback targets, pinned consumers |
-| **Branch alias** | `https://<branch>.gh-hippo-shop-sdk-v3.pages.dev` | Latest deploy on a non-production branch | Staging / PR previews |
-| **Production canonical** | `https://gh-hippo-shop-sdk-v3.pages.dev` | Auto-tracks latest `--branch=main` deploy | **Kong's stable upstream for `/sdk/v3/*`** |
+| **Per-deploy hash** | `https://<hash>.gh-hippo-shop-sdk-v4.pages.dev` | Immutable, retained forever | Audit, rollback targets, pinned consumers |
+| **Branch alias** | `https://<branch>.gh-hippo-shop-sdk-v4.pages.dev` | Latest deploy on a non-production branch | Staging / PR previews |
+| **Production canonical** | `https://gh-hippo-shop-sdk-v4.pages.dev` | Auto-tracks latest `--branch=main` deploy | **Kong's stable upstream for `/sdk/v4/*`** |
 
 There is no `main.<project>.pages.dev` alias — `--branch=main` is production, served at the bare canonical URL.
 
@@ -34,8 +34,11 @@ Each npm major has its own Pages project and Kong route. The SDK URL path tracks
 ```
 Public         Kong                                Cloudflare Pages
 ─────────────  ──────────────────────────────────  ─────────────────────────────────
-api-prod.      ─►  forwards /sdk/v3/gh.js to       ─►  gh-hippo-shop-sdk-v3.pages.dev/gh.js
+api-prod.      ─►  forwards /sdk/v4/gh.js to       ─►  gh-hippo-shop-sdk-v4.pages.dev/gh.js
 goldenhippo.io                                          (canonical — auto-tracks latest)
+
+               ─►  forwards /sdk/v3/gh.js to       ─►  gh-hippo-shop-sdk-v3.pages.dev/gh.js
+                                                        (frozen at last v3.0.1 build)
 
                ─►  forwards /sdk/v1/gh.js to       ─►  gh-hippo-shop-sdk.pages.dev/gh.js
                                                         (frozen at last v2.1.1 build)
@@ -68,10 +71,10 @@ Re-activating an earlier deploy is faster than republishing to npm — the asset
 
 ```bash
 # List recent deploys (newest first) for the active major
-npx wrangler@4 pages deployment list --project-name=gh-hippo-shop-sdk-v3
+npx wrangler@4 pages deployment list --project-name=gh-hippo-shop-sdk-v4
 
 # Roll back via the Cloudflare dashboard:
-#   Workers & Pages → gh-hippo-shop-sdk-v3 → Deployments
+#   Workers & Pages → gh-hippo-shop-sdk-v4 → Deployments
 #   → ⋯ on the desired older deploy → "Rollback to this deployment"
 ```
 
@@ -116,11 +119,11 @@ read -s CLOUDFLARE_API_TOKEN && export CLOUDFLARE_API_TOKEN
 export CLOUDFLARE_ACCOUNT_ID=<account-id>
 
 # Idempotent: succeeds on first run, exits 1 (swallowed) if project exists.
-npx --yes wrangler@4 pages project create gh-hippo-shop-sdk-v3 \
+npx --yes wrangler@4 pages project create gh-hippo-shop-sdk-v4 \
   --production-branch=main || true
 
 npx --yes wrangler@4 pages deploy packages/sdk/dist \
-  --project-name=gh-hippo-shop-sdk-v3 \
+  --project-name=gh-hippo-shop-sdk-v4 \
   --branch=main
 
 unset CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID
@@ -144,4 +147,4 @@ This is a feature, not a leak. They make rollback trivial and let you audit "wha
 
 ### Pages project name is in the workflow
 
-The workflow hardcodes `--project-name=gh-hippo-shop-sdk-v3` (matches the current SDK major). On a future major bump, update `.github/workflows/release.yml` to the new project name before merging the major-bump PR.
+The workflow hardcodes `--project-name=gh-hippo-shop-sdk-v4` (matches the current SDK major). On a future major bump, update `.github/workflows/release.yml` to the new project name before merging the major-bump PR.
