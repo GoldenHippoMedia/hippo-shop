@@ -269,17 +269,48 @@ describe('composeCheckoutUrl', () => {
     expect(url.searchParams.get('order_form_id')).toBe('OF_123');
   });
 
-  it('author-supplied params on the base URL win over SDK additions', () => {
+  it('author-supplied attribution params on the base URL win over SDK additions', () => {
     const config = makeConfig({
       checkoutBase:
-        'https://checkout.gundrymd.com/?sessionid=author-wins&subid1=author-sub&utm_source=author-src',
+        'https://checkout.gundrymd.com/?subid1=author-sub&utm_source=author-src',
     });
     const session = makeSession({ params: { subId1: 'sdk-sub', utmSource: 'sdk-src' } });
     const url = new URL(composeCheckoutUrl(makeDestination(), config, session));
-    expect(url.searchParams.get('sessionid')).toBe('author-wins');
     expect(url.searchParams.get('subid1')).toBe('author-sub');
     expect(url.searchParams.get('utm_source')).toBe('author-src');
+  });
+
+  // I2: sessionid and order_form_id are SDK-owned, not author-overridable.
+  // All three of resolveDestinationBase's sources except config.checkoutBase
+  // come from Salesforce — an ops user pasting a live funnel URL (already
+  // carrying a sessionid) into the destination record must not pin every
+  // visitor to that one session.
+  it('I2: overwrites a foreign sessionid/order_form_id baked into the base URL, and warns', () => {
+    const config = makeConfig({
+      checkoutBase:
+        'https://www.gundrymd.com/bio3-3pk?sessionid=3f6b2c11-forged&order_form_id=OF_FORGED',
+    });
+    const session = makeSession({ sessionId: 'real-session-id' });
+    const logger = { debug: vi.fn(), warn: vi.fn(), error: vi.fn() };
+
+    const url = new URL(composeCheckoutUrl(makeDestination(), config, session, logger));
+
+    expect(url.searchParams.get('sessionid')).toBe('real-session-id');
+    expect(url.searchParams.get('order_form_id')).toBe('OF_123');
     expect(url.searchParams.getAll('sessionid')).toHaveLength(1);
+    expect(url.searchParams.getAll('order_form_id')).toHaveLength(1);
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining('sessionid=3f6b2c11-forged'),
+    );
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining('order_form_id=OF_FORGED'),
+    );
+  });
+
+  it('I2: does not warn when the base URL has no pre-existing sessionid/order_form_id', () => {
+    const logger = { debug: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    composeCheckoutUrl(makeDestination(), makeConfig(), makeSession(), logger);
+    expect(logger.warn).not.toHaveBeenCalled();
   });
 
   it('forwards origdsidOrig and origsplitTestingFunnelIdOrig from the current page URL, last', () => {

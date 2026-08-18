@@ -90,9 +90,19 @@ export function resolveDestinationBase(
  * `order_form_id`, `sessionid`, the attribution params in canonical order,
  * and the forwarded `orig*` params from the current page.
  *
- * `setIfAbsent` semantics: a param already present on the base URL wins.
- * That is the opposite of the `/cid` merge rule, and deliberate — the base
- * URL is page-authored, so the author's override is the right behaviour.
+ * `setIfAbsent` semantics apply to the attribution params: a param already
+ * present on the base URL wins. That is the opposite of the `/cid` merge
+ * rule, and deliberate — the base URL is page-authored, so the author's
+ * override is the right behaviour there.
+ *
+ * `order_form_id` and `sessionid` are the exception (I2): all three of
+ * `resolveDestinationBase`'s sources can come from Salesforce (only
+ * `config.checkoutBase` is genuinely page-authored), and an ops user pasting
+ * a live funnel URL into the destination record — one that already has a
+ * `sessionid` baked in — would otherwise pin every visitor to that one
+ * session. These two are SDK-owned: they are set unconditionally,
+ * overwriting whatever the base URL carried, and a pre-existing value is
+ * logged as a warning so the misconfiguration is visible.
  *
  * @throws GhError('config') if no base URL resolves, or if it will not parse.
  */
@@ -100,6 +110,7 @@ export function composeCheckoutUrl(
   destination: HippoShopDestinationDTO,
   config: GhConfig,
   session: SessionState,
+  logger?: Logger,
 ): string {
   const baseStr = resolveDestinationBase(destination, config);
 
@@ -110,8 +121,8 @@ export function composeCheckoutUrl(
     throw new GhError('config', `Invalid destination URL: ${baseStr}`, { cause: err });
   }
 
-  setIfAbsent(url, 'order_form_id', destination.pricing.orderFormId);
-  setIfAbsent(url, 'sessionid', session.sessionId);
+  setSdkOwned(url, 'order_form_id', destination.pricing.orderFormId, logger);
+  setSdkOwned(url, 'sessionid', session.sessionId, logger);
 
   for (const [key, paramName] of PARAM_KEY_MAP) {
     setIfAbsent(url, paramName, session.params[key]);
@@ -139,6 +150,26 @@ function currentSearchParams(): URLSearchParams {
 function setIfAbsent(url: URL, name: string, value: string | undefined | null): void {
   if (!value) return;
   if (url.searchParams.has(name)) return;
+  url.searchParams.set(name, value);
+}
+
+/**
+ * Set `name=value` unconditionally, overwriting whatever the base URL
+ * carried. Empty values are skipped — never clobber a real base-URL value
+ * with nothing. Warns when a pre-existing, different value is overwritten,
+ * since that is always a misconfiguration for the two SDK-owned identifiers
+ * this is used for (I2).
+ */
+function setSdkOwned(url: URL, name: string, value: string | undefined | null, logger?: Logger): void {
+  if (!value) return;
+  const existing = url.searchParams.get(name);
+  if (existing !== null && existing !== value) {
+    logger?.warn(
+      `checkout: destination base URL already had "${name}=${existing}" — overwriting with the ` +
+        `session's own value. This base URL likely has a foreign ${name} baked in (e.g. a pasted ` +
+        `live funnel link); fix the destination URL/checkoutOverrideUrl in Salesforce.`,
+    );
+  }
   url.searchParams.set(name, value);
 }
 
@@ -222,7 +253,7 @@ function bindOne(el: HTMLElement, slug: string, opts: CheckoutBindingsOptions): 
 
   let url: string;
   try {
-    url = composeCheckoutUrl(destination, opts.config, session);
+    url = composeCheckoutUrl(destination, opts.config, session, opts.logger);
   } catch (err) {
     opts.logger.warn(`checkout: cannot compose URL for "${slug}"`, err);
     if (el instanceof HTMLAnchorElement) el.setAttribute('href', '#');
@@ -265,9 +296,13 @@ function bindOne(el: HTMLElement, slug: string, opts: CheckoutBindingsOptions): 
  * Known cost: `window.open(await gh.checkoutUrl(x))` inside a click handler
  * breaks the user-gesture chain and will be popup-blocked. Assigning
  * `window.location.href` is unaffected.
+ *
+ * `logger` is optional (unlike the DOM-binding path) so existing callers that
+ * never had one to hand keep working; when supplied, it surfaces the I2
+ * sessionid/order_form_id-overwrite warning the same as the DOM binding path.
  */
 export function makeCheckoutUrlFn(
-  opts: Omit<CheckoutBindingsOptions, 'logger'>,
+  opts: Omit<CheckoutBindingsOptions, 'logger'> & { logger?: Logger },
 ): (slug: string) => Promise<string> {
   return async function checkoutUrl(slug: string): Promise<string> {
     // Session first. A rejection here is not fatal — ensureSession swallows
@@ -287,6 +322,6 @@ export function makeCheckoutUrlFn(
     }
 
     const session = opts.getSession() ?? { sessionId: '', adopted: false, params: {} };
-    return composeCheckoutUrl(destination, opts.config, session);
+    return composeCheckoutUrl(destination, opts.config, session, opts.logger);
   };
 }

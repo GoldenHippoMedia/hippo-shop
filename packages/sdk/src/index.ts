@@ -110,6 +110,7 @@ export function boot(doc: Document = document, win: Window = window): boolean {
 
   root.checkoutUrl = makeCheckoutUrlFn({
     config,
+    logger,
     getSession: () => getSessionState(),
     sessionPromise,
     getDestination: (slug) => runtime.getCachedDestination(slug),
