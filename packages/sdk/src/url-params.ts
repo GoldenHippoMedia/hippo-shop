@@ -1,17 +1,24 @@
 /**
- * Landing-URL parser: captures UTM and sub_id query parameters, runs the
- * click-id mapping registry, and produces a `ParsedParams` shape that's
- * directly compatible with the POST /session `affParameters` request body.
+ * Landing-URL parser: captures UTM, sub-id, and click-id query parameters and
+ * produces a `ParsedParams` shape directly compatible with the
+ * POST /public/v1/session `affParameters` request body.
  *
- * Direct query parameters (e.g., literal `?sub_id1=manual`) take precedence
- * over click-id-derived values. URL author intent wins over inference.
+ * Explicit query parameters (e.g. a literal `?subid1=manual`) are parsed
+ * first and win over click-id-derived values: URL author intent beats
+ * inference.
  *
- * See the Cluster F design spec for the click-id mapping pattern.
+ * Canonical sources, ported for parity:
+ * - click-id table: `hippo-builder-funnel/src/server/cid/click-id-normalizer.ts:35-43`
+ * - landing/referral rules: `.../core/services/hippo-api/session.service.ts:133,138,143,145`
+ *
+ * See the Cluster G design spec, decision D3.
  */
 
 const MAX_VALUE_CHARS = 255;
 // eslint-disable-next-line no-control-regex
 const CONTROL_CHARS_RE = /[\x00-\x1F\x7F]/g; // ASCII control chars
+/** Stripped from click-id-derived sub-id values only (click-id-normalizer.ts:45-50). */
+const CLICK_ID_UNSAFE_RE = /[<>'"`&]/g;
 
 export interface ParsedParams {
   landingUrl?: string;
@@ -32,24 +39,46 @@ export interface ParsedParams {
   subId3?: string;
   subId4?: string;
   subId5?: string;
+  /** Raw click-id values, forwarded verbatim (session.model.ts:22-30). Note the mixed-case `scCid`. */
+  fbclid?: string;
+  gclid?: string;
+  scCid?: string;
+  qclid?: string;
+  twclid?: string;
+  ndclid?: string;
+  wbraid?: string;
 }
 
-export type ClickIdMutator = (value: string, into: ParsedParams) => void;
+export interface ClickIdMapping {
+  /** Inbound param name in the ad platform's casing; matched case-insensitively. */
+  incoming: string;
+  /** `ParsedParams` field that receives the raw value. */
+  rawKey: 'fbclid' | 'gclid' | 'scCid' | 'qclid' | 'twclid' | 'ndclid' | 'wbraid';
+  /** Sub-id slot that receives the derived value. */
+  target: 'subId1' | 'subId4';
+  /** Marker written to `subId5` when that slot is unset; `null` writes no marker. */
+  platform: 'snap' | 'quora' | 'twitter' | 'nextdoor' | null;
+}
 
 /**
- * Maps a click-id query-param name to a function that writes channel-marker
- * and payload into ParsedParams. Each entry should: skip empty/non-string
- * values, and use `into` mutation rather than returning a new object.
+ * The canonical click-id table, ported from
+ * `hippo-builder-funnel/src/server/cid/click-id-normalizer.ts:35-43`.
  *
- * v1 ships with fbclid only. Adding a new mapping is a one-line entry.
+ * Table order is precedence for the `subId1`/`subId4` slot: the first row with
+ * a non-empty value claims the slot, and an already-present value is never
+ * overwritten. Each row's slot write and its `subId5` marker are evaluated
+ * independently — a row that loses the slot still applies its marker when
+ * `subId5` is unset.
  */
-export const CLICK_ID_REGISTRY: Record<string, ClickIdMutator> = {
-  fbclid: (value, into) => {
-    if (!value) return;
-    into.subId1 = 'fb';
-    into.subId5 = value;
-  },
-};
+export const CLICK_ID_MAP: readonly ClickIdMapping[] = [
+  { incoming: 'fbclid', rawKey: 'fbclid', target: 'subId1', platform: null },
+  { incoming: 'gclid', rawKey: 'gclid', target: 'subId1', platform: null },
+  { incoming: 'ScCid', rawKey: 'scCid', target: 'subId1', platform: 'snap' },
+  { incoming: 'qclid', rawKey: 'qclid', target: 'subId1', platform: 'quora' },
+  { incoming: 'twclid', rawKey: 'twclid', target: 'subId1', platform: 'twitter' },
+  { incoming: 'ndclid', rawKey: 'ndclid', target: 'subId1', platform: 'nextdoor' },
+  { incoming: 'wbraid', rawKey: 'wbraid', target: 'subId4', platform: null },
+] as const;
 
 const UTM_KEY_MAP: Record<string, keyof ParsedParams> = {
   utm_source: 'utmSource',
@@ -86,6 +115,15 @@ const OTHER_KEY_MAP: Record<string, keyof ParsedParams> = {
   sales_funnel: 'salesFunnel',
 };
 
+/** First case-insensitive match for `key`, or null when absent. */
+function findCaseInsensitive(params: URLSearchParams, key: string): string | null {
+  const keyLower = key.toLowerCase();
+  for (const [k, v] of params) {
+    if (k.toLowerCase() === keyLower) return v;
+  }
+  return null;
+}
+
 function clean(value: string): string {
   const stripped = value.replace(CONTROL_CHARS_RE, '');
   if (stripped.length <= MAX_VALUE_CHARS) return stripped;
@@ -111,15 +149,8 @@ export function parseLandingParams(href: string, referrer: string): ParsedParams
     return out; // malformed href — still return what we have
   }
 
-  // Pass 1: click-id mutators (so direct params can overwrite them in pass 2).
-  for (const [paramName, mutator] of Object.entries(CLICK_ID_REGISTRY)) {
-    const raw = url.searchParams.get(paramName);
-    if (raw !== null) {
-      mutator(clean(raw), out);
-    }
-  }
-
-  // Pass 2: direct param keys. These win over click-id-derived values.
+  // Pass 1: explicit param keys. Written first so the click-id table below
+  // never overwrites an author-supplied subid1/subid4/subid5.
   for (const [key, value] of url.searchParams.entries()) {
     const lower = key.toLowerCase();
     const cleanValue = clean(value);
@@ -147,6 +178,26 @@ export function parseLandingParams(href: string, referrer: string): ParsedParams
     const otherKey = OTHER_KEY_MAP[lower];
     if (otherKey) {
       out[otherKey] = cleanValue;
+    }
+  }
+
+  // Pass 2: the canonical click-id table (D3).
+  for (const row of CLICK_ID_MAP) {
+    const found = findCaseInsensitive(url.searchParams, row.incoming);
+    if (found === null) continue;
+    const raw = clean(found);
+    if (!raw) continue;
+
+    out[row.rawKey] = raw;
+
+    const derived = raw.replace(CLICK_ID_UNSAFE_RE, '');
+    if (derived && out[row.target] === undefined) {
+      out[row.target] = row.incoming === 'wbraid' ? `wbraid:${derived}` : derived;
+    }
+
+    // Independent of the slot write: a row that lost the slot still marks subId5.
+    if (row.platform !== null && out.subId5 === undefined) {
+      out.subId5 = row.platform;
     }
   }
 

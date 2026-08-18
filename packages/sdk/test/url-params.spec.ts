@@ -1,9 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  parseLandingParams,
-  CLICK_ID_REGISTRY,
-  type ParsedParams,
-} from '../src/url-params';
+import { parseLandingParams, CLICK_ID_MAP } from '../src/url-params';
 
 const BASE = 'https://info.gundrymd.com/some-funnel';
 
@@ -45,12 +41,6 @@ describe('parseLandingParams', () => {
     expect(out.subId5).toBe('e');
   });
 
-  it('applies the fbclid mapping when fbclid is present', () => {
-    const out = parseLandingParams(`${BASE}?fbclid=IwAR1abc`, '');
-    expect(out.subId1).toBe('fb');
-    expect(out.subId5).toBe('IwAR1abc');
-  });
-
   it('truncates values longer than 255 chars', () => {
     const longValue = 'a'.repeat(300);
     const out = parseLandingParams(`${BASE}?utm_source=${longValue}`, '');
@@ -81,19 +71,6 @@ describe('parseLandingParams', () => {
     expect(Object.keys(out)).not.toContain('unrelated');
   });
 
-  it('CLICK_ID_REGISTRY has the fbclid entry', () => {
-    expect(typeof CLICK_ID_REGISTRY.fbclid).toBe('function');
-    const params: ParsedParams = {};
-    CLICK_ID_REGISTRY.fbclid('test-value', params);
-    expect(params.subId1).toBe('fb');
-    expect(params.subId5).toBe('test-value');
-  });
-
-  it('truncates click-id values too', () => {
-    const longValue = 'b'.repeat(300);
-    const out = parseLandingParams(`${BASE}?fbclid=${longValue}`, '');
-    expect(out.subId5!.length).toBe(255);
-  });
 });
 
 describe('parseLandingParams — inbound sub-id spelling', () => {
@@ -194,5 +171,138 @@ describe('readSessionIdFromUrl', () => {
     expect(SESSION_ID_PATTERN.test('a\nb')).toBe(false);
     expect(SESSION_ID_PATTERN.test('')).toBe(false);
     expect(SESSION_ID_PATTERN.test('3f6b2c11-1c2a-4b1d-9f0a-77c1d2e3f455')).toBe(true);
+  });
+});
+
+describe('parseLandingParams — canonical click-id table', () => {
+  it('CLICK_ID_MAP is the canonical seven-row table, in precedence order', () => {
+    expect(CLICK_ID_MAP.map((row) => row.incoming)).toEqual([
+      'fbclid',
+      'gclid',
+      'ScCid',
+      'qclid',
+      'twclid',
+      'ndclid',
+      'wbraid',
+    ]);
+    expect(CLICK_ID_MAP.map((row) => row.target)).toEqual([
+      'subId1',
+      'subId1',
+      'subId1',
+      'subId1',
+      'subId1',
+      'subId1',
+      'subId4',
+    ]);
+    expect(CLICK_ID_MAP.map((row) => row.platform)).toEqual([
+      null,
+      null,
+      'snap',
+      'quora',
+      'twitter',
+      'nextdoor',
+      null,
+    ]);
+  });
+
+  it('fbclid → raw fbclid + subId1, no subId5 marker', () => {
+    const out = parseLandingParams(`${BASE}?fbclid=IwAR1abc`, '');
+    expect(out.fbclid).toBe('IwAR1abc');
+    expect(out.subId1).toBe('IwAR1abc');
+    expect(out.subId5).toBeUndefined();
+  });
+
+  it('gclid → raw gclid + subId1, no subId5 marker', () => {
+    const out = parseLandingParams(`${BASE}?gclid=Cj0KCQjw`, '');
+    expect(out.gclid).toBe('Cj0KCQjw');
+    expect(out.subId1).toBe('Cj0KCQjw');
+    expect(out.subId5).toBeUndefined();
+  });
+
+  it("ScCid → raw scCid + subId1 + subId5='snap'", () => {
+    const out = parseLandingParams(`${BASE}?ScCid=sc-123`, '');
+    expect(out.scCid).toBe('sc-123');
+    expect(out.subId1).toBe('sc-123');
+    expect(out.subId5).toBe('snap');
+  });
+
+  it('matches click-id keys case-insensitively (sccid)', () => {
+    const out = parseLandingParams(`${BASE}?sccid=sc-123`, '');
+    expect(out.scCid).toBe('sc-123');
+    expect(out.subId1).toBe('sc-123');
+    expect(out.subId5).toBe('snap');
+  });
+
+  it("qclid → raw qclid + subId1 + subId5='quora'", () => {
+    const out = parseLandingParams(`${BASE}?qclid=q-123`, '');
+    expect(out.qclid).toBe('q-123');
+    expect(out.subId1).toBe('q-123');
+    expect(out.subId5).toBe('quora');
+  });
+
+  it("twclid → raw twclid + subId1 + subId5='twitter'", () => {
+    const out = parseLandingParams(`${BASE}?twclid=tw-123`, '');
+    expect(out.twclid).toBe('tw-123');
+    expect(out.subId1).toBe('tw-123');
+    expect(out.subId5).toBe('twitter');
+  });
+
+  it("ndclid → raw ndclid + subId1 + subId5='nextdoor'", () => {
+    const out = parseLandingParams(`${BASE}?ndclid=nd-123`, '');
+    expect(out.ndclid).toBe('nd-123');
+    expect(out.subId1).toBe('nd-123');
+    expect(out.subId5).toBe('nextdoor');
+  });
+
+  it('wbraid → raw wbraid + prefixed subId4, never subId1 or subId5', () => {
+    const out = parseLandingParams(`${BASE}?wbraid=wb-123`, '');
+    expect(out.wbraid).toBe('wb-123');
+    expect(out.subId4).toBe('wbraid:wb-123');
+    expect(out.subId1).toBeUndefined();
+    expect(out.subId5).toBeUndefined();
+  });
+
+  it("fbclid + ScCid: fbclid wins subId1, ScCid still marks subId5='snap'", () => {
+    const out = parseLandingParams(`${BASE}?fbclid=F&ScCid=S`, '');
+    expect(out.subId1).toBe('F');
+    expect(out.subId5).toBe('snap');
+    expect(out.fbclid).toBe('F');
+    expect(out.scCid).toBe('S');
+  });
+
+  it('gclid + wbraid: distinct slots, no marker from either row', () => {
+    const out = parseLandingParams(`${BASE}?gclid=G&wbraid=W`, '');
+    expect(out.subId1).toBe('G');
+    expect(out.subId4).toBe('wbraid:W');
+    expect(out.subId5).toBeUndefined();
+    expect(out.gclid).toBe('G');
+    expect(out.wbraid).toBe('W');
+  });
+
+  it('an explicit subid1 beats a click-id for the slot but keeps the raw field', () => {
+    const out = parseLandingParams(`${BASE}?fbclid=F&subid1=manual`, '');
+    expect(out.subId1).toBe('manual');
+    expect(out.fbclid).toBe('F');
+  });
+
+  it('an explicit subid4 beats wbraid, and an explicit subid5 beats a marker', () => {
+    const out = parseLandingParams(`${BASE}?wbraid=W&subid4=manual&ScCid=S&subid5=mine`, '');
+    expect(out.subId4).toBe('manual');
+    expect(out.subId5).toBe('mine');
+    expect(out.wbraid).toBe('W');
+    expect(out.scCid).toBe('S');
+  });
+
+  it("strips [<>'\"`&] from the derived sub-id but not from the raw click-id field", () => {
+    const out = parseLandingParams(`${BASE}?fbclid=a%3Cb%3E%27c%22d%60e%26f`, '');
+    expect(out.fbclid).toBe('a<b>\'c"d`e&f');
+    expect(out.subId1).toBe('abcdef');
+  });
+
+  it('skips an empty click-id entirely — no raw field, no slot, no marker', () => {
+    const out = parseLandingParams(`${BASE}?fbclid=&ScCid=S`, '');
+    expect('fbclid' in out).toBe(false);
+    expect(out.subId1).toBe('S');
+    expect(out.subId5).toBe('snap');
   });
 });
