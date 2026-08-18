@@ -149,7 +149,16 @@ export class GhDataClient {
       return null as T;
     }
 
-    const text = await res.text();
+    // M1: reading the body can itself reject (e.g. an aborted response
+    // stream) — that used to fall outside every try/catch here and surface
+    // as a raw TypeError, breaking the "every rejection is a GhError"
+    // contract. Both the read and the parse are covered now.
+    let text: string;
+    try {
+      text = await res.text();
+    } catch (err) {
+      throw new GhError('server', 'failed to read response body', { cause: err });
+    }
     if (!text) return null as T;
     try {
       return JSON.parse(text) as T;

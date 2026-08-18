@@ -1,8 +1,7 @@
 /**
- * Cookie read/write/delete helpers + brand root-domain auto-detection.
- * The SDK uses this for the 30-day `sessionId` cookie and for inspecting
- * the API-set `connect.sid`. See Cluster F design spec for the cookie
- * model.
+ * Cookie read/write helpers + brand root-domain auto-detection.
+ * The SDK uses this for the 30-day `hippo_session_id` cookie. See Cluster F
+ * design spec for the cookie model.
  */
 
 import type { GhConfig } from './config';
@@ -105,8 +104,4 @@ export function writeCookie(name: string, value: string, opts: WriteCookieOption
   if (opts.domain) parts.push(`Domain=${opts.domain}`);
   if (secure) parts.push('Secure');
   document.cookie = parts.join('; ');
-}
-
-export function deleteCookie(name: string, domain: string | null): void {
-  writeCookie(name, '', { maxAgeSec: 0, domain });
 }

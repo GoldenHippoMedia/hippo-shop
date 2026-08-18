@@ -3,7 +3,6 @@ import {
   getCookieDomain,
   readCookie,
   writeCookie,
-  deleteCookie,
   SAFE_TLDS,
 } from '../src/cookies';
 import type { GhConfig } from '../src/config';
@@ -115,10 +114,10 @@ describe('cookie read/write/delete', () => {
     expect(readCookie('encoded')).toBe('a=b; c');
   });
 
-  it('deleteCookie removes a previously-written cookie', () => {
+  it('writeCookie with maxAgeSec: 0 removes a previously-written cookie', () => {
     writeCookie('to_delete', 'present', { maxAgeSec: 60, domain: null });
     expect(readCookie('to_delete')).toBe('present');
-    deleteCookie('to_delete', null);
+    writeCookie('to_delete', '', { maxAgeSec: 0, domain: null });
     expect(readCookie('to_delete')).toBeUndefined();
   });
 
@@ -168,7 +167,7 @@ describe('cookie attributes (recorded by the shared jar helper)', () => {
 
   it('Max-Age=0 removes the cookie from the jar', () => {
     writeCookie('gone', 'v', { maxAgeSec: 60, domain: null });
-    deleteCookie('gone', null);
+    writeCookie('gone', '', { maxAgeSec: 0, domain: null });
     expect(jar.get('gone')).toBeUndefined();
     expect(jar.names()).not.toContain('gone');
   });

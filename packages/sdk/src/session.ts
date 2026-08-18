@@ -216,7 +216,27 @@ function resolveSessionId(search: string, logger: Logger): ResolvedSessionId {
   const fromCookie = readCookie(SESSION_COOKIE_NAME);
   if (fromCookie) return { sessionId: fromCookie, adopted: false, persist: false };
 
-  return { sessionId: generateSessionId(), adopted: false, persist: true };
+  return { sessionId: mintSessionId(logger), adopted: false, persist: true };
+}
+
+/**
+ * M4: `generateSessionId` is the one call in the resolution ladder that can
+ * throw (no Web Crypto in this runtime). Every other failure path here is
+ * non-fatal by design (module header) — an uncaught throw here is not: it
+ * rejects `ensureSession` before `cachedState` is ever set, so
+ * `gh:session-ready` never fires and every checkout link on the page stays
+ * at `href="#"` forever. Falls back to a non-cryptographic id so session
+ * resolution always completes; session fixation already means this id is
+ * not a security boundary (D1), so a guessable fallback loses nothing that
+ * matters here.
+ */
+function mintSessionId(logger: Logger): string {
+  try {
+    return generateSessionId();
+  } catch (err) {
+    logger.error('session: generateSessionId failed — falling back to a last-resort id', err);
+    return `fallback-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  }
 }
 
 /** True when a non-blank `sessionid` key is present, whatever its value. */

@@ -125,6 +125,22 @@ describe('GhDataClient', () => {
     });
   });
 
+  // M1: an ok response whose body read itself rejects (e.g. an aborted
+  // stream) must still surface as a GhError, not a raw TypeError.
+  it('M1: maps a failed response-body read to a GhError, not a raw error', async () => {
+    const abortedResponse = {
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      text: () => Promise.reject(new TypeError('body stream aborted')),
+    } as unknown as Response;
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(abortedResponse);
+    const client = new GhDataClient(CONFIG, createLogger(false));
+    const promise = client.destination('x');
+    await expect(promise).rejects.toBeInstanceOf(GhError);
+    await expect(promise).rejects.toMatchObject({ code: 'server' });
+  });
+
   it('rejects empty slug with bad_request without making a request', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch');
     const client = new GhDataClient(CONFIG, createLogger(false));

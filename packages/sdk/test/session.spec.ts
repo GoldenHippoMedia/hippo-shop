@@ -202,6 +202,25 @@ describe('ensureSession', () => {
     expect(state.params.landingUrl).toContain('gundrymd.com');
   });
 
+  // M4: generateSessionId is the one unguarded throw in ensureSession. If it
+  // throws, cachedState must not stay null forever — every checkout link on
+  // the page would sit at href="#" for the life of the page.
+  it('M4: falls back to a last-resort id and still resolves when generateSessionId throws', async () => {
+    vi.stubGlobal('crypto', undefined);
+    const handler = vi.fn();
+    window.addEventListener('gh:session-ready', handler);
+
+    const state = await ensureSession(makeConfig(), client);
+
+    expect(state.sessionId).toBeTruthy();
+    expect(state.adopted).toBe(false);
+    expect(getSessionState()).toBe(state);
+    expect(handler).toHaveBeenCalledOnce();
+    expect(postSpy).toHaveBeenCalledWith('session', {
+      affParameters: expect.objectContaining({ sessionId: state.sessionId }),
+    });
+  });
+
   it('fires gh:session-ready on window after resolving', async () => {
     const handler = vi.fn();
     window.addEventListener('gh:session-ready', handler);
