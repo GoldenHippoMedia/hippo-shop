@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   getCookieDomain,
   readCookie,
@@ -7,6 +7,7 @@ import {
   SAFE_TLDS,
 } from '../src/cookies';
 import type { GhConfig } from '../src/config';
+import { installCookieJar, type CookieJar } from './helpers/cookie-jar';
 
 function makeConfig(overrides: Partial<GhConfig> = {}): GhConfig {
   return {
@@ -125,5 +126,57 @@ describe('cookie read/write/delete', () => {
     expect(() => writeCookie('bad name', 'x', { maxAgeSec: 60, domain: null })).toThrow(/illegal/i);
     expect(() => writeCookie('bad=name', 'x', { maxAgeSec: 60, domain: null })).toThrow(/illegal/i);
     expect(() => writeCookie('bad;name', 'x', { maxAgeSec: 60, domain: null })).toThrow(/illegal/i);
+  });
+});
+
+describe('cookie attributes (recorded by the shared jar helper)', () => {
+  let jar: CookieJar;
+
+  beforeEach(() => {
+    jar = installCookieJar();
+    setHostname('info.example.com');
+  });
+
+  afterEach(() => {
+    jar.restore();
+  });
+
+  it('records Domain, Max-Age, Path, SameSite and Secure for a write', () => {
+    writeCookie('hippo_session_id', 'abc-123', {
+      maxAgeSec: 2_592_000,
+      domain: '.example.com',
+    });
+    const rec = jar.get('hippo_session_id');
+    expect(rec).toBeDefined();
+    expect(rec!.value).toBe('abc-123');
+    expect(rec!.domain).toBe('.example.com');
+    expect(rec!.maxAge).toBe(2_592_000);
+    expect(rec!.path).toBe('/');
+    expect(rec!.sameSite).toBe('Lax');
+    expect(rec!.secure).toBe(true);
+  });
+
+  it('records a host-only write as domain null', () => {
+    writeCookie('host_only', 'v', { maxAgeSec: 60, domain: null });
+    expect(jar.get('host_only')!.domain).toBeNull();
+  });
+
+  it('seed() makes a cookie readable through readCookie', () => {
+    jar.seed('hippo_session_id', 'seeded-id');
+    expect(readCookie('hippo_session_id')).toBe('seeded-id');
+  });
+
+  it('Max-Age=0 removes the cookie from the jar', () => {
+    writeCookie('gone', 'v', { maxAgeSec: 60, domain: null });
+    deleteCookie('gone', null);
+    expect(jar.get('gone')).toBeUndefined();
+    expect(jar.names()).not.toContain('gone');
+  });
+
+  it('keeps every raw write string in order', () => {
+    writeCookie('a', '1', { maxAgeSec: 60, domain: null });
+    writeCookie('b', '2', { maxAgeSec: 60, domain: '.example.com' });
+    expect(jar.writes).toHaveLength(2);
+    expect(jar.writes[1]).toContain('Domain=.example.com');
   });
 });
