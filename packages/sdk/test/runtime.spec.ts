@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { GhRuntime } from '../src/runtime';
 import { GhDataClient } from '../src/client';
 import { createLogger } from '../src/log';
+import { ensureSession, _resetForTests } from '../src/session';
 import type { GhConfig } from '../src/config';
 
 const CONFIG: GhConfig = {
@@ -263,5 +264,142 @@ describe('GhRuntime — session-ready rebind (Cluster G Correction 3)', () => {
     window.dispatchEvent(new CustomEvent('gh:session-ready', { detail: {} }));
 
     expect(bindSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('GhRuntime — checkout link rebinding (Cluster G Correction 4)', () => {
+  const CHECKOUT_CONFIG: GhConfig = { ...CONFIG, checkoutBase: 'https://checkout.gundrymd.com' };
+
+  const DESTINATION = {
+    id: 'a0D0m000002Dst1EAC',
+    slug: 'bio3-3p-sub',
+    name: 'Bio Complete 3 — 3-pack subscription',
+    description: null,
+    funnelSlug: 'bio-complete-3-main',
+    funnelId: 'a0F0m000002Fnl1EAC',
+    url: null,
+    pricing: {
+      familyOrBundleId: 'fam1',
+      orderFormId: 'OF_123',
+      sku: 'BIO3-3P-SUB',
+      packageQuantity: 3,
+      purchaseType: 'subscription',
+      frequency: null,
+      price: { amount: 49.95, currency: 'USD', savings: null },
+      rebillPrice: { amount: 49.95, currency: 'USD', savings: null },
+      outOfStock: false,
+      restrictedCountryCodes: [],
+      shipping: { domestic: 0, international: 0, freeShippingThreshold: null },
+      bumpOffers: [],
+      checkoutOverrideUrl: null,
+    },
+  };
+
+  const OTHER_DESTINATION = {
+    ...DESTINATION,
+    id: 'a0D0m000002Dst2EAC',
+    slug: 'bio3-6p-sub',
+    pricing: { ...DESTINATION.pricing, orderFormId: 'OF_OTHER', sku: 'BIO3-6P-SUB' },
+  };
+
+  function mockDestinationFetch(): void {
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = String(input);
+      const body = url.endsWith('/destination/bio3-6p-sub') ? OTHER_DESTINATION : DESTINATION;
+      return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
+    });
+  }
+
+  beforeEach(async () => {
+    document.body.innerHTML = '';
+    vi.restoreAllMocks();
+    _resetForTests();
+
+    // Manual cookie jar: jsdom drops writes carrying a Domain attribute.
+    const jar: Record<string, string> = {};
+    Object.defineProperty(document, 'cookie', {
+      configurable: true,
+      get() {
+        return Object.entries(jar).map(([k, v]) => `${k}=${v}`).join('; ');
+      },
+      set(cookieStr: string) {
+        const parts = cookieStr.split(';');
+        const [nameValue] = parts;
+        const [name, value] = (nameValue ?? '').split('=');
+        const trimmedName = (name ?? '').trim();
+        if (parts.some((p) => p.trim().startsWith('Max-Age=0'))) delete jar[trimmedName];
+        else jar[trimmedName] = value ?? '';
+      },
+    });
+
+    Object.defineProperty(window, 'location', {
+      value: {
+        ...window.location,
+        href: 'https://info.gundrymd.com/lp?sessionid=sess-42',
+        search: '?sessionid=sess-42',
+        hostname: 'info.gundrymd.com',
+        protocol: 'https:',
+      },
+      writable: true,
+    });
+    Object.defineProperty(document, 'referrer', { value: '', configurable: true });
+
+    // Resolve a real session: checkout bindings leave href="#" while the
+    // session is unresolved, so these tests need one settled first.
+    const sessionClient = freshClient();
+    sessionClient.postJson = vi.fn().mockResolvedValue({}) as never;
+    await ensureSession(CHECKOUT_CONFIG, sessionClient);
+  });
+
+  it('rebinds a checkout link when its destination loads out of band', async () => {
+    mockDestinationFetch();
+    document.body.innerHTML = `<a id="buy" data-gh-checkout="bio3-3p-sub" href="#">Buy</a>`;
+    const runtime = new GhRuntime({
+      logger: createLogger(false), client: freshClient(), config: CHECKOUT_CONFIG,
+    });
+
+    // The fire-and-forget path: gh.checkoutUrl(slug) and bindOne on a cold
+    // page both warm a destination with no bind pass wrapped around them.
+    await runtime.ensureDestination('bio3-3p-sub');
+    await new Promise((r) => setTimeout(r, 20));
+
+    const href = document.getElementById('buy')!.getAttribute('href')!;
+    expect(href).not.toBe('#');
+    expect(href).toContain('order_form_id=OF_123');
+    expect(href).toContain('sessionid=sess-42');
+  });
+
+  it('rebinds when data-gh-checkout changes to a different slug', async () => {
+    mockDestinationFetch();
+    document.body.innerHTML = `<a id="buy" data-gh-checkout="bio3-3p-sub" href="#">Buy</a>`;
+    const runtime = new GhRuntime({
+      logger: createLogger(false), client: freshClient(), config: CHECKOUT_CONFIG,
+    });
+    await runtime.bind(document);
+    expect(document.getElementById('buy')!.getAttribute('href')).toContain('order_form_id=OF_123');
+
+    runtime.attachObserver();
+    document.getElementById('buy')!.setAttribute('data-gh-checkout', 'bio3-6p-sub');
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(document.getElementById('buy')!.getAttribute('href')).toContain('order_form_id=OF_OTHER');
+    runtime.detachObserver();
+  });
+
+  it('rebinds when data-gh-step changes', async () => {
+    mockDestinationFetch();
+    document.body.innerHTML = `<div id="step" data-gh-step="vsl"></div>`;
+    const runtime = new GhRuntime({
+      logger: createLogger(false), client: freshClient(), config: CHECKOUT_CONFIG,
+    });
+    await runtime.bind(document);
+    runtime.attachObserver();
+    const bindSpy = vi.spyOn(runtime, 'bind');
+
+    document.getElementById('step')!.setAttribute('data-gh-step', 'order-form');
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(bindSpy).toHaveBeenCalled();
+    runtime.detachObserver();
   });
 });

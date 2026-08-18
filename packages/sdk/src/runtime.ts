@@ -159,6 +159,11 @@ export class GhRuntime {
     if (this.observer) return;
     const filter = [
       ...RESOURCE_KINDS.map(k => RESOURCE_ATTR[k]),
+      // Cluster G: swapping a checkout slug must re-point the link, and an
+      // SPA that swaps data-gh-step is announcing a new step — both have to
+      // reach bind() through the observer.
+      'data-gh-checkout',
+      'data-gh-step',
       'data-field',
       'data-format',
       'data-if',
@@ -214,6 +219,12 @@ export class GhRuntime {
         const data = await this.opts.client[kind](slug);
         this.resources.set(key, data);
         this.resourceStates.set(key, 'loaded');
+        // A load can complete outside a bind pass — bindOne's fire-and-forget
+        // ensureDestination, or gh.checkoutUrl warming a slug. Without this,
+        // nothing repaints and a checkout link sits at href="#" for the life
+        // of the page. Cannot loop: bind() is idempotent and a cached
+        // resource short-circuits loadOne before reaching here.
+        this.scheduleRebind();
       } catch (err) {
         this.resourceStates.set(key, 'failed');
         if (err instanceof GhError) {
