@@ -18,6 +18,7 @@ function makeConfig(overrides: Partial<GhConfig> = {}): GhConfig {
     apiBaseUrl: 'https://api-prod.goldenhippo.io',
     checkoutBase: null,
     cookieDomain: null,
+    brandToken: null,
     ...overrides,
   };
 }
@@ -43,7 +44,7 @@ function setLocation(href: string): void {
 beforeEach(() => {
   // Wipe cookies between tests.
   document.cookie.split(';').forEach((c) => {
-    const name = c.split('=')[0].trim();
+    const name = c.split('=')[0]!.trim();
     if (name) document.cookie = `${name}=; Max-Age=0; Path=/`;
   });
   setLocation('https://localhost/');
@@ -196,10 +197,60 @@ describe('ensureSession', () => {
   });
 
   it('on POST failure still resolves with an id and locally-parsed params', async () => {
+    // Stubbed so the expected degradation warn does not print to stderr and
+    // make a green run look like a failing one.
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
     postSpy.mockRejectedValueOnce(new Error('network blew up'));
     const state = await ensureSession(makeConfig(), client);
     expect(state.sessionId).toMatch(UUID_V4_RE);
     expect(state.params.landingUrl).toContain('gundrymd.com');
+  });
+
+  // D4 keeps the POST fire-and-forget (no retry, not even on 429), but a
+  // dropped session POST is invisible from outside: the page renders, checkout
+  // links bind and the id still rides the URL, while the attribution row never
+  // lands. The warn is the only signal.
+  it('warns when the attribution POST fails, and still does not rethrow', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    postSpy.mockRejectedValueOnce(new Error('network blew up'));
+
+    const state = await ensureSession(makeConfig(), client);
+
+    expect(state.sessionId).toMatch(UUID_V4_RE);
+    // Exactly two args: the prefix and one line carrying the error's *message*.
+    // Passing the Error itself would dump a stack per page load on a
+    // third-party brand page, and a failed POST is a common event.
+    expect(warn).toHaveBeenCalledWith(
+      '[gh]',
+      'session: attribution POST failed — attribution degraded for this load (network blew up)',
+    );
+  });
+
+  // Privacy tools and some tag managers stub or null `console.warn`, and a stub
+  // that throws used to escape `ensureSession` — this test asserted exactly
+  // that escape, which encoded the defect rather than the contract. The guard
+  // now lives in the logger (`emit` in log.ts), so a throwing `console.warn` is
+  // invisible from out here: `ensureSession` resolves normally, the state is
+  // cached and `gh:session-ready` fires, no differently than on a clean page.
+  // Deliberately exercises the real `createLogger` path through `ensureSession`
+  // rather than an injected `vi.fn()` — the hazard is how the logger reaches
+  // `console.warn`.
+  it('resolves normally, caches state and fires gh:session-ready when console.warn throws', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {
+      throw new Error('console.warn stubbed by a privacy tool');
+    });
+    const handler = vi.fn();
+    window.addEventListener('gh:session-ready', handler);
+    postSpy.mockRejectedValueOnce(new Error('network blew up'));
+
+    const state = await ensureSession(makeConfig(), client);
+
+    expect(state.sessionId).toMatch(UUID_V4_RE);
+    expect(getSessionState()).toBe(state);
+    expect(handler).toHaveBeenCalledOnce();
+    // The line was still attempted: the guard swallows the host page's failure,
+    // it does not stop the SDK from trying to report the degradation.
+    expect(warn).toHaveBeenCalled();
   });
 
   // M4: generateSessionId is the one unguarded throw in ensureSession. If it
@@ -226,7 +277,7 @@ describe('ensureSession', () => {
     window.addEventListener('gh:session-ready', handler);
     await ensureSession(makeConfig(), client);
     expect(handler).toHaveBeenCalledOnce();
-    const event = handler.mock.calls[0][0] as CustomEvent;
+    const event = handler.mock.calls[0]![0] as CustomEvent;
     expect(event.detail).toMatchObject({
       sessionId: expect.stringMatching(UUID_V4_RE),
       adopted: false,
@@ -431,5 +482,34 @@ describe('ensureSession — D1 resolution ladder', () => {
     expect(state.sessionId).toBe('url-value-222');
     expect(state.adopted).toBe(true);
     setter.mockRestore();
+  });
+
+  // Task 5 widened the cookie to the registrable root, so any sibling
+  // subdomain can write hippo_session_id. An unvalidated value flowed into a
+  // cookie write, a query string and a server-side session key.
+  it('rejects a malformed cookie value, warns, and mints a fresh id instead', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    jar.seed('hippo_session_id', 'bad value; Max-Age=0');
+
+    const state = await ensureSession(makeConfig(), client);
+
+    expect(state.sessionId).toMatch(UUID_V4_RE);
+    expect(state.adopted).toBe(false);
+    expect(warn).toHaveBeenCalledWith(
+      '[gh]',
+      expect.stringContaining('malformed hippo_session_id cookie'),
+    );
+    // The fresh id replaces the rejected value rather than riding alongside it.
+    expect(jar.get('hippo_session_id')!.value).toBe(state.sessionId);
+  });
+
+  it('adopts a cookie value that passes SESSION_ID_PATTERN unchanged, without re-persisting', async () => {
+    jar.seed('hippo_session_id', '9f1c2d3e-4a5b-4c6d-8e7f-0a1b2c3d4e5f');
+
+    const state = await ensureSession(makeConfig(), client);
+
+    expect(state.sessionId).toBe('9f1c2d3e-4a5b-4c6d-8e7f-0a1b2c3d4e5f');
+    expect(state.adopted).toBe(false);
+    expect(jar.writes.filter((w) => w.startsWith(`${SESSION_COOKIE_NAME}=`))).toEqual([]);
   });
 });

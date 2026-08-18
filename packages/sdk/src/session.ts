@@ -17,7 +17,12 @@
 import type { GhConfig } from './config';
 import type { GhDataClient } from './client';
 import { getCookieDomain, readCookie, writeCookie } from './cookies';
-import { parseLandingParams, readSessionIdFromUrl, type ParsedParams } from './url-params';
+import {
+  parseLandingParams,
+  readSessionIdFromUrl,
+  SESSION_ID_PATTERN,
+  type ParsedParams,
+} from './url-params';
 import { createLogger, type Logger } from './log';
 
 /**
@@ -92,8 +97,16 @@ export function buildSessionPostBody(
  *
  * `crypto.randomUUID()` when available; otherwise an explicit v4 built from
  * `crypto.getRandomValues` (insecure-context browsers expose the latter but not
- * the former). There is no `Math.random()` path: if neither exists we throw
- * rather than mint a guessable id.
+ * the former). There is no `Math.random()` path *in this function*: if neither
+ * exists we throw rather than mint a guessable id.
+ *
+ * That is a property of this function alone, not of the SDK. `mintSessionId`
+ * below is the only caller on the resolution ladder, and it catches this throw
+ * and degrades to `fallback-<base36>-<base36>` — built with `Math.random()`,
+ * because an uncaught throw here would strand `ensureSession` and leave every
+ * checkout link on the page inert (see the M4 note there). So the SDK *does*
+ * mint guessable ids in a runtime without Web Crypto; it just never returns one
+ * from here.
  *
  * This replaces Cluster F's 12-character numeric generator. Nothing parses that
  * format — the funnel app already emits UUIDv4 into the same pipeline.
@@ -162,12 +175,18 @@ export async function ensureSession(
   const isReturningVisit = !resolved.persist;
   const params = parseLandingParams(href, referrer, isReturningVisit);
 
+  // Boxed rather than warned in place: the warn is deliberately deferred past
+  // the state transition below (see the note on it), and boxing keeps a thrown
+  // `undefined` distinguishable from "no failure".
+  let postFailure: { err: unknown } | null = null;
   try {
     // D4: POST once per page load, unconditionally. `sessionId` is nested
     // inside `affParameters` and empty values are pruned before send.
     await client.postJson('session', buildSessionPostBody(params, resolved.sessionId));
-  } catch {
-    // Network or non-2xx: attribution degrades, the page never breaks.
+  } catch (err) {
+    // Network or non-2xx: attribution degrades, the page never breaks. Still
+    // swallowed — D4 is fire-and-forget with no retry, not even on 429.
+    postFailure = { err };
   }
 
   const state: SessionState = {
@@ -177,6 +196,30 @@ export async function ensureSession(
   };
   cachedState = state;
   fireReady(state);
+
+  if (postFailure) {
+    // Logged *after* cachedState/fireReady rather than from inside the catch,
+    // so the state transition every checkout link on the page waits on is
+    // already done before any diagnostic runs. That ordering is no longer
+    // load-bearing: `logger.warn` cannot throw, whatever the host page has
+    // done to `console` (see `emit` in log.ts, which guards a missing
+    // `console`, a non-callable method and a throwing one). It used to be —
+    // a stubbed `console.warn` that threw from inside the catch skipped the
+    // transition, `gh:session-ready` never fired, and every
+    // `data-gh-checkout` link sat at href="#" for the life of the page.
+    //
+    // Unconditional, unlike the debug-gated warn in `emitPageView`
+    // (events.ts:321-327): a systematically dead attribution path should be
+    // loud. But one line, carrying the error's *message* and not the Error —
+    // this SDK runs on third-party brand pages and a dropped POST is a common
+    // event, so a stack dump per page load is noise on someone else's site.
+    const reason =
+      postFailure.err instanceof Error ? postFailure.err.message : String(postFailure.err);
+    logger.warn(
+      `session: attribution POST failed — attribution degraded for this load (${reason})`,
+    );
+  }
+
   return state;
 }
 
@@ -195,7 +238,11 @@ interface ResolvedSessionId {
  *  1. `?sessionid=` — validated by SESSION_ID_PATTERN, adopted even when a
  *     *different* cookie value already exists, and re-persisted every time so
  *     the 30-day window refreshes. Malformed values warn and fall through.
- *  2. the `hippo_session_id` cookie.
+ *  2. the `hippo_session_id` cookie — validated by the same pattern. The cookie
+ *     is scoped to the registrable root, so any sibling subdomain can write it;
+ *     an unvalidated value would flow straight into a cookie write, a query
+ *     string and a server-side session key. Malformed values warn and fall
+ *     through, exactly as in tier 1.
  *  3. a freshly minted UUIDv4.
  *
  * Accepting a URL-supplied id is session fixation by design; for this pilot the
@@ -213,8 +260,13 @@ function resolveSessionId(search: string, logger: Logger): ResolvedSessionId {
     logger.warn('session: ignoring malformed ?sessionid= handoff param');
   }
 
-  const fromCookie = readCookie(SESSION_COOKIE_NAME);
-  if (fromCookie) return { sessionId: fromCookie, adopted: false, persist: false };
+  const fromCookie = readCookie(SESSION_COOKIE_NAME)?.trim();
+  if (fromCookie) {
+    if (SESSION_ID_PATTERN.test(fromCookie)) {
+      return { sessionId: fromCookie, adopted: false, persist: false };
+    }
+    logger.warn('session: ignoring malformed hippo_session_id cookie value');
+  }
 
   return { sessionId: mintSessionId(logger), adopted: false, persist: true };
 }
