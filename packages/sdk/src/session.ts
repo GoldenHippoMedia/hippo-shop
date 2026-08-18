@@ -144,7 +144,11 @@ export async function ensureSession(
   // the @param referrer note on parseLandingParams (url-params.ts) before
   // wiring this value up to referralUrl.
   const referrer = typeof document !== 'undefined' ? document.referrer : '';
-  const params = parseLandingParams(href, referrer);
+  // I3: `persist: false` is exactly the "read the existing cookie, mint/adopt
+  // nothing new" branch of resolveSessionId — the one case that is a
+  // returning visit reusing a prior session, not a fresh landing.
+  const isReturningVisit = !resolved.persist;
+  const params = parseLandingParams(href, referrer, isReturningVisit);
 
   try {
     // D4: POST once per page load, unconditionally. `sessionId` is nested

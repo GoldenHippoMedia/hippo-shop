@@ -368,4 +368,24 @@ describe('parseLandingParams — landing and referral URLs', () => {
     const out = parseLandingParams('', '');
     expect('landingUrl' in out).toBe(false);
   });
+
+  // I3: affParameters is destructive-on-write and the session POST fires on
+  // every page load — defaulting landingUrl to the current href on a
+  // returning visit would overwrite the real ad landing page with whatever
+  // internal page the visitor clicked to next.
+  it('I3: omits the synthesised landingUrl on a returning visit', () => {
+    const out = parseLandingParams(`${BASE}?utm_source=fb`, '', true);
+    expect('landingUrl' in out).toBe(false);
+    expect(out.utmSource).toBe('fb');
+  });
+
+  it('I3: an explicit ?landing_url= still wins on a returning visit', () => {
+    const explicit = 'https://ads.example.com/lp?q=1';
+    const out = parseLandingParams(
+      `${BASE}?landing_url=${encodeURIComponent(explicit)}`,
+      '',
+      true,
+    );
+    expect(out.landingUrl).toBe(explicit);
+  });
 });

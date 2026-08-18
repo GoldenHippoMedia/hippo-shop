@@ -160,6 +160,41 @@ describe('ensureSession', () => {
     expect(state.adopted).toBe(false);
   });
 
+  // I3: a first-touch POST stores the real landing page; a same-session
+  // follow-on click must not blow it away with the current, internal page.
+  it('I3: a first load stores landingUrl', async () => {
+    setLocation('https://info.gundrymd.com/lp/vsl?utm_source=facebook');
+    await ensureSession(makeConfig(), client);
+    const [, body] = postSpy.mock.calls[0] as [string, { affParameters: Record<string, string> }];
+    expect(body.affParameters.landingUrl).toBe('https://info.gundrymd.com/lp/vsl');
+  });
+
+  it('I3: a returning visit (cookie reused) omits landingUrl from the POST', async () => {
+    jar.seed(SESSION_COOKIE_NAME, '9f1c2d3e-4a5b-4c6d-8e7f-0a1b2c3d4e5f');
+    setLocation('https://info.gundrymd.com/lp/offers');
+    await ensureSession(makeConfig(), client);
+    const [, body] = postSpy.mock.calls[0] as [string, { affParameters: Record<string, string> }];
+    expect('landingUrl' in body.affParameters).toBe(false);
+  });
+
+  it('I3: an explicit ?landing_url= is sent even on a returning visit', async () => {
+    jar.seed(SESSION_COOKIE_NAME, '9f1c2d3e-4a5b-4c6d-8e7f-0a1b2c3d4e5f');
+    setLocation('https://info.gundrymd.com/lp/offers?landing_url=https%3A%2F%2Fads.example.com%2Flp');
+    await ensureSession(makeConfig(), client);
+    const [, body] = postSpy.mock.calls[0] as [string, { affParameters: Record<string, string> }];
+    expect(body.affParameters.landingUrl).toBe('https://ads.example.com/lp');
+  });
+
+  it('I3: adopting ?sessionid= counts as a first touch, not a returning visit', async () => {
+    jar.seed(SESSION_COOKIE_NAME, 'stale-cookie-session-id');
+    setLocation('https://info.gundrymd.com/lp/vsl?sessionid=adopted-session-id');
+    const state = await ensureSession(makeConfig(), client);
+    expect(state.sessionId).toBe('adopted-session-id');
+    expect(state.adopted).toBe(true);
+    const [, body] = postSpy.mock.calls[0] as [string, { affParameters: Record<string, string> }];
+    expect(body.affParameters.landingUrl).toBe('https://info.gundrymd.com/lp/vsl');
+  });
+
   it('on POST failure still resolves with an id and locally-parsed params', async () => {
     postSpy.mockRejectedValueOnce(new Error('network blew up'));
     const state = await ensureSession(makeConfig(), client);

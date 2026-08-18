@@ -148,11 +148,26 @@ function clean(value: string): string {
  *  fallback would overwrite the real ad referrer with the previous internal
  *  page on the second page view. The funnel-event payload derives its own
  *  `referralUrl` from `document.referrer` — a different call, different shape.
+ * @param isReturningVisit I3: true when this page load reused an existing
+ *  session (the `hippo_session_id` cookie was read rather than minted or
+ *  adopted from `?sessionid=`). `affParameters` is destructive-on-write and
+ *  the session POST fires unconditionally on every page load, so defaulting
+ *  `landingUrl` to the *current* href on a returning visit would overwrite
+ *  the real ad landing page with whatever internal page the visitor clicked
+ *  to next. On a returning visit the default is skipped entirely — an
+ *  explicit `?landing_url=` below still wins regardless, exactly like a
+ *  first touch.
  */
-export function parseLandingParams(href: string, _referrer: string): ParsedParams {
+export function parseLandingParams(
+  href: string,
+  _referrer: string,
+  isReturningVisit = false,
+): ParsedParams {
   const out: ParsedParams = {};
-  const landingDefault = clean(href.split('?')[0] ?? href);
-  if (landingDefault) out.landingUrl = landingDefault;
+  if (!isReturningVisit) {
+    const landingDefault = clean(href.split('?')[0] ?? href);
+    if (landingDefault) out.landingUrl = landingDefault;
+  }
 
   let url: URL;
   try {
