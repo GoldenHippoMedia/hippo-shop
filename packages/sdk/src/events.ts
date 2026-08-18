@@ -18,6 +18,10 @@
  * row landed — hence the byte-level fidelity of every default below.
  */
 
+import type {
+  HippoShopDestinationDTO,
+  HippoShopFunnelDTO,
+} from '@goldenhippo/hippo-shop-types';
 import type { GhConfig } from './config';
 import type { SessionState } from './session';
 import type { GhDataClient } from './client';
@@ -441,4 +445,107 @@ export async function emitPageViewOnce(
 export function _resetEventsForTests(): void {
   const host = guardHost();
   if (host) delete host[EVENT_GUARD_KEY];
+}
+
+// ---------------------------------------------------------------------------
+// Identity selection (D5) — read from the LIVE DOM at emit time
+// ---------------------------------------------------------------------------
+
+/** Step slug. Populates `url` and, via the funnel DTO, `funnelSTPId`. */
+export const STEP_ATTR = 'data-gh-step';
+/** Escape hatch for pages that bind no destination. */
+export const FUNNEL_ID_ATTR = 'data-gh-funnel-id';
+const DESTINATION_ATTR = 'data-gh-destination';
+/** Repeated locally rather than imported: checkout.ts keeps its copy private. */
+const CHECKOUT_ATTR = 'data-gh-checkout';
+const FUNNEL_ATTR = 'data-gh-funnel';
+
+/**
+ * Read an attribute preferring a page element over the SDK script tag.
+ *
+ * `:not(script)` first, script second — not plain document order: the script
+ * tag usually sits in <head> and would otherwise always win, inverting the
+ * documented precedence ("read from the DOM ... falling back to the value on
+ * the script tag").
+ */
+function readAttrPreferringPage(doc: Document, attr: string): string | null {
+  const fromPage = doc.querySelector(`[${attr}]:not(script)`)?.getAttribute(attr)?.trim();
+  if (fromPage) return fromPage;
+  const fromScript = doc.querySelector(`script[${attr}]`)?.getAttribute(attr)?.trim();
+  return fromScript ? fromScript : null;
+}
+
+/**
+ * `data-gh-step` at emit time. Deliberately NOT a `parseScriptConfig` field:
+ * `GhConfig` is an immutable boot-time snapshot, and an observer-driven
+ * re-emit can only work against a live DOM read.
+ */
+export function readStepSlug(doc: Document): string | null {
+  return readAttrPreferringPage(doc, STEP_ATTR);
+}
+
+/**
+ * The destination slug that identity comes from: first `[data-gh-destination]`
+ * in document order, else first `[data-gh-checkout]`.
+ *
+ * The canonical offer-selector page binds six destinations. They are six
+ * variants of ONE page view, not six page views.
+ */
+export function firstDestinationSlug(doc: Document): string | null {
+  const direct = doc
+    .querySelector(`[${DESTINATION_ATTR}]`)
+    ?.getAttribute(DESTINATION_ATTR)
+    ?.trim();
+  if (direct) return direct;
+  const checkout = doc
+    .querySelector(`[${CHECKOUT_ATTR}]`)
+    ?.getAttribute(CHECKOUT_ATTR)
+    ?.trim();
+  return checkout ? checkout : null;
+}
+
+export interface EventIdentity {
+  funnelId: string | null;
+  destinationId: string | null;
+  stepId: string | null;
+  splitTestId: string | null;
+}
+
+export interface IdentityOptions {
+  doc: Document;
+  /** Synchronous cached-destination lookup (runtime.getCachedDestination). */
+  getDestination: (slug: string) => HippoShopDestinationDTO | null;
+  /** Synchronous cached-funnel lookup (runtime.getCachedFunnel). */
+  getFunnel: (slug: string) => HippoShopFunnelDTO | null;
+  stepSlug: string | null;
+  /** location.search, for the ?origdsidOrig= / ?origsplitTestingFunnelIdOrig= handoff. */
+  search: string;
+}
+
+/** Resolve the Salesforce ids a Page View needs from DOM + cached DTOs. */
+export function resolveEventIdentity(opts: IdentityOptions): EventIdentity {
+  const slug = firstDestinationSlug(opts.doc);
+  const destination = slug ? opts.getDestination(slug) : null;
+
+  let params: URLSearchParams;
+  try {
+    params = new URLSearchParams(opts.search);
+  } catch {
+    params = new URLSearchParams('');
+  }
+
+  const funnelId =
+    destination?.funnelId || readAttrPreferringPage(opts.doc, FUNNEL_ID_ATTR) || null;
+  const destinationId = destination?.id || params.get('origdsidOrig') || null;
+  const splitTestId = params.get('origsplitTestingFunnelIdOrig') || null;
+
+  const funnelSlug =
+    destination?.funnelSlug || readAttrPreferringPage(opts.doc, FUNNEL_ATTR) || null;
+  let stepId: string | null = null;
+  if (funnelSlug && opts.stepSlug) {
+    const funnel = opts.getFunnel(funnelSlug);
+    stepId = funnel?.steps.find((s) => s.slug === opts.stepSlug)?.id ?? null;
+  }
+
+  return { funnelId, destinationId, stepId, splitTestId };
 }
