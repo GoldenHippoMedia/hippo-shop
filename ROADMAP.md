@@ -32,11 +32,21 @@ Added: 2026-05-18
 
 Now that Cluster E v1 has landed the public lander, layer an admin UI onto the same `apps/web` Astro app behind Google login (@goldenhippo.com required) for requesting and managing access keys, authorized origins, and (eventually) per-team relationships. Regular users can request a new key, see their request status, view their issued keys, and manage their domain allow-list. Admins can manage all relationships. Future: request-count visibility, possibly sourced from Kong logs via Logtail on Heroku. Coming-soon callout on the lander already points at this.
 
-### Cluster F — SDK session, UTM, and checkout handoff
-Status: idea
-Added: 2026-05-17
+### Cluster G — Superfunnel.ai pilot: session handoff, funnel events, destination links
+Status: in-progress
+Added: 2026-08-18
 
-Have the SDK manage a session cookie when one is not present and parse UTM parameters, including the Golden Hippo-specific click-id mapping (e.g. `fbclid` → `sub_id1=fb` and `sub_id5=fbcli`). On a `checkoutUrl` handoff — possibly supplied by destination details — auto-apply the correct UTM parameters. This would unlock a single per-brand checkout app at `checkout.brand_domain.com` consuming pages from anywhere. Large architectural commitment; probably warrants a spike before a full spec.
+Golden Hippo is piloting [Superfunnel.ai](https://superfunnel.ai), which hosts funnel pages on a subdomain of the brand's root domain (e.g. `sf.gundrymd.com`) and embeds the Hippo Shop SDK. Cluster G realigns the SDK's session and attribution layer with `hippo-builder-funnel`, the canonical implementation: `hippo_session_id` cookie at the registrable root domain, UUID v4 ids, a three-step resolution ladder (inbound `?sessionid=` → cookie → mint), and an unconditional session POST carrying `affParameters.sessionId`. Adds `Page View` funnel events — the 36-field payload, `keepalive` POST to `/public/v1/funnel-event`, deduped per page load, gated on a resolvable funnel id — plus `data-gh-step`, `data-gh-funnel-id`, and `gh.track('Page View')`. `data-gh-checkout` now resolves through the destination's absolute `url`, so binding an offer navigates the visitor to that destination with attribution attached, and `gh.checkoutUrl(slug)` becomes async. Both packages cut as v4: a clean break with no compatibility shims, since the 3.x line has no production consumers.
+
+Subsumes Cluster F (SDK session, UTM, and checkout handoff), which this file recorded as `done` on 2026-05-19. It was not done: PR #17 never merged, `main` has never carried `cookies.ts`, `url-params.ts`, `session.ts` or `checkout.ts`, and no npm version ever shipped them. F is folded into this entry rather than moved back to Open because nothing separable is left to pick up — `feat/cluster-g-superfunnel-pilot` is branched off F, F's commits reach `main` inside the single Cluster G PR, and every behaviour an F backlog item would have described is replaced here: the click-id mapping (`subId1='fb'` with the value in `subId5` — the slots reversed, and a literal no platform emits), the `session_id` / `sub_idN` outbound spelling, the `sessionId` cookie name and its 12-digit id, and the `connect.sid` gate that read an `httpOnly` cookie JS cannot see. PR #17 closes as superseded and F's two changesets are deleted.
+
+The `GH-Commerce-Service` half ships as its own PR from `feat/cluster-g-hippo-shop-session-destination-url` (off `prerelease`): a public `POST /hippo-shop/v1/session` route on the already-unauthenticated `HippoShopController`, destination identity pass-through (`id`, `funnelId`, step `id`) from a payload the serializer already fetched and discarded, and the destination's absolute URL via a brand-scoped SOQL query that degrades to `url: null` rather than failing the response.
+
+Release ordering is load-bearing. The `gh-hippo-shop-sdk-v4` Cloudflare Pages project and the Kong `/sdk/v4/*` route must exist *before* the SDK publish — the v3 cut failed on exactly this. `@goldenhippo/hippo-shop-types@4.0.0` must publish *before* the commerce pin bump, and in the commerce repo the pin bump (`^3.0.0` → `^4.0.0`) and the Zod schema change must be one commit or `tsc` fails. 3.x is npm-deprecated afterwards, following the 1.x/2.x precedent.
+
+Kong work is parallel and owned outside these repos: the `/public/v1/session` and `/public/v1/funnel-event` routes, and a rate-limit tier sized for the offer selector's ~8 requests per page load (six destination `GET`s, one session `POST`, one event `POST`) against a documented 60/min per-consumer default.
+
+Related: `docs/superpowers/specs/2026-08-18-cluster-g-superfunnel-pilot-design.md`, `docs/superpowers/plans/2026-08-18-cluster-g-superfunnel-pilot.md`, PR #17 (superseded), PR #18
 
 ---
 

@@ -32,7 +32,10 @@ const shipping: HippoShopShippingDTO = {
   domestic: 4.95, international: 9.95, freeShippingThreshold: 50,
 };
 const dest: HippoShopDestinationDTO = {
-  slug: 'd', name: 'd', description: null, funnelSlug: 'f',
+  id: 'a0D0m000002Dst1EAC',
+  slug: 'd', name: 'd', description: null,
+  funnelSlug: 'f', funnelId: 'a0F0m000002Fnl1EAC',
+  url: null,
   pricing: {
     familyOrBundleId: 'fam-sf-id', orderFormId: 'of-sf-id', sku: 'SKU-1',
     packageQuantity: 1, purchaseType: 'one-time',
@@ -40,12 +43,23 @@ const dest: HippoShopDestinationDTO = {
     price: usdPrice, rebillPrice: null,
     outOfStock: false, restrictedCountryCodes: [],
     shipping, bumpOffers: [],
+    checkoutOverrideUrl: null,
   },
 };
 expectType<HippoShopPriceDTO | null>(dest.pricing.rebillPrice);
 expectType<HippoShopFrequencyDTO | null>(dest.pricing.frequency);
 expectType<number | null>(dest.pricing.shipping.freeShippingThreshold);
 expectType<HippoShopBumpOfferDTO[]>(dest.pricing.bumpOffers);
+expectType<string | null>(dest.pricing.checkoutOverrideUrl);
+// --- Cluster G: destination identity + absolute URL are required, not optional ---
+expectType<string>(dest.id);
+expectType<string>(dest.funnelId);
+expectType<string | null>(dest.url);
+// Omitting any of the three is an error, not a silently-undefined read.
+expectError<HippoShopDestinationDTO>({
+  slug: 'd', name: 'd', description: null, funnelSlug: 'f',
+  pricing: dest.pricing,
+});
 
 // --- bumpOffers entries have a full price shape, not just an amount ---
 const bump: HippoShopBumpOfferDTO = {
@@ -76,10 +90,11 @@ expectType<number | null>(variant.alternatePurchaseTypePrice);
 const funnel: HippoShopFunnelDTO = {
   slug: 'f', name: 'F', active: true,
   steps: [
-    { stepNumber: 1, slug: 's1', name: 'S1', kind: 'landing' },
+    { id: 'a0P0m000002Stp1EAC', stepNumber: 1, slug: 's1', name: 'S1', kind: 'landing' },
   ],
 };
 expectType<HippoShopStepKind>(funnel.steps[0]!.kind);
+expectType<string>(funnel.steps[0]!.id);
 
 // --- HippoShopFrequencyDTO has both internal and public interval/scale ---
 const freq: HippoShopFrequencyDTO = {

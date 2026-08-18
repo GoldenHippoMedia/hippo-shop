@@ -12,8 +12,9 @@ Golden Hippo's internal teams building landing pages, sales funnels, and support
 
 - **Typed DTOs** that match what the public API returns, published as `@goldenhippo/hippo-shop-types` with zero runtime dependencies.
 - **Auto-booting browser SDK** distributed as `@goldenhippo/hippo-shop-sdk` and served from a stable CDN URL. The host page drops in one `<script>` tag with `data-key` and `data-brand` attributes; the SDK attaches `window.gh`.
-- **Declarative bindings** — `data-gh-*`, `data-field`, `data-format`, `data-with`, `data-when`, and related attributes — that read DTOs into HTML without JavaScript.
-- **Programmatic API** at `window.gh.data` for `funnel`, `destination`, and `product` lookups when declarative bindings are not enough.
+- **Declarative bindings** — `data-gh-*`, `data-field`, `data-format`, `data-with`, `data-when`, `data-gh-checkout`, and related attributes — that read DTOs into HTML without JavaScript.
+- **Programmatic API** at `window.gh.data` for `funnel`, `destination`, and `product` lookups, plus `window.gh.checkoutUrl()` and `window.gh.session.*` for checkout handoff and session tracking.
+- **Session and checkout handoff** — the SDK auto-detects visitor attribution from landing URLs, issues session cookies, and can compose outbound checkout URLs with captured attribution preserved.
 - **Brand-scoped isolation** — every request is scoped to one brand by the `data-brand` attribute and the access key. Cross-brand reads return 404.
 - **Access-key gating** — unknown or revoked keys are rejected at the edge (401 from Kong). CORS origins are allow-listed at the route level today; per-key origin pinning is on the roadmap.
 - **SLSA-provenanced npm releases** for both packages via npm Trusted Publishers.

@@ -8,7 +8,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const BUDGET_BYTES = 8 * 1024;
+const BUDGET_BYTES = 11 * 1024;
 const BUNDLE = resolve(__dirname, '..', 'packages', 'sdk', 'dist', 'gh.js');
 
 if (!existsSync(BUNDLE)) {

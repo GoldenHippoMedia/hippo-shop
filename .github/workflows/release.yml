@@ -60,8 +60,8 @@ jobs:
         # found" instead. We always run `project create` first; it errors
         # with exit 1 if the project exists, which we swallow with `|| true`.
         run: |
-          npx --yes wrangler@4 pages project create gh-hippo-shop-sdk-v3 --production-branch=main || true
-          npx --yes wrangler@4 pages deploy packages/sdk/dist --project-name=gh-hippo-shop-sdk-v3 --branch=main
+          npx --yes wrangler@4 pages project create gh-hippo-shop-sdk-v4 --production-branch=main || true
+          npx --yes wrangler@4 pages deploy packages/sdk/dist --project-name=gh-hippo-shop-sdk-v4 --branch=main
 
       - name: Notify Slack
         if: steps.changesets.outputs.published == 'true'

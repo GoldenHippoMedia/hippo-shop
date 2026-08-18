@@ -94,6 +94,20 @@ describe('collectResources', () => {
     const refs = collectResources(document);
     expect(refs).toEqual([{ kind: 'product', slug: 'outside-template' }]);
   });
+
+  it('treats data-gh-checkout as a destination reference (Cluster G Correction 4)', () => {
+    setHtml(`
+      <a data-gh-checkout="d1" href="#">Buy one</a>
+      <button data-gh-checkout="d2">Buy two</button>
+      <a data-gh-checkout="d1" href="#">Buy one again</a>
+      <span data-gh-destination="d2"></span>
+    `);
+    const refs = collectResources(document);
+    const keys = refs.map(resourceKey).sort();
+    // d1 deduped across two links; d2 deduped across data-gh-checkout and
+    // data-gh-destination — both name the same cache key.
+    expect(keys).toEqual(['destination:d1', 'destination:d2']);
+  });
 });
 
 describe('applyBindings — field + format', () => {

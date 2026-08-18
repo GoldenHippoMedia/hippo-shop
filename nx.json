@@ -8,7 +8,7 @@
       "!{projectRoot}/**/*.spec.ts",
       "!{projectRoot}/**/*.test.ts",
       "!{projectRoot}/**/*.test-d.ts",
-      "!{projectRoot}/tsup.config.ts",
+      "!{projectRoot}/tsconfig.test.json",
       "!{projectRoot}/vitest.config.ts"
     ],
     "sharedGlobals": [

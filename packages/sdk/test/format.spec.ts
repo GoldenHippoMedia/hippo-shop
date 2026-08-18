@@ -45,6 +45,10 @@ describe('FormatRegistry', () => {
   it('apply() with no spec returns String(value)', () => {
     const r = new FormatRegistry();
     expect(r.apply(123, null)).toBe('123');
+    // FormatRegistry.apply(value, spec) is a domain method that happens to share
+    // a name with Function.prototype.apply, which is all eslint's prefer-spread
+    // pattern-matches on. There is no spread form to prefer here.
+    // eslint-disable-next-line prefer-spread
     expect(r.apply(null, null)).toBe('');
   });
 

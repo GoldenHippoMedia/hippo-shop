@@ -10,17 +10,23 @@
  *   4. `gh:bindings-ready` fires once after the initial bind completes.
  */
 
+import type { HippoShopDestinationDTO, HippoShopFunnelDTO } from '@goldenhippo/hippo-shop-types';
 import type { GhDataClient } from './client';
 import { applyBindings, collectResources, RESOURCE_ATTR, RESOURCE_KINDS, type ResourceState } from './bindings';
 import { FormatRegistry } from './format';
 import { GhError } from './errors';
 import type { Logger } from './log';
+import type { GhConfig } from './config';
+import { applyCheckoutBindings } from './checkout';
+import { getSessionState } from './session';
+import { notifyStepChanged, readStepSlug } from './events';
 
 export interface RuntimeOptions {
   doc?: Document;
   win?: Window;
   logger: Logger;
   client: GhDataClient;
+  config: GhConfig;
 }
 
 export class GhRuntime {
@@ -31,12 +37,31 @@ export class GhRuntime {
   private observer: MutationObserver | null = null;
   private rebindScheduled = false;
   private bindingsReadyFired = false;
+  private sessionReadyInstalled = false;
+  /** `undefined` = never observed; the first bind only records a baseline. */
+  private lastStepSlug: string | null | undefined = undefined;
   private readonly doc: Document;
   private readonly win: Window;
+  /**
+   * The boot-time session promise, handed over by `boot()` right after
+   * `ensureSession` is invoked. Until then it is an already-settled promise,
+   * which is the honest value for the direct-construction path (tests,
+   * embedders) where no session resolution is pending at all.
+   */
+  private sessionPromise: Promise<unknown> = Promise.resolve();
 
   constructor(private readonly opts: RuntimeOptions) {
     this.doc = opts.doc ?? document;
     this.win = opts.win ?? window;
+  }
+
+  /**
+   * Hand the runtime the boot-time session promise, so every checkout bind
+   * pass carries the real promise rather than a fabricated resolved one.
+   * Called once, by `boot()`.
+   */
+  setSessionPromise(promise: Promise<unknown>): void {
+    this.sessionPromise = promise;
   }
 
   /**
@@ -75,6 +100,38 @@ export class GhRuntime {
       resources: this.resources,
       resourceStates: this.resourceStates,
     });
+
+    // Cluster G: also bind [data-gh-checkout] elements. `getSession` is a live
+    // read — bindOne holds links at href="#" until the session resolves, and
+    // the gh:session-ready rebind fills them in. `sessionPromise` is boot's
+    // own promise, handed over by setSessionPromise — the synchronous DOM
+    // pass does not await it, but anything reading it back off these options
+    // must get the real one, not a fabricated resolved stand-in.
+    applyCheckoutBindings(target, {
+      config: this.opts.config,
+      getSession: () => getSessionState(),
+      sessionPromise: this.sessionPromise,
+      getDestination: (slug) => this.getCachedDestination(slug),
+      ensureDestination: (slug) => this.ensureDestination(slug),
+      logger: this.opts.logger,
+    });
+
+    // Cluster G / D9: an SPA that swaps data-gh-step is declaring a new funnel
+    // step. attachObserver watches that attribute (Task 32) and every such
+    // mutation lands here — this is where the change becomes a signal the Page
+    // View emitter can act on. Adding the attribute to the filter alone only
+    // re-runs bind(); the emitter's `fired` latch would never clear.
+    //
+    // The first observation is a baseline, never a change: bind() runs before
+    // any emission and must not re-arm an emitter that has not fired yet.
+    const stepSlug = readStepSlug(this.doc);
+    const stepChanged = this.lastStepSlug !== undefined && stepSlug !== this.lastStepSlug;
+    this.lastStepSlug = stepSlug;
+    if (stepChanged) {
+      this.opts.logger.debug('data-gh-step changed —', stepSlug);
+      notifyStepChanged(this.win);
+    }
+
     if (!this.bindingsReadyFired) {
       this.bindingsReadyFired = true;
       this.win.dispatchEvent(new Event('gh:bindings-ready'));
@@ -102,6 +159,11 @@ export class GhRuntime {
     if (this.observer) return;
     const filter = [
       ...RESOURCE_KINDS.map(k => RESOURCE_ATTR[k]),
+      // Cluster G: swapping a checkout slug must re-point the link, and an
+      // SPA that swaps data-gh-step is announcing a new step — both have to
+      // reach bind() through the observer.
+      'data-gh-checkout',
+      'data-gh-step',
       'data-field',
       'data-format',
       'data-if',
@@ -157,6 +219,12 @@ export class GhRuntime {
         const data = await this.opts.client[kind](slug);
         this.resources.set(key, data);
         this.resourceStates.set(key, 'loaded');
+        // A load can complete outside a bind pass — bindOne's fire-and-forget
+        // ensureDestination, or gh.checkoutUrl warming a slug. Without this,
+        // nothing repaints and a checkout link sits at href="#" for the life
+        // of the page. Cannot loop: bind() is idempotent and a cached
+        // resource short-circuits loadOne before reaching here.
+        this.scheduleRebind();
       } catch (err) {
         this.resourceStates.set(key, 'failed');
         if (err instanceof GhError) {
@@ -170,6 +238,24 @@ export class GhRuntime {
     })();
     this.inFlight.set(key, promise);
     return promise;
+  }
+
+  /** Cluster F: synchronous lookup of a cached destination, or null. */
+  getCachedDestination(slug: string): HippoShopDestinationDTO | null {
+    return (this.resources.get(`destination:${slug}`) as HippoShopDestinationDTO | undefined) ?? null;
+  }
+
+  /**
+   * Cluster G: synchronous lookup of a cached funnel, or null. Funnel-event
+   * identity needs `steps[].id` to resolve `funnelSTPId` from `data-gh-step`.
+   */
+  getCachedFunnel(slug: string): HippoShopFunnelDTO | null {
+    return (this.resources.get(`funnel:${slug}`) as HippoShopFunnelDTO | undefined) ?? null;
+  }
+
+  /** Cluster F: trigger a destination load (idempotent via in-flight dedup). */
+  ensureDestination(slug: string): Promise<void> {
+    return this.loadOne('destination', slug);
   }
 
   /** Wire DOMContentLoaded → initial bind. Idempotent. */
@@ -187,5 +273,33 @@ export class GhRuntime {
       // queueMicrotask runs *between* script tags and would miss them.
       setTimeout(run, 0);
     }
+
+    // Safety net for callers that only call installAutoBind(). boot() calls
+    // this earlier — before ensureSession — and the flag makes it a no-op.
+    this.installSessionReadyRebind();
+  }
+
+  /**
+   * Re-bind once the session resolves, so checkout hrefs pick up the real
+   * `sessionid` instead of staying at "#".
+   *
+   * Must be registered *before* `ensureSession` is invoked: a session that
+   * resolves without awaiting anything dispatches `gh:session-ready`
+   * synchronously, inside the invoking call, and a listener registered
+   * afterwards would never see it. Idempotent. Fire-and-forget; `bind()`
+   * handles its own errors.
+   */
+  installSessionReadyRebind(): void {
+    if (this.sessionReadyInstalled) return;
+    this.sessionReadyInstalled = true;
+    this.win.addEventListener(
+      'gh:session-ready',
+      () => {
+        void this.bind(this.doc).catch((err) =>
+          this.opts.logger.error('session-ready rebind failed', err),
+        );
+      },
+      { once: true },
+    );
   }
 }

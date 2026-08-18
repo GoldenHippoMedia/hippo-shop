@@ -30,10 +30,10 @@
   ],
   "scripts": {
     "build": "tsup && node scripts/generate-landing.mjs && node scripts/build-llms.mjs",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "eslint src",
+    "lint": "eslint src test",
     "size": "node ../../scripts/size-check.mjs"
   },
   "dependencies": {

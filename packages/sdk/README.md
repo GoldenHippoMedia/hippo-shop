@@ -13,7 +13,7 @@ Both share the same auth, caching, and brand-scoped access rules enforced by the
 
 > Source: [GoldenHippoMedia/hippo-shop](https://github.com/GoldenHippoMedia/hippo-shop) · DTO contract: [`@goldenhippo/hippo-shop-types`](https://www.npmjs.com/package/@goldenhippo/hippo-shop-types)
 
-> For context on v1.x/v2.x → v3 — see [About this version](../../README.md#about-this-version) in the root README.
+> For context on v1.x/v2.x/v3.x → v4 — see [About this version](../../README.md#about-this-version) in the root README.
 
 ## Contents
 
@@ -26,6 +26,7 @@ Both share the same auth, caching, and brand-scoped access rules enforced by the
 - [Loops](#loops)
 - [Declarative scope (`data-with`)](#declarative-scope-data-with)
 - [Resource lifecycle (`data-when`)](#resource-lifecycle-data-when)
+- [Session, attribution, and events](#session-attribution-and-events)
 - [Recipes](#recipes)
 - [Evaluation order](#evaluation-order)
 - [Programmatic API](#programmatic-api)
@@ -60,7 +61,7 @@ The published bundle is `dist/gh.js` (IIFE, browser-loadable directly from a CDN
 Drop one `<script>` and write your HTML:
 
 ```html
-<script src="https://api-prod.goldenhippo.io/sdk/v3/gh.js"
+<script src="https://api-prod.goldenhippo.io/sdk/v4/gh.js"
         data-key="gh_pk_yourbrand_a1b2c3d4e5f6"
         data-brand="Sample Co"></script>
 
@@ -114,7 +115,9 @@ When a page references resources that aren't yet cached, the SDK actually runs t
 The runtime installs a `MutationObserver` after the initial bind so late-arriving content gets bound automatically. It watches for:
 
 - Additions of any element subtree (e.g. a modal opened by your own JS, a GTM injection, a SPA route change).
-- Attribute changes on any of: `data-gh-product`, `data-gh-destination`, `data-gh-funnel`, `data-field`, `data-format`, `data-if`, `data-if-not`, `data-each`, `data-with`, `data-when`.
+- Attribute changes on any of: `data-gh-product`, `data-gh-destination`, `data-gh-funnel`, `data-gh-checkout`, `data-gh-step`, `data-field`, `data-format`, `data-if`, `data-if-not`, `data-each`, `data-with`, `data-when`.
+
+`data-gh-checkout` and `data-gh-step` are watched for a specific reason: swapping a checkout slug re-composes that link's `href` against the new destination, and swapping a step slug is how an SPA route change produces a fresh `Page View` without any JavaScript of yours. See [Session, attribution, and events](#session-attribution-and-events).
 
 Mutations caused by the SDK's own loop expansion are ignored automatically to prevent feedback loops. Re-binds are coalesced via a single microtask, so a burst of DOM changes triggers only one extra bind pass.
 
@@ -132,9 +135,14 @@ The SDK boots from a single `<script>` tag. All configuration lives on that tag'
 |-----------|----------|---------|-------------|
 | `data-key` | yes | — | Publishable key. Must match `/^gh_pk_[a-z0-9_-]+_<hex>$/` (e.g. `gh_pk_yourbrand_a1b2c3d4e5f6`). |
 | `data-brand` | yes | — | Brand display name. Must be non-empty after trimming. Validated server-side. |
+| `data-brand-token` | conditional | falls back to `data-brand` | The brand's `BRAND_NAME` token — the vocabulary Altern attributes on (`gundry`), not the public display name (`Gundry MD`). It fills the payload `brand` field on every funnel event, as `data-brand-token ?? data-brand`. **Omit it and every funnel event on the page is attributed to the wrong brand**, with a `200` from the API and nothing in any log. Required on every brand whose token differs from its display name — see [`Page View` events](#page-view-events). |
 | `data-debug` | no | `"false"` | If set to the string `"true"`, the SDK logs requests, cache hits, and bind passes to the browser console with a `[gh]` prefix. Also sets `window.gh.debug = true`. |
+| `data-checkout-base` | conditional | — | Brand-level fallback base URL for outbound offer links (e.g. `https://checkout.gundrymd.com`). Used only when the destination carries neither a per-destination override nor its own `url`. Required if any page on this brand uses `data-gh-checkout` or `gh.checkoutUrl()` against destinations Salesforce has no URL for; optional otherwise. |
+| `data-cookie-domain` | conditional | auto-detect | Explicit `Domain` for the `hippo_session_id` cookie (e.g. `.gundrymd.com`). When absent the SDK derives the registrable root from `location.hostname` using a single-segment TLD allowlist — `com, net, org, io, app, dev, ai, co, us, store, shop`. **Multi-part TLDs (`.co.uk`, `.com.au`, `.co.jp`) require this attribute**; auto-detect refuses to guess them and falls back to a host-only cookie, which breaks the cross-subdomain handoff. |
 
-The script tag itself is auto-located via `document.currentScript`; if that's unavailable, the SDK falls back to a `[data-key][data-brand]` `<script>` whose `src` ends in `/gh.js`. That covers the active CDN URL (`/sdk/v3/gh.js`), the frozen v1 URL (`/sdk/v1/gh.js`), and local-dev paths.
+Set `data-checkout-base` and `data-cookie-domain` together on brands running a Superfunnel-hosted subdomain — see [Session, attribution, and events](#session-attribution-and-events).
+
+The script tag itself is auto-located via `document.currentScript`; if that's unavailable, the SDK falls back to a `[data-key][data-brand]` `<script>` whose `src` ends in `/gh.js`. That covers the active CDN URL (`/sdk/v4/gh.js`), the frozen `/sdk/v3/gh.js` and `/sdk/v1/gh.js` URLs, and local-dev paths.
 
 If `window.gh.data` is already attached when the SDK boots — for example, because the tag is included twice — the SDK refuses to overwrite the existing surface and logs a warning. This is harmless but worth knowing if you see "window.gh.data already exists" in the console.
 
@@ -162,6 +170,9 @@ Write HTML; the SDK reads the `data-*` attributes below, fetches the right resou
 | `data-gh-product="slug"` | Any element | Sets the **product** context for the element + descendants. |
 | `data-gh-destination="slug"` | Any element | Sets the **destination** context. |
 | `data-gh-funnel="slug"` | Any element | Sets the **funnel** context. |
+| `data-gh-checkout="destination-slug"` | Any element | Marks the element as the control that sends the visitor to buy that offer. Fills `href` on `<a>`; attaches a navigating `click` handler on anything else. See [Session, attribution, and events](#session-attribution-and-events). |
+| `data-gh-step="step-slug"` | Any element, or the SDK `<script>` tag | Names the funnel step for the `Page View` event. Read from the **live DOM at emit time**, so an SPA can change it; a page element wins over the script tag. |
+| `data-gh-funnel-id="salesforce-id"` | Any element, or the SDK `<script>` tag | Supplies the funnel's Salesforce ID directly, for pages that bind no destination. Ignored when a bound destination already yields one. |
 | `data-with="path"` | Any element | Narrows the binding scope to the resolved value; hides on null/undefined. See [Declarative scope](#declarative-scope-data-with). |
 | `data-when="loaded\|loading\|failed"` | Any element | Shows the element only when the closest resource is in that lifecycle state. See [Resource lifecycle](#resource-lifecycle-data-when). |
 | `data-field="path"` | Any element | Replaces `textContent` with the resolved value. Undefined leaves the placeholder. |
@@ -366,6 +377,125 @@ If the catalog doesn't carry a 6-pack, the entire `<article>` hides.
 
 Loading skeletons render immediately on page load; the SDK swaps in real values when data arrives. The `gh:bindings-ready` event fires once, after the initial data fetch settles.
 
+## Session, attribution, and events
+
+The SDK participates in Golden Hippo's session and attribution model rather than inventing its own. It resolves one session id per visitor, persists it at the brand's root domain, posts it to the API along with the landing URL's attribution, stamps it onto every outbound offer link, and emits one `Page View` funnel event per page load.
+
+All of it degrades quietly. A blocked cookie, a failed POST, an unresolvable funnel id — attribution gets worse; the page never breaks.
+
+### The session id
+
+One id per visitor, resolved once per page load, in this order:
+
+1. **`?sessionid=` on the current URL.** Matched **case-sensitively** — `?SessionId=` is ignored. Validated against `/^[A-Za-z0-9._-]{1,128}$/`. On a pass the value is adopted **even when the cookie already holds a different one**, and written back to the cookie. On a fail the SDK warns and falls through.
+2. **The `hippo_session_id` cookie** — validated against that same pattern; a value that fails is ignored and the SDK falls through.
+3. **A freshly minted UUID v4** — `crypto.randomUUID()`, with an RFC-4122 `getRandomValues` fallback. In a runtime that offers neither, minting throws; the SDK catches that, logs an error, and degrades to a last-resort `fallback-<base36>-<base36>` id — neither a UUID nor cryptographically random. Resolution has to finish either way: if it didn't, `gh:session-ready` would never fire and every checkout link would stay at `href="#"`.
+
+| Cookie | Max-Age | Path | Domain | SameSite | Secure |
+|--------|---------|------|--------|----------|--------|
+| `hippo_session_id` | 30 days (`2592000`), **absolute — not rolling**: written on mint and on `?sessionid=` adoption, never re-written on a plain cookie hit | `/` | For a **minted** id: `data-cookie-domain`, else the auto-detected registrable root (`.gundrymd.com`), else host-only. For an id **adopted** from `?sessionid=`: always host-only | `Lax` | on `https:` |
+
+Root-domain scoping on a **minted** id is what makes a returning visitor one visitor across subdomains: `sf.gundrymd.com` and `www.gundrymd.com` read the same cookie. The handoff *within* a visit rides the URL rather than the cookie, which is why an **adopted** id needs no root scoping — and deliberately doesn't get it. See [SPEC — Cookie contract](./SPEC.md#cookie-contract).
+
+Read it with `window.gh.session.id()` — `undefined` until `gh:session-ready` fires. The attribution parsed from the landing URL is on `window.gh.session.params()`.
+
+### Inbound handoff — `?sessionid=`
+
+Land a visitor with `?sessionid=<id>` and the SDK adopts that id as its own, overriding whatever it had:
+
+```
+https://sf.gundrymd.com/offer?sessionid=3f6b2c11-1c2a-4b1d-9f0a-77c1d2e3f455&utm_source=fb&fbclid=IwAR…
+```
+
+That is how one page hands a visitor to another without minting a second identifier for a single visit. The SDK trusts the URL here **by design** — see [SPEC — Session identity and inbound `?sessionid=`](./SPEC.md#session-identity-and-inbound-sessionid) for the threat note and why the blast radius is analytics only. With `data-debug="true"` the adoption is logged as `[gh] session: adopting ?sessionid= handoff <id>`.
+
+### Outbound handoff — `data-gh-checkout`
+
+`data-gh-checkout="<destination-slug>"` marks the control that sends a visitor to buy that offer. On `<a>` the SDK fills in `href`; on anything else it attaches a `click` handler that navigates the page.
+
+```html
+<section data-gh-destination="bio3-3p-sub">
+  <h3 data-field="name"></h3>
+  <a data-gh-checkout="bio3-3p-sub">Select this offer</a>
+</section>
+```
+
+The base URL resolves in this order, and the first one present wins:
+
+1. `destination.pricing.checkoutOverrideUrl` — per-destination override.
+2. `destination.url` — the destination's own absolute URL. The normal case.
+3. `data-checkout-base` on the script tag — brand-level fallback.
+
+Onto that base the SDK appends, in this order and skipping anything empty: `order_form_id`, `sessionid`, `utm_source`, `utm_medium`, `utm_campaign`, `utm_campaign_id`, `utm_content`, `utm_term`, `utm_chat`, `utm_action`, `off_id`, `aff_id`, `subid1`…`subid5`, `landing_url`, `referral_url`, `sales_funnel`, the seven raw click-ids (`fbclid`, `gclid`, `ScCid`, `qclid`, `twclid`, `ndclid`, `wbraid`), then `origmainFunnelIdOrig`, `origdsidOrig`, and `origsplitTestingFunnelIdOrig` forwarded verbatim from the current URL. `funnelSTPId` and `dsid` are never forwarded — the destination resolver re-mints `funnelSTPId` on every hop, so forwarding it would hand the next page a stale step id.
+
+```
+https://www.gundrymd.com/bio3-3pk-sub?order_form_id=OF_123&sessionid=3f6b2c11-…&utm_source=fb&subid1=IwAR…&fbclid=IwAR…
+```
+
+Parameters already present on the base URL win — the SDK only fills what is absent. Values are never truncated.
+
+### `await gh.checkoutUrl(slug)`
+
+The programmatic twin of `data-gh-checkout`. It returns a `Promise<string>`: it awaits session resolution and fetches the destination if it isn't cached yet, so it can never hand back a URL with the session id and UTMs silently missing.
+
+```js
+document.getElementById('buy').addEventListener('click', async (event) => {
+  event.preventDefault();
+  window.location.href = await window.gh.checkoutUrl('bio3-3p-sub');
+});
+```
+
+> **`window.open()` will be popup-blocked.** Awaiting inside a click handler breaks the user-gesture chain, so `window.open(await window.gh.checkoutUrl(slug))` is blocked in every major browser. Assign `window.location.href` instead — a same-tab navigation is unaffected by the `await`, and it is the checkout pattern Golden Hippo actually uses.
+>
+> If you genuinely need a new tab, resolve the URL **before** the click and stash it, so the handler itself stays synchronous:
+>
+> ```js
+> let checkoutUrl = '#';
+> window.addEventListener('gh:bindings-ready', async () => {
+>   checkoutUrl = await window.gh.checkoutUrl('bio3-3p-sub');
+> }, { once: true });
+>
+> document.getElementById('buy').addEventListener('click', () => {
+>   window.open(checkoutUrl, '_blank'); // no await in the handler — gesture intact
+> });
+> ```
+
+### `Page View` events
+
+The SDK emits exactly **one** `Page View` funnel event per page load, however many offers the page binds. Six bound destinations on an offer selector are six variants of one page view, not six page views.
+
+Identity is read from the DOM at emit time:
+
+| Attribute | What it supplies |
+|-----------|------------------|
+| `data-gh-destination` / `data-gh-checkout` | The funnel and destination Salesforce IDs, out of the destination the page already fetched. First match in document order wins, and `data-gh-destination` beats `data-gh-checkout`. |
+| `data-gh-step` | The funnel step. A page element wins over the script tag. |
+| `data-gh-funnel-id` | The funnel ID directly, for pages that bind no destination. |
+
+```html
+<body data-gh-step="offer-selector">
+  <section data-gh-destination="bio3-1p-ot">…</section>
+  <section data-gh-destination="bio3-3p-sub">…</section>
+  <!-- four more offers -->
+</body>
+```
+
+**No funnel ID, no event.** If neither a bound destination nor `data-gh-funnel-id` yields one, the event is dropped — an event with a blank funnel ID is discarded silently further upstream, so sending it would be strictly worse than not sending it. With `data-debug="true"` the drop is logged with the reason.
+
+**The event's `brand` is `data-brand-token`, not `data-brand`.** Altern attributes the event off the payload's `brand` field — not the `X-GH-Brand` header — and it expects the `BRAND_NAME` token vocabulary (`gundry`), not the public display name (`Gundry MD`). The SDK sends `data-brand-token ?? data-brand`, so a script tag that omits `data-brand-token` falls back to the display name for every event it emits. Both values land in the same Salesforce column, so the wrong one is silent mis-attribution rather than an error: the POST returns `200` and nothing appears in any log. If a brand reports missing funnel events while the API looks healthy, check the embed's script tag before anything else.
+
+The event fires once session resolution and the first bind pass have both settled, plus a short quiet window so late-injected attributes land in the same event instead of a second one. It is sent with `keepalive: true` so it survives page unload, and it is **never retried** — not even on `429`.
+
+#### `gh.track('Page View')`
+
+The programmatic escape hatch, for SPA route changes:
+
+```js
+await window.gh.track('Page View');
+```
+
+It respects the same per-page-load dedupe guard as the automatic emit, keyed on the session id, the event type, and the step. **Update `data-gh-step` before calling it** — otherwise the key is unchanged and the call is a deliberate no-op. Often you don't need it at all: `data-gh-step` is in the `MutationObserver`'s filter, so an SPA that swaps the attribute gets a new `Page View` through the existing machinery.
+
 ## Recipes
 
 Copy-paste patterns for the most common integrations. All use the example product slug `multi-vitamin`; swap in your own slug and brand.
@@ -493,6 +623,32 @@ Register your own formatter once on `gh:data-ready`, then bind any field through
 
 Formatters receive the bound value as their first argument; additional `:`-separated values from `data-format` are passed as string arguments (so the `:169.95` above arrives as a string and `Number()`'s back to a float).
 
+### Checkout handoff
+
+Capture attribution on landing and carry it onto outbound offer links:
+
+```html
+<script src="https://api-prod.goldenhippo.io/sdk/v4/gh.js"
+        data-key="gh_pk_internal_gundry_abc123"
+        data-brand="Gundry MD"
+        data-brand-token="gundry"
+        data-checkout-base="https://checkout.gundrymd.com"
+        data-cookie-domain=".gundrymd.com"></script>
+
+<a data-gh-checkout="bio3-3p-sub">Buy now</a>
+```
+
+On click the link navigates to the destination's own URL with `?order_form_id=…&sessionid=…&utm_source=…&subid1=…` appended, carrying the attribution captured from the landing URL. `data-checkout-base` is the brand-level fallback for destinations Salesforce has no URL for.
+
+The programmatic twin is **async**:
+
+```js
+const url = await window.gh.checkoutUrl('bio3-3p-sub');
+window.location.href = url;
+```
+
+`window.open(await …)` inside a click handler is popup-blocked; see [Session, attribution, and events](#session-attribution-and-events) for the resolution order, the full outbound parameter set, and the new-tab workaround — and the [SDK SPEC](./SPEC.md#checkout-handoff) for the contract.
+
 ## Evaluation order
 
 When multiple binding attributes appear on the same element, they evaluate in this order:
@@ -521,9 +677,16 @@ window.gh.data.product(slugOrId):     Promise<HippoShopProductDTO>;
 window.gh.bind(rootElement):    Promise<void>;
 window.gh.refresh():            Promise<void>;
 
+window.gh.checkoutUrl(slug):    Promise<string>;   // composed outbound URL for a destination
+window.gh.track('Page View'):   Promise<void>;     // re-emit a Page View (dedupe-guarded)
+window.gh.session.id():         string | undefined; // current hippo_session_id cookie value
+window.gh.session.params():     ParsedParams | null; // attribution parsed from the landing URL
+
 window.gh.format: FormatRegistry; // see the Formatters section
 window.gh.debug?: boolean;        // set to true when data-debug="true" on the script tag
 ```
+
+`checkoutUrl` and `track` are **stable function identities** — capturing one (`const buy = window.gh.checkoutUrl`, a GTM variable, a React prop) is safe. They read live session state through a thunk rather than closing over a snapshot, so a captured reference behaves identically to a fresh property read for the life of the page. `session.id()` and `session.params()` return `undefined` / `null` until `gh:session-ready` fires.
 
 The promises returned by `gh.data.*` resolve with **enriched** payloads. Products in particular gain the `<tier>List` and `<tier>ByQuantity` sibling fields described under [Loops](#loops) and [Declarative scope](#declarative-scope-data-with) — the same shape your declarative bindings see.
 
@@ -564,12 +727,24 @@ await window.gh.refresh();
 
 ## Lifecycle events
 
-Two events fire on `window` during boot:
+Three events fire on `window` during boot:
 
 | Event | When |
 |-------|------|
 | `gh:data-ready` | The synchronous setup is done — `window.gh.data`, `bind`, `refresh`, and `format` are attached. Fires before the first bind pass. |
 | `gh:bindings-ready` | The initial bind pass has completed, including all initial fetches. Fires **once** per page lifetime. |
+| `gh:session-ready` | Session resolution has settled — on success **and** on swallowed failure, so it always fires. `event.detail` is `{ sessionId: string, adopted: boolean, params: ParsedParams }`, where `adopted` is `true` when the id came from `?sessionid=` on this page load. Fires **once** per page lifetime. |
+
+`gh:session-ready` is the hook to use when your own analytics need the session id — it is the only point at which `window.gh.session.id()` is guaranteed to be populated:
+
+```js
+window.addEventListener('gh:session-ready', (event) => {
+  window.dataLayer = window.dataLayer || [];
+  window.dataLayer.push({ event: 'gh_session', sessionId: event.detail.sessionId });
+}, { once: true });
+```
+
+A successful session POST is **not** a precondition: the event fires with a resolved `sessionId` even when the network call failed, because the id itself is resolved client-side.
 
 ### Defensive "already booted?" pattern
 
@@ -625,13 +800,15 @@ What the SDK sends and how it talks to the API.
 
 ### Endpoints
 
-All three resource types use the same shape:
+The three resource reads share one shape; v4 adds two write endpoints:
 
-| Method | URL | Returns |
+| Method | URL | Purpose |
 |--------|-----|---------|
-| `GET` | `<base>/public/v1/funnel/<slugOrId>` | `HippoShopFunnelDTO` |
-| `GET` | `<base>/public/v1/destination/<slugOrId>` | `HippoShopDestinationDTO` |
-| `GET` | `<base>/public/v1/product/<slugOrId>` | `HippoShopProductDTO` |
+| `GET` | `<base>/public/v1/funnel/<slugOrId>` | Returns `HippoShopFunnelDTO` |
+| `GET` | `<base>/public/v1/destination/<slugOrId>` | Returns `HippoShopDestinationDTO` |
+| `GET` | `<base>/public/v1/product/<slugOrId>` | Returns `HippoShopProductDTO` |
+| `POST` | `<base>/public/v1/session` | Registers this visit's attribution. Body is `{ "affParameters": { …attribution, "sessionId": "<id>" } }`. Fires once per page load. Empty values are **omitted**, never sent as `""` — a blank and an absent key are indistinguishable upstream, so omitting is simply smaller and unambiguous. Storage is per-key **first-write-wins**: a POST fills keys the session does not yet hold and cannot change one it already holds. Values are truncated server-side at 255 characters (18 for `offId`/`affId`). |
+| `POST` | `<base>/public/v1/funnel-event` | The `Page View` funnel event. Sent with `keepalive: true` and an `X-GH-Event-Id: <uuid>` correlation header. Never retried. |
 
 `<slugOrId>` is URL-encoded before insertion. Product responses arrive with `<tier>List` and `<tier>ByQuantity` fields already populated server-side.
 
@@ -643,11 +820,11 @@ All three resource types use the same shape:
 | `X-GH-Brand` | Your brand display name (from `data-brand`) |
 | `Accept` | `application/json` |
 
-The SDK does not send credentials (cookies are not included), does not set a `User-Agent` beyond the browser default, and does not send any analytics or PII.
+The three `GET` reads send no credentials. The session `POST` sends `credentials: 'include'` so the API can maintain its own session cookie; the funnel-event `POST` does not, and adds `X-GH-Event-Id`. No request carries PII — the payloads are URL attribution parameters, a session id, and a browser / OS / device string derived from the user agent. The SDK sets no `User-Agent` beyond the browser default.
 
 ### Base URL derivation
 
-The API base URL is the script tag's `src` origin. Loading the SDK from `https://api-prod.goldenhippo.io/sdk/v3/gh.js` produces a base URL of `https://api-prod.goldenhippo.io`; loading it from `https://api-uat.goldenhippo.io/sdk/v3/gh.js` produces `https://api-uat.goldenhippo.io`. See [Script tag config — Host allowlist](#host-allowlist) for the full list of accepted hosts.
+The API base URL is the script tag's `src` origin. Loading the SDK from `https://api-prod.goldenhippo.io/sdk/v4/gh.js` produces a base URL of `https://api-prod.goldenhippo.io`; loading it from `https://api-uat.goldenhippo.io/sdk/v4/gh.js` produces `https://api-uat.goldenhippo.io`. See [Script tag config — Host allowlist](#host-allowlist) for the full list of accepted hosts.
 
 ### Status → error code mapping
 
@@ -717,7 +894,7 @@ Declarative bindings degrade gracefully — a failed fetch logs a warning to the
 
 ## Safety
 
-The SDK is read-only by design. It sends no analytics, no PII, and never executes data as code.
+The SDK never executes data as code and never sends PII. It is **not** read-only as of v4: it posts this visit's attribution to `/public/v1/session` and one `Page View` funnel event to `/public/v1/funnel-event`. [HTTP](#http) lists exactly what leaves the page; [Session, attribution, and events](#session-attribution-and-events) explains why. Everything below still holds — the rendering path is unchanged.
 
 ### textContent only
 

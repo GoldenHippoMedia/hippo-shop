@@ -4,8 +4,12 @@ export default defineConfig([
   // Browser IIFE bundle — what Cloudflare serves and Kong fronts at /sdk/v3/gh.js
   // (active CDN URL for the current SDK major; future majors get their own /sdk/vN/ path).
   // Side-effect bundle: attaches window.gh.data on load. Filename matches the prod URL.
+  // Entry is src/bundle.ts, not src/index.ts: index.ts re-exports the public API
+  // for the ESM/CJS builds, and an IIFE has nowhere to put exports — esbuild emitted
+  // them against an unreachable throwaway object and the live bindings blocked
+  // tree-shaking. bundle.ts is a side-effect-only import of index.ts.
   {
-    entry: { gh: 'src/index.ts' },
+    entry: { gh: 'src/bundle.ts' },
     format: ['iife'],
     platform: 'browser',
     target: 'es2020',

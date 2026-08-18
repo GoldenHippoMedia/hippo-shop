@@ -9,6 +9,9 @@ const CONFIG: GhConfig = {
   brand: 'Gundry MD',
   debug: false,
   apiBaseUrl: 'https://api-prod.goldenhippo.io',
+  checkoutBase: null,
+  cookieDomain: null,
+  brandToken: null,
 };
 
 function mockFetchOnce(body: unknown, init: ResponseInit = {}): void {
@@ -123,6 +126,22 @@ describe('GhDataClient', () => {
     });
   });
 
+  // M1: an ok response whose body read itself rejects (e.g. an aborted
+  // stream) must still surface as a GhError, not a raw TypeError.
+  it('M1: maps a failed response-body read to a GhError, not a raw error', async () => {
+    const abortedResponse = {
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      text: () => Promise.reject(new TypeError('body stream aborted')),
+    } as unknown as Response;
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(abortedResponse);
+    const client = new GhDataClient(CONFIG, createLogger(false));
+    const promise = client.destination('x');
+    await expect(promise).rejects.toBeInstanceOf(GhError);
+    await expect(promise).rejects.toMatchObject({ code: 'server' });
+  });
+
   it('rejects empty slug with bad_request without making a request', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch');
     const client = new GhDataClient(CONFIG, createLogger(false));
@@ -164,5 +183,115 @@ describe('GhDataClient', () => {
     const second = await client.product('s');
     expect(second).toBe(first); // promise cache returns identical reference
     expect(first.variants.subscription.standardByQuantity).toEqual({});
+  });
+
+  it('postEvent POSTs with keepalive, extra headers, and no credentials', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    const client = new GhDataClient(CONFIG, createLogger(false));
+
+    await client.postEvent('funnel-event', { eventType: 'Page View' }, {
+      'X-GH-Event-Id': 'b2e4f0a1-7c3d-4a5b-9e8f-0123456789ab',
+    });
+
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    const [url, init] = fetchSpy.mock.calls[0]!;
+    expect(url).toBe('https://api-prod.goldenhippo.io/public/v1/funnel-event');
+    const req = init as RequestInit;
+    expect(req.method).toBe('POST');
+    expect(req.keepalive).toBe(true);
+    expect(req.credentials).toBeUndefined();
+    const headers = req.headers as Record<string, string>;
+    expect(headers['X-GH-Event-Id']).toBe('b2e4f0a1-7c3d-4a5b-9e8f-0123456789ab');
+    expect(headers['Content-Type']).toBe('application/json');
+    expect(headers['X-GH-Key']).toBe('gh_pk_test_consumer_abc123');
+    expect(headers['X-GH-Brand']).toBe('Gundry MD');
+    expect(req.body).toBe(JSON.stringify({ eventType: 'Page View' }));
+  });
+
+  it('postEvent issues exactly one request on 429 (no retry)', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response('{}', { status: 429, headers: { 'Retry-After': '30' } }),
+    );
+    const client = new GhDataClient(CONFIG, createLogger(false));
+    await expect(client.postEvent('funnel-event', { a: 1 })).rejects.toMatchObject({
+      name: 'GhError',
+      code: 'rate_limited',
+    });
+    expect(fetchSpy).toHaveBeenCalledOnce();
+  });
+});
+
+describe('GhDataClient.postJson', () => {
+  let client: GhDataClient;
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    client = new GhDataClient(
+      {
+        key: 'gh_pk_test_abc123',
+        brand: 'Test',
+        debug: false,
+        apiBaseUrl: 'https://api-prod.goldenhippo.io',
+        checkoutBase: null,
+        cookieDomain: null,
+        brandToken: null,
+      },
+      { debug: () => {}, warn: () => {}, error: () => {} },
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('POSTs JSON body with X-GH-Key and X-GH-Brand headers and credentials: include', async () => {
+    fetchMock.mockResolvedValueOnce(new Response('{"ok":true}', { status: 200 }));
+    await client.postJson('session', { affParameters: { utmSource: 'fb' } });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // toHaveBeenCalledTimes(1) above guarantees calls[0] exists; tsc cannot see it.
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('https://api-prod.goldenhippo.io/public/v1/session');
+    expect(init.method).toBe('POST');
+    expect(init.credentials).toBe('include');
+    expect(init.headers['Content-Type']).toBe('application/json');
+    expect(init.headers['X-GH-Key']).toBe('gh_pk_test_abc123');
+    expect(init.headers['X-GH-Brand']).toBe('Test');
+    expect(JSON.parse(init.body)).toEqual({ affParameters: { utmSource: 'fb' } });
+  });
+
+  it('returns parsed JSON response on 2xx', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response('{"sessionId":"abc"}', { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    );
+    const result = await client.postJson<{ sessionId: string }>('session', {});
+    expect(result).toEqual({ sessionId: 'abc' });
+  });
+
+  it('returns null on 2xx with empty body', async () => {
+    const res = new Response(null, { status: 204 });
+    fetchMock.mockResolvedValueOnce(res);
+    const result = await client.postJson('session', {});
+    expect(result).toBeNull();
+  });
+
+  it('throws GhError on non-2xx response', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response('{"code":"forbidden","message":"nope"}', { status: 403 }),
+    );
+    await expect(client.postJson('session', {})).rejects.toMatchObject({
+      code: 'forbidden',
+      message: 'nope',
+    });
+  });
+
+  it('throws GhError on network failure', async () => {
+    fetchMock.mockRejectedValueOnce(new TypeError('fetch failed'));
+    await expect(client.postJson('session', {})).rejects.toMatchObject({
+      code: 'network',
+    });
   });
 });

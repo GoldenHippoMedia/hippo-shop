@@ -36,6 +36,51 @@ export class GhDataClient {
     this.cache.clear();
   }
 
+  /**
+   * POST a JSON body to a `/public/v1/<resource>` route. Used by Cluster F's
+   * session endpoint. Includes credentials so the API's `Set-Cookie` for
+   * `connect.sid` is stored and forwarded on subsequent calls.
+   */
+  postJson<T = unknown>(resource: string, body: unknown): Promise<T | null> {
+    const url = `${this.config.apiBaseUrl}/public/v1/${resource}`;
+    this.logger.debug('POST', url);
+    return this.fetchJson<T | null>(url, {
+      method: 'POST',
+      body,
+      credentials: 'include',
+    });
+  }
+
+  /**
+   * Cluster G / D10: fire-and-forget event POST to `/public/v1/<resource>`.
+   *
+   * Differs from `postJson` in three load-bearing ways:
+   *   - `keepalive: true` so the request survives page unload (sendBeacon is
+   *     unusable: it cannot set headers, and Kong's key-auth needs `X-GH-Key`).
+   *   - caller-supplied headers, for the `X-GH-Event-Id` correlation id — it
+   *     rides as a header because the 36-field body is matched byte-for-byte
+   *     upstream and unrecognised keys are dropped.
+   *   - no `credentials`, because the funnel-event Kong route is
+   *     `cors.credentials: false` and the body is self-sufficient.
+   *
+   * Never retries — not even on 429 (spec non-goals). Rejects on failure; the
+   * caller is responsible for swallowing.
+   */
+  async postEvent(
+    resource: string,
+    body: unknown,
+    headers: Record<string, string> = {},
+  ): Promise<void> {
+    const url = `${this.config.apiBaseUrl}/public/v1/${resource}`;
+    this.logger.debug('POST keepalive', url);
+    await this.fetchJson<unknown>(url, {
+      method: 'POST',
+      body,
+      keepalive: true,
+      headers,
+    });
+  }
+
   private request<T>(resource: Resource, slugOrId: string): Promise<T> {
     if (!slugOrId) {
       return Promise.reject(
@@ -57,17 +102,34 @@ export class GhDataClient {
     return this.cache.set(cacheKey, promise);
   }
 
-  private async fetchJson<T>(url: string): Promise<T> {
+  private async fetchJson<T>(
+    url: string,
+    opts: {
+      method?: string;
+      body?: unknown;
+      credentials?: RequestCredentials;
+      keepalive?: boolean;
+      headers?: Record<string, string>;
+    } = {},
+  ): Promise<T> {
+    const method = opts.method ?? 'GET';
+    const init: RequestInit = {
+      method,
+      headers: {
+        'X-GH-Key': this.config.key,
+        'X-GH-Brand': this.config.brand,
+        Accept: 'application/json',
+        ...(opts.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+        ...(opts.headers ?? {}),
+      },
+    };
+    if (opts.body !== undefined) init.body = JSON.stringify(opts.body);
+    if (opts.credentials) init.credentials = opts.credentials;
+    if (opts.keepalive) init.keepalive = true;
+
     let res: Response;
     try {
-      res = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'X-GH-Key': this.config.key,
-          'X-GH-Brand': this.config.brand,
-          Accept: 'application/json',
-        },
-      });
+      res = await fetch(url, init);
     } catch (err) {
       throw new GhError('network', errorMessage(err), { cause: err });
     }
@@ -82,8 +144,24 @@ export class GhDataClient {
       });
     }
 
+    // 204 / empty body short-circuit
+    if (res.status === 204 || res.headers.get('Content-Length') === '0') {
+      return null as T;
+    }
+
+    // M1: reading the body can itself reject (e.g. an aborted response
+    // stream) — that used to fall outside every try/catch here and surface
+    // as a raw TypeError, breaking the "every rejection is a GhError"
+    // contract. Both the read and the parse are covered now.
+    let text: string;
     try {
-      return (await res.json()) as T;
+      text = await res.text();
+    } catch (err) {
+      throw new GhError('server', 'failed to read response body', { cause: err });
+    }
+    if (!text) return null as T;
+    try {
+      return JSON.parse(text) as T;
     } catch (err) {
       throw new GhError('server', 'response was not valid JSON', { cause: err });
     }

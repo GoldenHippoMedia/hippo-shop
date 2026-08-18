@@ -17,6 +17,11 @@ export interface HippoShopFunnelDTO {
 }
 
 export interface HippoShopFunnelStepDTO {
+  /**
+   * Salesforce ID of the step. Needed as `funnelSTPId` on funnel-event
+   * payloads. Prefer `slug` for anything addressable.
+   */
+  id: string;
   /** 1-indexed position in the funnel. */
   stepNumber: number;
   /** Step slug, unique within the funnel. */
