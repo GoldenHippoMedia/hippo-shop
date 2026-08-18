@@ -46,7 +46,7 @@ Release ordering is load-bearing. The `gh-hippo-shop-sdk-v4` Cloudflare Pages pr
 
 Kong work is parallel and owned outside these repos: the `/public/v1/session` and `/public/v1/funnel-event` routes, and a rate-limit tier sized for the offer selector's ~8 requests per page load (six destination `GET`s, one session `POST`, one event `POST`) against a documented 60/min per-consumer default.
 
-Related: `docs/superpowers/specs/2026-08-18-cluster-g-superfunnel-pilot-design.md`, `docs/superpowers/plans/2026-08-18-cluster-g-superfunnel-pilot.md`, PR #17 (superseded)
+Related: `docs/superpowers/specs/2026-08-18-cluster-g-superfunnel-pilot-design.md`, `docs/superpowers/plans/2026-08-18-cluster-g-superfunnel-pilot.md`, PR #17 (superseded), PR #18
 
 ---
 
