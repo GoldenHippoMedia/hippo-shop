@@ -101,3 +101,68 @@ describe('parseLandingParams', () => {
     expect(out.subId5!.length).toBe(255);
   });
 });
+
+import { readSessionIdFromUrl, SESSION_ID_PATTERN } from '../src/url-params';
+
+describe('readSessionIdFromUrl', () => {
+  it('returns the value of ?sessionid= when it passes the pattern', () => {
+    expect(readSessionIdFromUrl('?sessionid=3f6b2c11-1c2a-4b1d-9f0a-77c1d2e3f455')).toBe(
+      '3f6b2c11-1c2a-4b1d-9f0a-77c1d2e3f455',
+    );
+  });
+
+  it('accepts a search string with no leading question mark', () => {
+    expect(readSessionIdFromUrl('sessionid=abc.DEF-123_456')).toBe('abc.DEF-123_456');
+  });
+
+  it('accepts the legacy 26-digit numeric shape', () => {
+    expect(readSessionIdFromUrl('?sessionid=12345678901234567890123456')).toBe(
+      '12345678901234567890123456',
+    );
+  });
+
+  it('trims surrounding whitespace', () => {
+    expect(readSessionIdFromUrl('?sessionid=%20abc123%20')).toBe('abc123');
+  });
+
+  it('returns null when the param is absent', () => {
+    expect(readSessionIdFromUrl('?utm_source=fb')).toBeNull();
+    expect(readSessionIdFromUrl('')).toBeNull();
+  });
+
+  it('returns null for a blank value', () => {
+    expect(readSessionIdFromUrl('?sessionid=')).toBeNull();
+    expect(readSessionIdFromUrl('?sessionid=%20%20')).toBeNull();
+  });
+
+  it('is case-sensitive on the key — ?SessionId= is ignored', () => {
+    expect(readSessionIdFromUrl('?SessionId=abc123')).toBeNull();
+    expect(readSessionIdFromUrl('?SESSIONID=abc123')).toBeNull();
+  });
+
+  it('rejects the near-miss camelCase key ?sessionId=', () => {
+    expect(readSessionIdFromUrl('?sessionId=abc123')).toBeNull();
+  });
+
+  it('rejects the near-miss snake_case key ?session_id=', () => {
+    expect(readSessionIdFromUrl('?session_id=abc123')).toBeNull();
+  });
+
+  it('rejects values carrying cookie-attribute delimiters', () => {
+    expect(readSessionIdFromUrl('?sessionid=abc%3B%20Max-Age%3D0')).toBeNull();
+    expect(readSessionIdFromUrl('?sessionid=a%2Cb')).toBeNull();
+    expect(readSessionIdFromUrl('?sessionid=a%3Db')).toBeNull();
+  });
+
+  it('caps the value at 128 characters', () => {
+    expect(readSessionIdFromUrl(`?sessionid=${'a'.repeat(128)}`)).toBe('a'.repeat(128));
+    expect(readSessionIdFromUrl(`?sessionid=${'a'.repeat(129)}`)).toBeNull();
+  });
+
+  it('SESSION_ID_PATTERN rejects whitespace, CR/LF and the empty string', () => {
+    expect(SESSION_ID_PATTERN.test('a b')).toBe(false);
+    expect(SESSION_ID_PATTERN.test('a\nb')).toBe(false);
+    expect(SESSION_ID_PATTERN.test('')).toBe(false);
+    expect(SESSION_ID_PATTERN.test('3f6b2c11-1c2a-4b1d-9f0a-77c1d2e3f455')).toBe(true);
+  });
+});

@@ -135,3 +135,40 @@ export function parseLandingParams(href: string, referrer: string): ParsedParams
 
   return out;
 }
+
+/**
+ * Allowlist for URL-sourced session ids, matching the funnel app's
+ * `SESSION_ID_PATTERN` (`hippo-builder-funnel` session.service.ts:23).
+ * Permissive enough for every legitimate handoff shape (UUIDv4, legacy
+ * 26-digit numeric, hyphenated alphanumeric) but excludes cookie-attribute
+ * delimiters (`;`, `=`, `,`, whitespace, CR/LF): the funnel writes this value
+ * into `document.cookie` unencoded, so a crafted `?sessionid=` could otherwise
+ * inject attributes such as `Max-Age=0`. The 128-char cap bounds header size.
+ */
+export const SESSION_ID_PATTERN = /^[A-Za-z0-9._-]{1,128}$/;
+
+/**
+ * Read `?sessionid=` from a query string. Returns the trimmed value when it
+ * passes SESSION_ID_PATTERN, else null — absent, blank and malformed are the
+ * same answer to the caller, which falls through to the cookie.
+ *
+ * The key is matched **case-sensitively** (`URLSearchParams.get` is exact)
+ * because the funnel reads `sessionid` case-sensitively (session.service.ts:85).
+ *
+ * Deliberately NOT a `ParsedParams` field: the resolved id is posted in its own
+ * `affParameters.sessionId` slot, so parsing it here as well would double-send it.
+ *
+ * @param search A query string, with or without the leading `?`.
+ */
+export function readSessionIdFromUrl(search: string): string | null {
+  let raw: string | null;
+  try {
+    raw = new URLSearchParams(search).get('sessionid');
+  } catch {
+    return null;
+  }
+  const trimmed = raw?.trim();
+  if (!trimmed) return null;
+  if (!SESSION_ID_PATTERN.test(trimmed)) return null;
+  return trimmed;
+}
