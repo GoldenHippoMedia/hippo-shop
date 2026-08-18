@@ -3,7 +3,14 @@
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": "src",
-    "types": ["node"]
+    "types": ["node"],
+    // The browser IIFE targets es2020 (deliberate support floor) while the shared
+    // base tsconfig targets ES2022, from which esbuild infers define semantics for
+    // class fields — lowering all 22 of them through an Object.defineProperty
+    // helper instead of plain assignments. None of the SDK's classes rely on define
+    // semantics (no field shadows an inherited accessor, none is set by a parent
+    // constructor), so set semantics is equivalent and smaller.
+    "useDefineForClassFields": false
   },
   "include": ["src/**/*"],
   "exclude": ["dist", "node_modules", "test"]
