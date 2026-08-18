@@ -14,7 +14,6 @@
  * See the Cluster G design spec, decision D3.
  */
 
-const MAX_VALUE_CHARS = 255;
 // eslint-disable-next-line no-control-regex
 const CONTROL_CHARS_RE = /[\x00-\x1F\x7F]/g; // ASCII control chars
 /** Stripped from click-id-derived sub-id values only (click-id-normalizer.ts:45-50). */
@@ -124,10 +123,13 @@ function findCaseInsensitive(params: URLSearchParams, key: string): string | nul
   return null;
 }
 
+/**
+ * Strips ASCII control characters. Deliberately does NOT cap length: real
+ * `fbclid` and `landing_url` values exceed 255 chars, and a truncated value
+ * will not match what the funnel stored for the same click (D3).
+ */
 function clean(value: string): string {
-  const stripped = value.replace(CONTROL_CHARS_RE, '');
-  if (stripped.length <= MAX_VALUE_CHARS) return stripped;
-  return stripped.slice(0, MAX_VALUE_CHARS);
+  return value.replace(CONTROL_CHARS_RE, '');
 }
 
 /**

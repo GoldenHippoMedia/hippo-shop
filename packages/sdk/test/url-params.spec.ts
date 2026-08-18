@@ -41,13 +41,6 @@ describe('parseLandingParams', () => {
     expect(out.subId5).toBe('e');
   });
 
-  it('truncates values longer than 255 chars', () => {
-    const longValue = 'a'.repeat(300);
-    const out = parseLandingParams(`${BASE}?utm_source=${longValue}`, '');
-    expect(out.utmSource!.length).toBe(255);
-    expect(out.utmSource).toBe('a'.repeat(255));
-  });
-
   it('strips ASCII control characters from values', () => {
     const out = parseLandingParams(`${BASE}?utm_source=a%00b%0Ac%07d`, '');
     expect(out.utmSource).toBe('abcd');
@@ -304,5 +297,36 @@ describe('parseLandingParams — canonical click-id table', () => {
     expect('fbclid' in out).toBe(false);
     expect(out.subId1).toBe('S');
     expect(out.subId5).toBe('snap');
+  });
+});
+
+describe('parseLandingParams — value hygiene', () => {
+  it('does not truncate a long fbclid: raw field and subId1 survive intact', () => {
+    const longValue = 'a'.repeat(300);
+    const out = parseLandingParams(`${BASE}?fbclid=${longValue}`, '');
+    expect(out.fbclid).toBe(longValue);
+    expect(out.fbclid!.length).toBe(300);
+    expect(out.subId1).toBe(longValue);
+    expect(out.subId1!.length).toBe(300);
+  });
+
+  it('does not truncate long utm or explicit sub-id values', () => {
+    const longCampaign = 'b'.repeat(400);
+    const longSubId = 'c'.repeat(400);
+    const out = parseLandingParams(
+      `${BASE}?utm_campaign=${longCampaign}&subid2=${longSubId}`,
+      '',
+    );
+    expect(out.utmCampaign!.length).toBe(400);
+    expect(out.utmCampaign).toBe(longCampaign);
+    expect(out.subId2!.length).toBe(400);
+    expect(out.subId2).toBe(longSubId);
+  });
+
+  it('still strips ASCII control characters from raw click-ids and derived sub-ids', () => {
+    const out = parseLandingParams(`${BASE}?utm_source=a%00b%0Ac%07d&fbclid=x%01y`, '');
+    expect(out.utmSource).toBe('abcd');
+    expect(out.fbclid).toBe('xy');
+    expect(out.subId1).toBe('xy');
   });
 });
