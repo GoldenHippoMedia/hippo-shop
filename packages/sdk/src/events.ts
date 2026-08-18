@@ -96,3 +96,64 @@ export function formatVisitDate(now: Date = new Date()): string {
     `${pad(now.getMilliseconds(), 3)}${sign}${hrs}:${mins}`
   );
 }
+
+// ---------------------------------------------------------------------------
+// UA detection (D5) — ported for VOCABULARY PARITY with the reference
+// (hippo-builder-funnel detect-user-agent.utility.ts). The reference reads
+// navigator.userAgentData / navigator.platform; the SDK takes the UA string,
+// so OS comes from UA tokens while producing the identical output words.
+// Any drift in these strings splits Salesforce dashboard groupings.
+// ---------------------------------------------------------------------------
+
+export interface UaDetection {
+  browser: string;
+  os: string | null;
+  device: 'Mobile' | 'Desktop';
+}
+
+/** Order is precedence. Edge/Opera must precede Chrome; Safari precedes IE. */
+const BROWSER_RULES: Array<[RegExp, string]> = [
+  [/Firefox\//, 'Firefox'],
+  [/ OPR\//, 'Opera'],
+  [/Edg\//, 'Microsoft Edge'],
+  [/Chrome\//, 'Chrome'],
+  [/^((?!chrome|android).)*safari/i, 'Safari'],
+  [/Trident\//, 'Internet Explorer'],
+];
+
+/**
+ * Order is precedence, and two orderings are load-bearing:
+ *   iOS before Mac OS  — the iPhone UA contains 'like Mac OS X'.
+ *   Android before Linux — the Android UA contains 'Linux'.
+ */
+const OS_RULES: Array<[RegExp, string]> = [
+  [/(iPhone|iPad|iPod)/, 'iOS'],
+  [/(Macintosh|Mac OS X)/, 'Mac OS'],
+  [/Windows/, 'Windows'],
+  [/Android/, 'Android'],
+  [/Linux/, 'Linux'],
+];
+
+/**
+ * Detect browser / os / device from a raw user-agent string.
+ * An empty string yields the reference SSR default
+ * `{ browser: 'Unknown', os: null, device: 'Desktop' }`.
+ */
+export function detectUserAgent(ua: string): UaDetection {
+  const s = ua ?? '';
+  let browser = 'Unknown';
+  for (const [re, name] of BROWSER_RULES) {
+    if (re.test(s)) {
+      browser = name;
+      break;
+    }
+  }
+  let os: string | null = null;
+  for (const [re, name] of OS_RULES) {
+    if (re.test(s)) {
+      os = name;
+      break;
+    }
+  }
+  return { browser, os, device: /Mobi/.test(s) ? 'Mobile' : 'Desktop' };
+}
