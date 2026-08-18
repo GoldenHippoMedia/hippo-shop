@@ -147,9 +147,9 @@ export async function ensureSession(
   const params = parseLandingParams(href, referrer);
 
   try {
-    // D4: POST once per page load, unconditionally. The attribution task group
-    // extends this body with `sessionId` and empty-value pruning.
-    await client.postJson('session', { affParameters: params });
+    // D4: POST once per page load, unconditionally. `sessionId` is nested
+    // inside `affParameters` and empty values are pruned before send.
+    await client.postJson('session', buildSessionPostBody(params, resolved.sessionId));
   } catch {
     // Network or non-2xx: attribution degrades, the page never breaks.
   }

@@ -127,6 +127,18 @@ describe('ensureSession', () => {
     });
   });
 
+  it('sends sessionId inside affParameters', async () => {
+    setLocation('https://info.gundrymd.com/funnel?utm_source=fb');
+
+    const state = await ensureSession(makeConfig(), client);
+
+    expect(postSpy).toHaveBeenCalledWith('session', {
+      affParameters: expect.objectContaining({ sessionId: state.sessionId, utmSource: 'fb' }),
+    });
+    const [, body] = postSpy.mock.calls[0] as [string, { affParameters: Record<string, string> }];
+    expect('sessionId' in body).toBe(false);
+  });
+
   it('POSTs even when a connect.sid cookie is present — the gate is gone', async () => {
     jar.seed('connect.sid', 's:fakevalue');
     const state = await ensureSession(makeConfig(), client);
