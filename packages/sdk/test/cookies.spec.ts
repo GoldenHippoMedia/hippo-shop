@@ -16,6 +16,7 @@ function makeConfig(overrides: Partial<GhConfig> = {}): GhConfig {
     apiBaseUrl: 'https://api-prod.goldenhippo.io',
     checkoutBase: null,
     cookieDomain: null,
+    brandToken: null,
     ...overrides,
   };
 }
@@ -84,9 +85,11 @@ describe('cookie read/write/delete', () => {
       set(cookieStr: string) {
         // Parse the Set-Cookie string.
         const parts = cookieStr.split(';');
-        const [nameValue] = parts;
+        // `split` always yields at least one element, so both heads are present —
+        // noUncheckedIndexedAccess just cannot prove it.
+        const nameValue = parts[0]!;
         const [name, value] = nameValue.split('=');
-        const trimmedName = name.trim();
+        const trimmedName = name!.trim();
 
         // Check for Max-Age=0 to delete.
         const hasMaxAge0 = parts.some((p) => p.trim().startsWith('Max-Age=0'));

@@ -1,0 +1,19 @@
+{
+  // Typecheck-only view that covers src AND test. It exists as a separate config
+  // because tsup also loads tsconfig.json for the build: adding test/ to that
+  // config's input set changes rootDir inference and the emitted output, so the
+  // base config keeps its src-only view and this one widens it for tsc alone.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    // The base config pins rootDir to src, which every file under test/ violates.
+    // Nothing is emitted here, so the package root is the correct common root.
+    "rootDir": "."
+  },
+  "include": ["src/**/*", "test/**/*"],
+  // Restating exclude is load-bearing, not redundant: `exclude` is inherited
+  // through `extends`, and the base config lists "test". Inheriting it silently
+  // drops every file this config exists to check — tsc then reports 0 errors and
+  // the gate looks green while checking nothing.
+  "exclude": ["dist", "node_modules"]
+}

@@ -11,6 +11,7 @@ const CONFIG: GhConfig = {
   apiBaseUrl: 'https://api-prod.goldenhippo.io',
   checkoutBase: null,
   cookieDomain: null,
+  brandToken: null,
 };
 
 function mockFetchOnce(body: unknown, init: ResponseInit = {}): void {
@@ -237,6 +238,7 @@ describe('GhDataClient.postJson', () => {
         apiBaseUrl: 'https://api-prod.goldenhippo.io',
         checkoutBase: null,
         cookieDomain: null,
+        brandToken: null,
       },
       { debug: () => {}, warn: () => {}, error: () => {} },
     );
@@ -250,7 +252,8 @@ describe('GhDataClient.postJson', () => {
     fetchMock.mockResolvedValueOnce(new Response('{"ok":true}', { status: 200 }));
     await client.postJson('session', { affParameters: { utmSource: 'fb' } });
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchMock.mock.calls[0];
+    // toHaveBeenCalledTimes(1) above guarantees calls[0] exists; tsc cannot see it.
+    const [url, init] = fetchMock.mock.calls[0]!;
     expect(url).toBe('https://api-prod.goldenhippo.io/public/v1/session');
     expect(init.method).toBe('POST');
     expect(init.credentials).toBe('include');

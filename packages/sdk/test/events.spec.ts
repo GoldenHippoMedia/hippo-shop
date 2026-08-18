@@ -522,7 +522,7 @@ describe('page view dedupe', () => {
     claimPageView('k1');
     const store = (window as unknown as Record<string, Set<string>>)[EVENT_GUARD_KEY];
     expect(store).toBeInstanceOf(Set);
-    expect(store.has('k1')).toBe(true);
+    expect(store?.has('k1')).toBe(true);
   });
 
   it('emits once and suppresses the second emit for the same step', async () => {

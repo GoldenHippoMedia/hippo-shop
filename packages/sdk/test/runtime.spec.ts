@@ -12,6 +12,7 @@ const CONFIG: GhConfig = {
   apiBaseUrl: 'https://api-prod.goldenhippo.io',
   checkoutBase: null,
   cookieDomain: null,
+  brandToken: null,
 };
 
 const PRODUCT = {

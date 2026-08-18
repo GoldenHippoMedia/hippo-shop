@@ -21,6 +21,7 @@ const CONFIG: GhConfig = {
   apiBaseUrl: 'https://api-prod.goldenhippo.io',
   checkoutBase: 'https://checkout.gundrymd.com',
   cookieDomain: null,
+  brandToken: null,
 };
 
 const DESTINATION = {
