@@ -88,7 +88,7 @@ export function boot(doc: Document = document, win: Window = window): boolean {
   };
   root.checkoutUrl = makeCheckoutUrlFn({
     config,
-    session: { sessionId: '', hasConnectSid: false, params: null }, // pre-resolve stub
+    session: { sessionId: '', adopted: false, params: {} }, // pre-resolve stub
     getDestination: (slug) => runtime.getCachedDestination(slug),
     ensureDestination: (slug) => runtime.ensureDestination(slug),
   });

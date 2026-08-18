@@ -46,9 +46,9 @@ function makeDestination(
 
 function makeSession(overrides: Partial<SessionState> = {}): SessionState {
   return {
-    sessionId: '174710238129',
-    hasConnectSid: true,
-    params: null,
+    sessionId: '3f6b2c11-1c2a-4b1d-9f0a-77c1d2e3f455',
+    adopted: false,
+    params: {},
     ...overrides,
   };
 }
@@ -75,7 +75,7 @@ describe('composeCheckoutUrl', () => {
   it('always appends order_form_id and session_id', () => {
     const url = new URL(composeCheckoutUrl(makeDestination(), makeConfig(), makeSession()));
     expect(url.searchParams.get('order_form_id')).toBe('OF_123');
-    expect(url.searchParams.get('session_id')).toBe('174710238129');
+    expect(url.searchParams.get('session_id')).toBe('3f6b2c11-1c2a-4b1d-9f0a-77c1d2e3f455');
   });
 
   it('appends UTM and sub_id params when present in session.params', () => {
@@ -152,7 +152,7 @@ describe('applyCheckoutBindings', () => {
     const a = document.querySelector<HTMLAnchorElement>('a[data-gh-checkout]')!;
     expect(a.getAttribute('href')).toMatch(/^https:\/\/checkout\.gundrymd\.com\/\?/);
     expect(a.getAttribute('href')).toContain('order_form_id=OF_123');
-    expect(a.getAttribute('href')).toContain('session_id=174710238129');
+    expect(a.getAttribute('href')).toContain('session_id=3f6b2c11-1c2a-4b1d-9f0a-77c1d2e3f455');
   });
 
   it('sets href to "#" and triggers ensureDestination when destination not yet loaded', () => {

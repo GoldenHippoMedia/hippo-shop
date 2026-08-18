@@ -1,6 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { ensureSession, generateSessionId, getSessionState, _resetForTests } from '../src/session';
-import { readCookie, writeCookie } from '../src/cookies';
+import {
+  ensureSession,
+  generateSessionId,
+  getSessionState,
+  SESSION_COOKIE_NAME,
+  _resetForTests,
+} from '../src/session';
 import { GhDataClient } from '../src/client';
 import type { GhConfig } from '../src/config';
 import { createLogger } from '../src/log';
@@ -17,10 +22,21 @@ function makeConfig(overrides: Partial<GhConfig> = {}): GhConfig {
   };
 }
 
-function setHostname(hostname: string): void {
+import { installCookieJar, type CookieJar } from './helpers/cookie-jar';
+
+function setLocation(href: string): void {
+  const url = new URL(href);
   Object.defineProperty(window, 'location', {
-    value: { ...window.location, hostname, protocol: 'https:', href: `https://${hostname}/` },
+    value: {
+      ...window.location,
+      href: url.href,
+      hostname: url.hostname,
+      protocol: url.protocol,
+      pathname: url.pathname,
+      search: url.search,
+    },
     writable: true,
+    configurable: true,
   });
 }
 
@@ -30,7 +46,7 @@ beforeEach(() => {
     const name = c.split('=')[0].trim();
     if (name) document.cookie = `${name}=; Max-Age=0; Path=/`;
   });
-  setHostname('localhost');
+  setLocation('https://localhost/');
   _resetForTests();
 });
 
@@ -84,95 +100,59 @@ describe('generateSessionId', () => {
 describe('ensureSession', () => {
   let client: GhDataClient;
   let postSpy: ReturnType<typeof vi.fn>;
-
-  // Manual cookie jar for jsdom, since jsdom's document.cookie doesn't persist.
-  let cookieJar: Record<string, string> = {};
+  let jar: CookieJar;
 
   beforeEach(() => {
-    cookieJar = {};
-    Object.defineProperty(document, 'cookie', {
-      configurable: true,
-      get() {
-        return Object.entries(cookieJar)
-          .map(([k, v]) => `${k}=${v}`)
-          .join('; ');
-      },
-      set(cookieStr: string) {
-        const parts = cookieStr.split(';');
-        const [nameValue] = parts;
-        const [name, value] = (nameValue ?? '').split('=');
-        const trimmedName = (name ?? '').trim();
-
-        const hasMaxAge0 = parts.some((p) => p.trim().startsWith('Max-Age=0'));
-        if (hasMaxAge0) {
-          delete cookieJar[trimmedName];
-        } else {
-          cookieJar[trimmedName] = value ?? '';
-        }
-      },
-    });
-
-    const logger = createLogger(false);
-    client = new GhDataClient(makeConfig(), logger);
+    jar = installCookieJar();
+    client = new GhDataClient(makeConfig(), createLogger(false));
     postSpy = vi.fn().mockResolvedValue({});
     client.postJson = postSpy as never;
-    setHostname('info.gundrymd.com'); // safe TLD, root .gundrymd.com
+    setLocation('https://info.gundrymd.com/funnel');
+    Object.defineProperty(document, 'referrer', { value: '', configurable: true });
   });
 
-  it('on first visit: parses URL params, generates sessionId, POSTs /session', async () => {
-    Object.defineProperty(window, 'location', {
-      value: {
-        ...window.location,
-        href: 'https://info.gundrymd.com/funnel?utm_source=fb&fbclid=abc',
-        hostname: 'info.gundrymd.com',
-        protocol: 'https:',
-      },
-      writable: true,
-    });
-    Object.defineProperty(document, 'referrer', { value: '', configurable: true });
+  afterEach(() => {
+    jar.restore();
+  });
+
+  it('parses URL params, mints a session id and POSTs /session', async () => {
+    setLocation('https://info.gundrymd.com/funnel?utm_source=fb');
 
     const state = await ensureSession(makeConfig(), client);
 
     expect(state.sessionId).toMatch(UUID_V4_RE);
-    expect(state.params).toMatchObject({
-      utmSource: 'fb',
-      subId1: 'fb',
-      subId5: 'abc',
-    });
+    expect(state.params).toMatchObject({ utmSource: 'fb' });
     expect(postSpy).toHaveBeenCalledWith('session', {
-      affParameters: expect.objectContaining({
-        utmSource: 'fb',
-        subId1: 'fb',
-        subId5: 'abc',
-      }),
+      affParameters: expect.objectContaining({ utmSource: 'fb' }),
     });
-    expect(state.hasConnectSid).toBe(true);
-    // sessionId cookie was written
-    expect(readCookie('sessionId')).toBe(state.sessionId);
   });
 
-  it('skips POST when connect.sid cookie is already present', async () => {
-    writeCookie('connect.sid', 's%3Afakevalue', { maxAgeSec: 3600, domain: null });
+  it('POSTs even when a connect.sid cookie is present — the gate is gone', async () => {
+    jar.seed('connect.sid', 's:fakevalue');
     const state = await ensureSession(makeConfig(), client);
-    expect(postSpy).not.toHaveBeenCalled();
-    expect(state.hasConnectSid).toBe(true);
-    expect(state.params).toBeNull();
+    expect(postSpy).toHaveBeenCalledOnce();
+    expect(state.params.landingUrl).toContain('gundrymd.com');
   });
 
-  it('reuses an existing sessionId cookie', async () => {
-    writeCookie('sessionId', '999999999999', { maxAgeSec: 3600, domain: null });
-    writeCookie('connect.sid', 's%3Aexisting', { maxAgeSec: 3600, domain: null });
+  it('SessionState is exactly { sessionId, adopted, params }', async () => {
     const state = await ensureSession(makeConfig(), client);
-    expect(state.sessionId).toBe('999999999999');
-    expect(postSpy).not.toHaveBeenCalled();
+    expect(Object.keys(state).sort()).toEqual(['adopted', 'params', 'sessionId']);
+    expect('hasConnectSid' in state).toBe(false);
+    expect(state.params).not.toBeNull();
   });
 
-  it('on POST network failure: logs, still produces a SessionState with hasConnectSid=false', async () => {
+  it('reuses an existing session cookie instead of minting', async () => {
+    jar.seed(SESSION_COOKIE_NAME, '9f1c2d3e-4a5b-4c6d-8e7f-0a1b2c3d4e5f');
+    const state = await ensureSession(makeConfig(), client);
+    expect(state.sessionId).toBe('9f1c2d3e-4a5b-4c6d-8e7f-0a1b2c3d4e5f');
+    expect(state.adopted).toBe(false);
+  });
+
+  it('on POST failure still resolves with an id and locally-parsed params', async () => {
     postSpy.mockRejectedValueOnce(new Error('network blew up'));
     const state = await ensureSession(makeConfig(), client);
-    expect(state.hasConnectSid).toBe(false);
     expect(state.sessionId).toMatch(UUID_V4_RE);
-    expect(state.params).not.toBeNull(); // params still captured locally
+    expect(state.params.landingUrl).toContain('gundrymd.com');
   });
 
   it('fires gh:session-ready on window after resolving', async () => {
@@ -183,45 +163,40 @@ describe('ensureSession', () => {
     const event = handler.mock.calls[0][0] as CustomEvent;
     expect(event.detail).toMatchObject({
       sessionId: expect.stringMatching(UUID_V4_RE),
-      hasConnectSid: true,
+      adopted: false,
     });
+  });
+
+  it('is idempotent — a second call returns the cached state without re-POSTing', async () => {
+    const first = await ensureSession(makeConfig(), client);
+    const second = await ensureSession(makeConfig(), client);
+    expect(second).toBe(first);
+    expect(postSpy).toHaveBeenCalledOnce();
   });
 });
 
 describe('getSessionState', () => {
+  let jar: CookieJar;
+
+  beforeEach(() => {
+    jar = installCookieJar();
+    setLocation('https://info.gundrymd.com/funnel');
+  });
+
+  afterEach(() => {
+    jar.restore();
+  });
+
   it('returns null before ensureSession resolves', () => {
     expect(getSessionState()).toBeNull();
   });
 
   it('returns the resolved state after ensureSession completes', async () => {
-    // Manual cookie jar for this describe block too
-    const jar: Record<string, string> = {};
-    Object.defineProperty(document, 'cookie', {
-      configurable: true,
-      get() {
-        return Object.entries(jar)
-          .map(([k, v]) => `${k}=${v}`)
-          .join('; ');
-      },
-      set(cookieStr: string) {
-        const parts = cookieStr.split(';');
-        const [nameValue] = parts;
-        const [name, value] = (nameValue ?? '').split('=');
-        const trimmedName = (name ?? '').trim();
-        const hasMaxAge0 = parts.some((p) => p.trim().startsWith('Max-Age=0'));
-        if (hasMaxAge0) {
-          delete jar[trimmedName];
-        } else {
-          jar[trimmedName] = value ?? '';
-        }
-      },
-    });
-
-    const logger = createLogger(false);
-    const client = new GhDataClient(makeConfig(), logger);
+    const client = new GhDataClient(makeConfig(), createLogger(false));
     client.postJson = vi.fn().mockResolvedValue({}) as never;
     await ensureSession(makeConfig(), client);
     expect(getSessionState()).not.toBeNull();
     expect(getSessionState()?.sessionId).toMatch(UUID_V4_RE);
+    expect(getSessionState()?.adopted).toBe(false);
   });
 });

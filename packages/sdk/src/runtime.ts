@@ -82,7 +82,7 @@ export class GhRuntime {
     });
 
     // Cluster F: also bind [data-gh-checkout] elements.
-    const session = getSessionState() ?? { sessionId: '', hasConnectSid: false, params: null };
+    const session = getSessionState() ?? { sessionId: '', adopted: false, params: {} };
     applyCheckoutBindings(target, {
       config: this.opts.config,
       session,

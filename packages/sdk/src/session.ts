@@ -1,15 +1,17 @@
 /**
- * Cluster F: session lifecycle. Reads existing `connect.sid` and `sessionId`
- * cookies, generates the `sessionId` when missing using the gh-utils
- * algorithm (ported verbatim for backward compatibility with funnel
- * events). POSTs once per visit to /public/v1/session when no `connect.sid`
- * is present. Fires `gh:session-ready` on `window` after resolving.
+ * Cluster G session lifecycle (spec D1/D2/D4).
  *
- * Every reachable failure path is non-fatal: a network error or blocked
- * cookie surfaces as a SessionState with `hasConnectSid: false` or local-
- * only attribution; the page never breaks.
+ * Resolves the visitor's session id, persists it to the root-domain
+ * `hippo_session_id` cookie, parses landing attribution, and POSTs it once per
+ * page load to /public/v1/session. Fires `gh:session-ready` on `window` when it
+ * resolves — on success and on swallowed failure alike.
  *
- * See the Cluster F design spec for the data model.
+ * `connect.sid` is deliberately absent: it is httpOnly and belongs to the API,
+ * so `document.cookie` can never observe it. Cluster F's gate on that cookie was
+ * dead code and is deleted.
+ *
+ * Every reachable failure path is non-fatal: a blocked cookie write or a failed
+ * POST degrades attribution; the page never breaks.
  */
 
 import type { GhConfig } from './config';
@@ -18,14 +20,16 @@ import { getCookieDomain, readCookie, writeCookie } from './cookies';
 import { parseLandingParams, type ParsedParams } from './url-params';
 
 export const SESSION_COOKIE_NAME = 'sessionId';
-export const CONNECT_SID_COOKIE_NAME = 'connect.sid';
 const SESSION_TTL_SEC = 30 * 24 * 60 * 60; // 30 days
 const SESSION_READY_EVENT = 'gh:session-ready';
 
 export interface SessionState {
+  /** Resolved session id: adopted from `?sessionid=`, restored from the cookie, or minted. */
   sessionId: string;
-  hasConnectSid: boolean;
-  params: ParsedParams | null;
+  /** True when the id came from `?sessionid=` on this page load (spec D1 handoff). */
+  adopted: boolean;
+  /** Landing-URL attribution. Always parsed — never null (spec D4). */
+  params: ParsedParams;
 }
 
 let cachedState: SessionState | null = null;
@@ -76,43 +80,31 @@ export async function ensureSession(
   if (cachedState) return cachedState;
 
   const domain = getCookieDomain(config);
-  const existingConnectSid = readCookie(CONNECT_SID_COOKIE_NAME);
-  const hasConnectSid = !!existingConnectSid;
 
-  // Ensure sessionId cookie exists at the resolved domain.
   let sessionId = readCookie(SESSION_COOKIE_NAME);
   if (!sessionId) {
     sessionId = generateSessionId();
     try {
       writeCookie(SESSION_COOKIE_NAME, sessionId, { maxAgeSec: SESSION_TTL_SEC, domain });
     } catch {
-      // Cookie write blocked; sessionId still kept in memory for this visit.
+      // Cookie write blocked (third-party context, quota). The id still lives
+      // in memory for this page load and still rides outbound links.
     }
   }
 
-  // If connect.sid already present, skip the POST entirely.
-  if (hasConnectSid) {
-    const state: SessionState = { sessionId, hasConnectSid: true, params: null };
-    cachedState = state;
-    fireReady(state);
-    return state;
-  }
-
-  // First-visit path: parse landing URL, POST /session.
   const href = typeof window !== 'undefined' ? window.location.href : '';
   const referrer = typeof document !== 'undefined' ? document.referrer : '';
   const params = parseLandingParams(href, referrer);
 
-  let postOk = false;
   try {
+    // D4: POST once per page load, unconditionally. The attribution task group
+    // extends this body with `sessionId` and empty-value pruning.
     await client.postJson('session', { affParameters: params });
-    postOk = true;
   } catch {
-    // Network or non-2xx; degrade gracefully. We can't inspect Set-Cookie
-    // from JS, so postOk is our only signal that the API was reached.
+    // Network or non-2xx: attribution degrades, the page never breaks.
   }
 
-  const state: SessionState = { sessionId, hasConnectSid: postOk, params };
+  const state: SessionState = { sessionId, adopted: false, params };
   cachedState = state;
   fireReady(state);
   return state;
