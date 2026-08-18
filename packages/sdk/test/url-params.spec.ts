@@ -4,21 +4,6 @@ import { parseLandingParams, CLICK_ID_MAP } from '../src/url-params';
 const BASE = 'https://info.gundrymd.com/some-funnel';
 
 describe('parseLandingParams', () => {
-  it('captures landingUrl as the full href', () => {
-    const out = parseLandingParams(`${BASE}?a=1`, '');
-    expect(out.landingUrl).toBe(`${BASE}?a=1`);
-  });
-
-  it('captures referralUrl when referrer is non-empty', () => {
-    const out = parseLandingParams(BASE, 'https://www.facebook.com/');
-    expect(out.referralUrl).toBe('https://www.facebook.com/');
-  });
-
-  it('omits referralUrl when referrer is empty', () => {
-    const out = parseLandingParams(BASE, '');
-    expect(out.referralUrl).toBeUndefined();
-  });
-
   it('captures utm_* params as camelCased keys', () => {
     const out = parseLandingParams(
       `${BASE}?utm_source=fb&utm_medium=cpc&utm_campaign=summer`,
@@ -328,5 +313,51 @@ describe('parseLandingParams — value hygiene', () => {
     expect(out.utmSource).toBe('abcd');
     expect(out.fbclid).toBe('xy');
     expect(out.subId1).toBe('xy');
+  });
+});
+
+describe('parseLandingParams — landing and referral URLs', () => {
+  it('landingUrl is the href truncated at the first "?"', () => {
+    const out = parseLandingParams(`${BASE}?utm_source=fb&fbclid=x`, '');
+    expect(out.landingUrl).toBe(BASE);
+  });
+
+  it('an explicit ?landing_url= wins over the truncated href', () => {
+    const explicit = 'https://ads.example.com/lp?q=1';
+    const out = parseLandingParams(
+      `${BASE}?landing_url=${encodeURIComponent(explicit)}`,
+      '',
+    );
+    expect(out.landingUrl).toBe(explicit);
+  });
+
+  it('referralUrl comes from ?referral_url= only', () => {
+    const out = parseLandingParams(
+      `${BASE}?referral_url=${encodeURIComponent('https://www.facebook.com/')}`,
+      'https://internal.example.com/previous-page',
+    );
+    expect(out.referralUrl).toBe('https://www.facebook.com/');
+  });
+
+  it('omits referralUrl when ?referral_url= is absent even though document.referrer is set', () => {
+    const out = parseLandingParams(BASE, 'https://www.facebook.com/');
+    expect('referralUrl' in out).toBe(false);
+    expect(out.referralUrl).toBeUndefined();
+  });
+
+  it('omits referralUrl when ?referral_url= is present but empty', () => {
+    const out = parseLandingParams(`${BASE}?referral_url=`, 'https://www.facebook.com/');
+    expect('referralUrl' in out).toBe(false);
+  });
+
+  it('still yields a landingUrl for a malformed href', () => {
+    const out = parseLandingParams('not-a-url?utm_source=fb', '');
+    expect(out.landingUrl).toBe('not-a-url');
+    expect(out.utmSource).toBeUndefined();
+  });
+
+  it('omits landingUrl entirely for an empty href', () => {
+    const out = parseLandingParams('', '');
+    expect('landingUrl' in out).toBe(false);
   });
 });

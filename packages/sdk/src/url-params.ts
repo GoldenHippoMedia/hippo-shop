@@ -112,6 +112,8 @@ const OTHER_KEY_MAP: Record<string, keyof ParsedParams> = {
   off_id: 'offId',
   aff_id: 'affId',
   sales_funnel: 'salesFunnel',
+  landing_url: 'landingUrl',
+  referral_url: 'referralUrl',
 };
 
 /** First case-insensitive match for `key`, or null when absent. */
@@ -133,16 +135,26 @@ function clean(value: string): string {
 }
 
 /**
- * Parse a landing URL + document.referrer into a ParsedParams shape ready
- * for POST /session under `affParameters`. Empty/undefined fields are
- * omitted from the output (not set to empty strings).
+ * Parse a landing URL into a ParsedParams shape ready for
+ * POST /public/v1/session under `affParameters`. Empty/undefined fields are
+ * omitted from the output (never sent as `""`), because `affParameters` is
+ * destructive-on-write.
  *
  * @param href The full landing URL, typically `window.location.href`.
- * @param referrer `document.referrer`. Empty string omits referralUrl.
+ * @param referrer `document.referrer`. Accepted for signature stability and
+ *  deliberately unused: on this path `referralUrl` comes from
+ *  `?referral_url=` alone (D3). The POST fires on every page load and
+ *  `affParameters` is destructive-on-write, so a `document.referrer`
+ *  fallback would overwrite the real ad referrer with the previous internal
+ *  page on the second page view. The funnel-event payload derives its own
+ *  `referralUrl` from `document.referrer` — a different call, different shape.
  */
 export function parseLandingParams(href: string, referrer: string): ParsedParams {
-  const out: ParsedParams = { landingUrl: href };
-  if (referrer) out.referralUrl = referrer;
+  void referrer;
+
+  const out: ParsedParams = {};
+  const landingDefault = clean(href.split('?')[0] ?? href);
+  if (landingDefault) out.landingUrl = landingDefault;
 
   let url: URL;
   try {
