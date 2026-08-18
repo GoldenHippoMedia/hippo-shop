@@ -54,10 +54,21 @@ const PARAM_KEY_MAP: Array<[keyof ParsedParams, string]> = [
 
 /**
  * Forwarded verbatim from the current page URL when present, appended last.
- * These carry the funnel's own destination and split-test identity across the
- * hop; the SDK never synthesises them.
+ * These carry the funnel's own funnel, destination, and split-test identity
+ * across the hop; the SDK never synthesises them.
+ *
+ * Deliberately excludes `funnelSTPId` and `dsid`. The `/fst` destination
+ * resolver re-mints `funnelSTPId` on every hop — it is always the current
+ * page's step-1 sfid, never advancing — so forwarding a stale value here
+ * would actively corrupt the next page's step id rather than merely leave it
+ * unresolved. `dsid` is the internal-branch alias of `origdsidOrig`, already
+ * covered by that param.
  */
-const FORWARDED_PARAM_NAMES = ['origdsidOrig', 'origsplitTestingFunnelIdOrig'] as const;
+const FORWARDED_PARAM_NAMES = [
+  'origmainFunnelIdOrig',
+  'origdsidOrig',
+  'origsplitTestingFunnelIdOrig',
+] as const;
 
 /**
  * Resolve the base URL a destination's link points at:

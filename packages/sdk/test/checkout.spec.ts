@@ -313,18 +313,26 @@ describe('composeCheckoutUrl', () => {
     expect(logger.warn).not.toHaveBeenCalled();
   });
 
-  it('forwards origdsidOrig and origsplitTestingFunnelIdOrig from the current page URL, last', () => {
-    setSearch('?origdsidOrig=DS1&origsplitTestingFunnelIdOrig=ST1');
+  it('forwards origmainFunnelIdOrig, origdsidOrig, and origsplitTestingFunnelIdOrig from the current page URL, last', () => {
+    setSearch(
+      '?origmainFunnelIdOrig=FN1&origdsidOrig=DS1&origsplitTestingFunnelIdOrig=ST1',
+    );
     const url = new URL(composeCheckoutUrl(makeDestination(), makeConfig(), makeSession()));
+    expect(url.searchParams.get('origmainFunnelIdOrig')).toBe('FN1');
     expect(url.searchParams.get('origdsidOrig')).toBe('DS1');
     expect(url.searchParams.get('origsplitTestingFunnelIdOrig')).toBe('ST1');
     const keys = Array.from(url.searchParams.keys());
-    expect(keys.slice(-2)).toEqual(['origdsidOrig', 'origsplitTestingFunnelIdOrig']);
+    expect(keys.slice(-3)).toEqual([
+      'origmainFunnelIdOrig',
+      'origdsidOrig',
+      'origsplitTestingFunnelIdOrig',
+    ]);
   });
 
   it('omits the orig params when the current page URL has none', () => {
     setSearch('?utm_source=fb');
     const url = new URL(composeCheckoutUrl(makeDestination(), makeConfig(), makeSession()));
+    expect(url.searchParams.has('origmainFunnelIdOrig')).toBe(false);
     expect(url.searchParams.has('origdsidOrig')).toBe(false);
     expect(url.searchParams.has('origsplitTestingFunnelIdOrig')).toBe(false);
   });
@@ -334,6 +342,13 @@ describe('composeCheckoutUrl', () => {
     const config = makeConfig({ checkoutBase: 'https://checkout.gundrymd.com/?origdsidOrig=on-base' });
     const url = new URL(composeCheckoutUrl(makeDestination(), config, makeSession()));
     expect(url.searchParams.get('origdsidOrig')).toBe('on-base');
+  });
+
+  it('does NOT forward funnelSTPId or dsid — /fst re-mints funnelSTPId per hop and a stale value would corrupt the next page', () => {
+    setSearch('?funnelSTPId=a0Zstep1&dsid=DS1');
+    const url = new URL(composeCheckoutUrl(makeDestination(), makeConfig(), makeSession()));
+    expect(url.searchParams.has('funnelSTPId')).toBe(false);
+    expect(url.searchParams.has('dsid')).toBe(false);
   });
 });
 
