@@ -16,7 +16,7 @@
 - **Branching.** `hippo-shop` work is on `feat/cluster-g-superfunnel-pilot`, branched off `feat/cluster-f-session-utm-checkout-handoff` because **Cluster F is unmerged** (PR #17 open). This ships as **one PR to `main`** carrying corrected-F plus G; PR #17 closes as superseded. `ROADMAP.md` wrongly records F as shipped — fix it.
 - **Commerce work is off `prerelease`**, in a git worktree. The main clone has another branch checked out; never `git checkout`/`switch`/`stash` there.
 - **Release ordering.** `@goldenhippo/hippo-shop-types@4.0.0` must publish **before** the commerce pin bump. Within the commerce repo the pin bump (`^3.0.0` → `^4.0.0`) and the Zod schema change **must be the same commit** — `HippoShop.spec.ts:503-519` asserts bidirectional `Equals<z.infer<typeof ZHippoShopDestinationDTO>, HippoShopDestinationDTO>`, so either change alone fails `tsc`.
-- **A new SDK major needs a new CDN line.** The `gh-hippo-shop-sdk-v4` Cloudflare Pages project and Kong `/sdk/v4/*` route must exist **before** the publish. The v3 cut failed on exactly this (`ROADMAP.md:98`). Kong is owned outside this plan.
+- **A new SDK major needs a new CDN line.** The `gh-hippo-shop-sdk-v4` Cloudflare Pages project and Kong `/sdk/v4/*` route must exist **before** the publish. The v3 cut failed on exactly this (`ROADMAP.md:103`). Kong is owned outside this plan.
 - **Every failure path stays non-fatal.** Network errors, blocked cookies, malformed inputs, a failed SOQL lookup — none may throw uncaught or break page render. Attribution degrades; the page does not.
 - **`affParameters` is destructive-on-write.** Every key present overwrites stored attribution. Empty values must be **omitted**, never sent as `""`.
 - **Never read, write, or reason about `connect.sid`.** It is `httpOnly` and belongs to the API.
@@ -11359,7 +11359,7 @@ Covers the `Docs` row of Workstream 1 and the "Reconcile the routing doc" item o
 
 **Files:**
 - Modify: `/Users/stevenhall/Code/hippo-shop/ROADMAP.md` — delete the Cluster F entry (lines 39–48 plus its trailing blank line 49) from `## Done`; add a Cluster G entry to `## Open items`
-- Modify: `/Users/stevenhall/Code/hippo-shop/docs/superpowers/specs/2026-08-18-cluster-g-superfunnel-pilot-design.md` — lines 334 and 346, the `ROADMAP.md:98` citation
+- Modify: `/Users/stevenhall/Code/hippo-shop/docs/superpowers/specs/2026-08-18-cluster-g-superfunnel-pilot-design.md` — lines 334 and 346, the `ROADMAP.md:103` citation
 - Modify: `/Users/stevenhall/Code/hippo-shop/docs/superpowers/plans/2026-08-18-cluster-g-superfunnel-pilot.md` — line 19, the same citation (this commit also adds the plan file itself if no earlier task tracked it)
 - Create: `/tmp/cluster-g-pr-body.md` — PR body, deliberately outside the repo, not committed
 - Test: none. Prose and repo state; verified by `grep`, `git ls-tree`, and `gh pr view`, as in Task 28.
@@ -11455,7 +11455,7 @@ Covers the `Docs` row of Workstream 1 and the "Reconcile the routing doc" item o
 
   It stays `in-progress`, not `done`, until `@goldenhippo/hippo-shop-sdk@4.0.0` is actually on npm and serving from `/sdk/v4/gh.js`. Marking an entry `done` at PR-open time is precisely the error being corrected here.
 
-- [ ] **Step 7: Re-anchor the `ROADMAP.md:98` citations, which the deletion moved**
+- [ ] **Step 7: Re-anchor the `ROADMAP.md:103` citations, which the deletion moved**
 
   ```bash
   cd /Users/stevenhall/Code/hippo-shop && LINE=$(grep -n 'per-major CDN URL convention' ROADMAP.md | cut -d: -f1) && sed -i '' "s/ROADMAP\.md:98/ROADMAP.md:$LINE/g" docs/superpowers/specs/2026-08-18-cluster-g-superfunnel-pilot-design.md docs/superpowers/plans/2026-08-18-cluster-g-superfunnel-pilot.md && echo "re-anchored to $LINE"
@@ -11491,7 +11491,7 @@ Covers the `Docs` row of Workstream 1 and the "Reconcile the routing doc" item o
   to main in one PR, F's changesets are already deleted, and every behaviour a
   restored F entry would have specified is one G replaces.
 
-  Re-anchored the three ROADMAP.md:98 citations in the Cluster G spec and plan
+  Re-anchored the three ROADMAP.md:103 citations in the Cluster G spec and plan
   to the line the deletion moved the Cluster B paragraph to."
   ```
 

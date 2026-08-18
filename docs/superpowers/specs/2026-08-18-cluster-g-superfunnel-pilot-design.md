@@ -331,7 +331,7 @@ Worth noting as a follow-up rather than pilot scope: six sequential destination 
 
 **Brand token mapping.** See D5 — `rename.headers` changes the key, not the value, and `"Gundry MD"` ≠ `"gundry"`.
 
-**New SDK major = new CDN line.** Cutting v4 is not just an npm publish. `docs/architecture/cloudflare-deploy.md:32` states that each npm major has its own Pages project and Kong route, and `:51` that Kong changes are required once per new major to add a `/sdk/vN/*` route; `ROADMAP.md:98` records that the v3 cut needed exactly this and that the release initially failed because the Pages project did not exist. So W3 also owns: create the `gh-hippo-shop-sdk-v4` Cloudflare Pages project, add the Kong `/sdk/v4/*` route pointing at it, and update the CI deploy target. **This must exist before the SDK publish in step 1**, not after.
+**New SDK major = new CDN line.** Cutting v4 is not just an npm publish. `docs/architecture/cloudflare-deploy.md:32` states that each npm major has its own Pages project and Kong route, and `:51` that Kong changes are required once per new major to add a `/sdk/vN/*` route; `ROADMAP.md:103` records that the v3 cut needed exactly this and that the release initially failed because the Pages project did not exist. So W3 also owns: create the `gh-hippo-shop-sdk-v4` Cloudflare Pages project, add the Kong `/sdk/v4/*` route pointing at it, and update the CI deploy target. **This must exist before the SDK publish in step 1**, not after.
 
 **Reconcile the routing doc** with the `/public/v1/*` → `/hippo-shop/v1/*` rewrite that already exists in production but is undocumented. Whichever way path resolution is settled, `PUBLIC_SDK_PATH_PREFIX` (`errorHandler.middleware.ts:15`) must match, or public error responses silently regress to the internal shape and the SDK's `body.code` parsing breaks.
 
@@ -343,7 +343,7 @@ Worth noting as a follow-up rather than pilot scope: six sequential destination 
 
 Ordering constraints, precisely:
 
-- The `gh-hippo-shop-sdk-v4` Cloudflare Pages project and the Kong `/sdk/v4/*` route **must exist before** step 1's deploy. The v3 cut failed on exactly this (`ROADMAP.md:98`).
+- The `gh-hippo-shop-sdk-v4` Cloudflare Pages project and the Kong `/sdk/v4/*` route **must exist before** step 1's deploy. The v3 cut failed on exactly this (`ROADMAP.md:103`).
 - The types release **gates** the commerce work, and within step 2 the pin bump and the Zod change must be the *same commit*.
 - The session and funnel-event Kong routes are the only genuinely parallel items — they can land any time before end-to-end testing.
 
