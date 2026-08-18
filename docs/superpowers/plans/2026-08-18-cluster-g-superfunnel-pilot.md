@@ -6663,10 +6663,12 @@ cd /Users/stevenhall/Code/hippo-shop && git add packages/sdk/test/events-emitter
 - [ ] **Step 1: Verify both wrong statements are present**
 
   ```bash
-  cd /Users/stevenhall/Code/hippo-shop && grep -n "Pre-Purchase only" packages/types/src/destination.ts packages/types/src/funnel.ts && grep -n 'posted to `/session`' packages/sdk/SPEC.md
+  cd /Users/stevenhall/Code/hippo-shop && grep -n "Purchase only" packages/types/src/destination.ts packages/types/src/funnel.ts && grep -n 'posted to `/session`' packages/sdk/SPEC.md
   ```
 
-  Expect exactly three hits: `packages/types/src/destination.ts:6` (wrong — destinations are Post-Purchase), `packages/types/src/funnel.ts:4` (correct — leave it alone), and two SPEC.md lines (103 and 163) naming `/session` where the code posts `/public/v1/session`.
+  Expect: `packages/types/src/destination.ts:6` already reading **"Post-Purchase only"** — Task 12 corrected the one-line claim ahead of this task, so the *wrong* text is already gone. `packages/types/src/funnel.ts:4` still reads "Pre-Purchase only" and is correct — leave it alone. Two SPEC.md lines (103 and 163) name `/session` where the code posts `/public/v1/session`.
+
+  **This task is not a no-op.** Task 12 replaced only the single sentence. This task replaces it with the fuller docblock below, which states the *pair* rule the server actually enforces (both the destination and its resolved `defaultFunnel` must be Post-Purchase), and does both SPEC.md corrections. If `destination.ts:6` still says "Pre-Purchase only", Task 12 did not land — stop and report that rather than proceeding.
 
 - [ ] **Step 2: Fix the destination docblock**
 
