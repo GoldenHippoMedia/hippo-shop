@@ -66,7 +66,7 @@ Mirrors `hippo-builder-funnel/src/app/core/services/hippo-api/session.service.ts
 
 1. **`?sessionid=`** — exact lowercase key, read **case-sensitively** to match the reference (`session.service.ts:85`). Validate against `/^[A-Za-z0-9._-]{1,128}$/` (`session.service.ts:23`). On pass, adopt it and write it to the cookie **even when a different cookie value already exists**. On fail, `logger.warn` and fall through.
 2. **`hippo_session_id` cookie.**
-3. **Mint** via `crypto.randomUUID()`, with the RFC-4122 v4 `getRandomValues` fallback, and throw if neither is available — no `Math.random()` path (`session.service.ts:164-184`).
+3. **Mint** via `crypto.randomUUID()`, with the RFC-4122 v4 `getRandomValues` fallback, and throw if neither is available — no `Math.random()` path (`session.service.ts:164-184`). [**Superseded by M4** later in this run: `mintSessionId` catches that throw and degrades to a non-cryptographic `fallback-<base36-time>-<base36-random>` id. An uncaught throw would reject `ensureSession`, so `gh:session-ready` would never fire and every `data-gh-checkout` link would sit at `href="#"` for the life of the page. `generateSessionId` itself still throws — the `Math.random()` path is in its caller. See `packages/sdk/SPEC.md` § "Session identity and inbound `?sessionid=`" for the shipped ladder.]
 
 The validation regex is not optional. The adopted value flows into a cookie write, a query string, and a server-side session key; its charset deliberately excludes `;`, `=`, `,`, and whitespace because the funnel writes it into `document.cookie` unencoded.
 
@@ -352,7 +352,7 @@ Ordering constraints, precisely:
 Unit coverage per W1's table. Beyond that, two acceptance steps that cannot be replaced by unit tests:
 
 - **UAT reconciliation.** Emit a known number of `Page View` events for a fixed session id and count the rows that actually land in Salesforce. Nothing in any repository can prove this contract statically, and a 200 response is not evidence.
-- **End-to-end handoff.** Land on a `sf.brand.com` page with `?sessionid=<known>` plus UTM parameters, confirm the cookie is written at `.brand.com`, confirm the POST body carries the id inside `affParameters`, click through to a destination, and confirm the same id arrives as `?sessionid=` and is adopted rather than re-minted.
+- **End-to-end handoff.** Land on a `sf.brand.com` page with `?sessionid=<known>` plus UTM parameters, confirm the cookie is written **host-only** — an adopted id keeps host scope, it is not written at `.brand.com` — confirm the POST body carries the id inside `affParameters`, click through to a destination, and confirm the same id arrives as `?sessionid=` and is adopted rather than re-minted.
 
 ## Risks
 

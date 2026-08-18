@@ -135,6 +135,7 @@ The SDK boots from a single `<script>` tag. All configuration lives on that tag'
 |-----------|----------|---------|-------------|
 | `data-key` | yes | — | Publishable key. Must match `/^gh_pk_[a-z0-9_-]+_<hex>$/` (e.g. `gh_pk_yourbrand_a1b2c3d4e5f6`). |
 | `data-brand` | yes | — | Brand display name. Must be non-empty after trimming. Validated server-side. |
+| `data-brand-token` | conditional | falls back to `data-brand` | The brand's `BRAND_NAME` token — the vocabulary Altern attributes on (`gundry`), not the public display name (`Gundry MD`). It fills the payload `brand` field on every funnel event, as `data-brand-token ?? data-brand`. **Omit it and every funnel event on the page is attributed to the wrong brand**, with a `200` from the API and nothing in any log. Required on every brand whose token differs from its display name — see [`Page View` events](#page-view-events). |
 | `data-debug` | no | `"false"` | If set to the string `"true"`, the SDK logs requests, cache hits, and bind passes to the browser console with a `[gh]` prefix. Also sets `window.gh.debug = true`. |
 | `data-checkout-base` | conditional | — | Brand-level fallback base URL for outbound offer links (e.g. `https://checkout.gundrymd.com`). Used only when the destination carries neither a per-destination override nor its own `url`. Required if any page on this brand uses `data-gh-checkout` or `gh.checkoutUrl()` against destinations Salesforce has no URL for; optional otherwise. |
 | `data-cookie-domain` | conditional | auto-detect | Explicit `Domain` for the `hippo_session_id` cookie (e.g. `.gundrymd.com`). When absent the SDK derives the registrable root from `location.hostname` using a single-segment TLD allowlist — `com, net, org, io, app, dev, ai, co, us, store, shop`. **Multi-part TLDs (`.co.uk`, `.com.au`, `.co.jp`) require this attribute**; auto-detect refuses to guess them and falls back to a host-only cookie, which breaks the cross-subdomain handoff. |
@@ -387,14 +388,14 @@ All of it degrades quietly. A blocked cookie, a failed POST, an unresolvable fun
 One id per visitor, resolved once per page load, in this order:
 
 1. **`?sessionid=` on the current URL.** Matched **case-sensitively** — `?SessionId=` is ignored. Validated against `/^[A-Za-z0-9._-]{1,128}$/`. On a pass the value is adopted **even when the cookie already holds a different one**, and written back to the cookie. On a fail the SDK warns and falls through.
-2. **The `hippo_session_id` cookie.**
-3. **A freshly minted UUID v4** — `crypto.randomUUID()`, with an RFC-4122 `getRandomValues` fallback.
+2. **The `hippo_session_id` cookie** — validated against that same pattern; a value that fails is ignored and the SDK falls through.
+3. **A freshly minted UUID v4** — `crypto.randomUUID()`, with an RFC-4122 `getRandomValues` fallback. In a runtime that offers neither, minting throws; the SDK catches that, logs an error, and degrades to a last-resort `fallback-<base36>-<base36>` id — neither a UUID nor cryptographically random. Resolution has to finish either way: if it didn't, `gh:session-ready` would never fire and every checkout link would stay at `href="#"`.
 
 | Cookie | Max-Age | Path | Domain | SameSite | Secure |
 |--------|---------|------|--------|----------|--------|
-| `hippo_session_id` | 30 days (`2592000`) | `/` | `data-cookie-domain`, else the auto-detected registrable root (`.gundrymd.com`) | `Lax` | on `https:` |
+| `hippo_session_id` | 30 days (`2592000`), **absolute — not rolling**: written on mint and on `?sessionid=` adoption, never re-written on a plain cookie hit | `/` | For a **minted** id: `data-cookie-domain`, else the auto-detected registrable root (`.gundrymd.com`), else host-only. For an id **adopted** from `?sessionid=`: always host-only | `Lax` | on `https:` |
 
-Root-domain scoping is the point: `sf.gundrymd.com` and `www.gundrymd.com` read the same cookie, so a visitor moving between them is one visitor.
+Root-domain scoping on a **minted** id is what makes a returning visitor one visitor across subdomains: `sf.gundrymd.com` and `www.gundrymd.com` read the same cookie. The handoff *within* a visit rides the URL rather than the cookie, which is why an **adopted** id needs no root scoping — and deliberately doesn't get it. See [SPEC — Cookie contract](./SPEC.md#cookie-contract).
 
 Read it with `window.gh.session.id()` — `undefined` until `gh:session-ready` fires. The attribution parsed from the landing URL is on `window.gh.session.params()`.
 
@@ -480,6 +481,8 @@ Identity is read from the DOM at emit time:
 ```
 
 **No funnel ID, no event.** If neither a bound destination nor `data-gh-funnel-id` yields one, the event is dropped — an event with a blank funnel ID is discarded silently further upstream, so sending it would be strictly worse than not sending it. With `data-debug="true"` the drop is logged with the reason.
+
+**The event's `brand` is `data-brand-token`, not `data-brand`.** Altern attributes the event off the payload's `brand` field — not the `X-GH-Brand` header — and it expects the `BRAND_NAME` token vocabulary (`gundry`), not the public display name (`Gundry MD`). The SDK sends `data-brand-token ?? data-brand`, so a script tag that omits `data-brand-token` falls back to the display name for every event it emits. Both values land in the same Salesforce column, so the wrong one is silent mis-attribution rather than an error: the POST returns `200` and nothing appears in any log. If a brand reports missing funnel events while the API looks healthy, check the embed's script tag before anything else.
 
 The event fires once session resolution and the first bind pass have both settled, plus a short quiet window so late-injected attributes land in the same event instead of a second one. It is sent with `keepalive: true` so it survives page unload, and it is **never retried** — not even on `429`.
 
@@ -628,6 +631,7 @@ Capture attribution on landing and carry it onto outbound offer links:
 <script src="https://api-prod.goldenhippo.io/sdk/v4/gh.js"
         data-key="gh_pk_internal_gundry_abc123"
         data-brand="Gundry MD"
+        data-brand-token="gundry"
         data-checkout-base="https://checkout.gundrymd.com"
         data-cookie-domain=".gundrymd.com"></script>
 

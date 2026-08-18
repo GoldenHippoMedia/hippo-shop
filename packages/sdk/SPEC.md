@@ -19,6 +19,7 @@ When the script evaluates, it locates its own `<script>` element (via `document.
 Attributes read from the script tag:
 - `data-key` (required) — public access key issued by Golden Hippo. Must match `/^gh_pk_[a-z0-9_-]+_<hex>$/`.
 - `data-brand` (required) — the brand this page reads data for. Must be non-empty after trimming.
+- `data-brand-token` (conditional) — the brand's `BRAND_NAME` token, used as the payload `brand` field on funnel events. Defaults to `data-brand` when absent. See [Script-tag attributes](#script-tag-attributes).
 - `data-debug` (optional) — when set to the literal string `"true"`, enables structured `[gh]` console logging and sets `window.gh.debug = true`.
 
 Accepted script-host allowlist (the API base URL is the script's `src` origin):
@@ -79,14 +80,16 @@ When multiple binding attributes appear on the same element, they evaluate in th
 The SDK resolves exactly one session id per page load, in this order:
 
 1. **`?sessionid=` on the current URL.** The key is matched **case-sensitively** — `?SessionId=` and `?SESSIONID=` are ignored. The value is trimmed and validated against `SESSION_ID_PATTERN`. On a pass it is adopted **even when the `hippo_session_id` cookie already holds a different value**, and written back to the cookie. On a fail the SDK logs a warning and falls through to step 2.
-2. **The `hippo_session_id` cookie.** Used verbatim; not rewritten.
-3. **A newly minted id** — `crypto.randomUUID()`, falling back to an RFC-4122 v4 assembled from `crypto.getRandomValues`. If neither is available the SDK throws rather than falling back to `Math.random()`.
+2. **The `hippo_session_id` cookie**, trimmed and validated against the same `SESSION_ID_PATTERN` as step 1. Reused without rewriting on a pass: the cookie is **not re-persisted**, so a cookie hit does not extend its lifetime (see [Cookie contract](#cookie-contract)). A value that fails validation is ignored and the SDK falls through to step 3.
+3. **A newly minted id** — `crypto.randomUUID()`, falling back to an RFC-4122 v4 assembled from `crypto.getRandomValues`. If neither is available the mint throws and the ladder catches it, logging an error and degrading to a non-cryptographic `fallback-<base36-time>-<base36-random>` id built with `Math.random()`. Letting that throw escape would reject `ensureSession`, so `gh:session-ready` would never fire and every `data-gh-checkout` link would sit at `href="#"` for the life of the page; the id keys attribution, not authentication, so a guessable last-resort id is the cheaper failure.
 
 ```
 SESSION_ID_PATTERN = /^[A-Za-z0-9._-]{1,128}$/
 ```
 
 The charset is not incidental. An adopted value flows into a `document.cookie` write, into a query string on every outbound link, and into a server-side session key. `;`, `=`, `,`, and whitespace are excluded because consumers downstream write the value into `document.cookie` **unencoded**, where any of those characters would terminate the value and let the remainder be parsed as cookie attributes.
+
+**The cookie branch is trusted as read**, on the same terms as the URL branch below. Because a minted id is written at the registrable root, every host under the brand's domain can set `hippo_session_id` — cookie writes are scoped by domain, not by origin, so a sibling subdomain (including one the pilot does not own) can decide which id a page load reports. `SESSION_ID_PATTERN` is applied to the cookie value exactly as it is to a URL-supplied one, which bounds what the value can *contain* but not who can *set* it. The blast-radius argument in [The SDK trusts the inbound URL](#the-sdk-trusts-the-inbound-url) covers this case unchanged: the id keys attribution, not authentication.
 
 ### Cookie contract
 
@@ -99,6 +102,8 @@ The charset is not incidental. An adopted value flows into a `document.cookie` w
 | `Domain` | For a **minted** id: `data-cookie-domain` when set, else the auto-detected registrable root (`.brand.com`), else host-only. For an **adopted** id (from `?sessionid=`): always host-only — see below. |
 | `SameSite` | `Lax` |
 | `Secure` | Set when the page is `https:` |
+
+**The 30-day window is absolute, not rolling.** `Max-Age` is set only on the writes that establish an id — a mint, or a `?sessionid=` adoption. A bare cookie hit reuses the value without re-persisting it, so the cookie expires 30 days after the write that set the id, however many page loads happen in between. This is deliberate parity with the reference funnel app, which likewise refreshes the window on adoption and on mint but never on a plain read.
 
 The handoff between two hosts under one registrable domain (`sf.brand.com` → `www.brand.com`) works via the **URL** (`?sessionid=` on every outbound link), not the cookie — the resolution ladder puts the URL above the cookie for exactly this reason. Root-domain scoping on a *minted* id exists only for returning-visit continuity across subdomains within one brand.
 
@@ -146,6 +151,7 @@ Pre-existing query keys on the base URL are preserved; SDK-added keys do not clo
 
 - `data-checkout-base="https://checkout.brand.com"` — brand-level fallback base URL, source 3 of the ladder above. Required only if a page uses `[data-gh-checkout]` or `gh.checkoutUrl()` against destinations that carry neither a `checkoutOverrideUrl` nor a `url`. Optional otherwise.
 - `data-cookie-domain=".brand.com"` — optional explicit `Domain` for the `hippo_session_id` cookie. When absent, the SDK auto-detects the registrable root via the safe-TLD allowlist: `com, net, org, io, app, dev, ai, co, us, store, shop`. Multi-part TLDs (`.co.uk`, `.com.au`, `.co.jp`) require this attribute; without it the cookie falls back to host-only and the cross-subdomain handoff stops working.
+- `data-brand-token="gundry"` — the brand's `BRAND_NAME` token. The funnel-event payload's `brand` field is `data-brand-token ?? data-brand`. Altern attributes off that payload field, not the `X-GH-Brand` header, and it expects the token vocabulary (`gundry`) rather than the public display name (`Gundry MD`); both land in the same Salesforce column, so omitting this attribute mis-attributes every event the page emits, with a `200` from the API and nothing in any log. Required on every brand whose token differs from its display name, which in practice is all of them.
 - `data-gh-step` / `data-gh-funnel-id` — also accepted on the script tag as page-wide defaults for funnel events. See [Write calls: session and funnel events](#write-calls-session-and-funnel-events).
 
 ### `window.gh.checkoutUrl(slug: string): Promise<string>`

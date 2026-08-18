@@ -1,6 +1,6 @@
 # Kong configuration — Cluster G / Superfunnel.ai pilot
 
-Everything that has to change at the gateway for SDK v4 and the Superfunnel pilot, in the order to apply it. Companion to [`kong-public-routing.md`](./kong-public-routing.md), which describes the existing read route, and [`cloudflare-deploy.md`](./cloudflare-deploy.md), which describes the SDK delivery path.
+Everything that has to change at the gateway for SDK v4 and the Superfunnel pilot, in the order to apply it. Companion to [`kong-public-routing.md`](./kong-public-routing.md), which describes the read route, the path rewrite, and its own summary of these two write routes — keep the two in sync — and [`cloudflare-deploy.md`](./cloudflare-deploy.md), which describes the SDK delivery path.
 
 Trust boundary is unchanged: **Kong**. The Commerce API trusts the request as already-authenticated by the gateway. The SDK contains no auth logic — it forwards `X-GH-Key` and `X-GH-Brand`; Kong validates and translates. Sentinel runs Kong **OSS 3.9.1**, so Enterprise-only fields are out.
 
@@ -15,7 +15,7 @@ Trust boundary is unchanged: **Kong**. The Commerce API trusts the request as al
 | 4 | CORS origins and `credentials` per route | Fails silently in the browser if wrong |
 | 5 | Rate-limit tiers | **Most likely single cause of pilot failure** |
 | 6 | Brand token | Nothing to do at Kong — read it anyway |
-| 7 | The undocumented `/public/v1/*` → `/hippo-shop/v1/*` rewrite | Prerequisite for Steps 2 and 3 |
+| 7 | The `/public/v1/*` → `/hippo-shop/v1/*` rewrite — documented, but never read from the Admin API | Prerequisite for Steps 2 and 3 |
 | 8 | Verification | After each step |
 
 Steps 2 and 3 are the only genuinely parallel items. Step 1 is on the release critical path. Step 7 is a fact-finding prerequisite for Steps 2 and 3 even though it is written up last.
@@ -45,7 +45,7 @@ All four must contain all six. If you have to set it, the dyno restarts, and the
 
 ### Read the live config
 
-Do this before editing. The routing doc is known-stale on exactly the field the two new routes depend on (Step 7).
+Do this before editing. The routing doc now describes the rewrite the two new routes depend on (Step 7), but its values are inferred from the SDK's observed behaviour, not read from the running gateway.
 
 ```bash
 KONG_ADMIN=<uat admin api base>
@@ -65,7 +65,7 @@ Write down `strip_path`, `path_handling`, and the service `path`. Steps 2, 3 and
 
 ## Step 1 — the `/sdk/v4` CDN line
 
-A new npm major is not just a publish. Each major has its own Cloudflare Pages project and its own Kong route, and the SDK URL path tracks the major 1:1. **The v3 cut failed on exactly this**: `wrangler@4 pages deploy` does not auto-create the project in non-interactive CI — it errors with "Project not found" — and the release had to be recovered by manually deploying from a local checkout (`ROADMAP.md:98`, PR #10).
+A new npm major is not just a publish. Each major has its own Cloudflare Pages project and its own Kong route, and the SDK URL path tracks the major 1:1. **The v3 cut failed on exactly this**: `wrangler@4 pages deploy` does not auto-create the project in non-interactive CI — it errors with "Project not found" — and the release had to be recovered by manually deploying from a local checkout (`ROADMAP.md:105`, PR #10).
 
 The workflow now runs `wrangler pages project create … || true` before deploy, so CI would self-heal the *project*. It does not create the *Kong route*, and it does not help you smoke-test an upstream that has never received a deploy. Do it by hand, ahead of time.
 
@@ -203,7 +203,7 @@ See Step 5 for the arithmetic. Values: `minute` `120`, `limit_by` **`ip`**, `pol
 | Field | Value | Why |
 |---|---|---|
 | `remove.headers` | `Server, X-Powered-By` | Same stack-fingerprint strip as the read route |
-| `remove.json` | *empty* | **Do not copy the read route's denylist.** The session response body is the payload the SDK consumes; a stray `_id`-style rule here silently removes a field the SDK needs |
+| `remove.json` | *empty* | **Do not copy the read route's denylist.** The SDK discards this response body entirely — `ensureSession` awaits `client.postJson('session', …)` and never reads the result (`packages/sdk/src/session.ts`); what it needs from the call is the `Set-Cookie`. Keep the denylist empty anyway: the body is a debugging surface and the next consumer will read it |
 | `add.headers` | `Cache-Control:private, no-store` | A session response must never be held by an intermediary. Kong is not caching it (no `proxy-cache`), but a CDN or corporate proxy in front might |
 
 ---
@@ -269,7 +269,7 @@ This route does not touch the Commerce API. It replaces the Express hop in `hipp
 |---|---|---|
 | `origins` | Explicit list — the same Superfunnel and brand origins as Step 2 | |
 | `methods` | `POST, OPTIONS` | |
-| `headers` | `X-GH-Key, X-GH-Brand, X-GH-Event-Id, Accept, Content-Type` | `X-GH-Event-Id` is the D9 correlation header. **The shipped SDK does not send it yet** — it exists only in a docblock — but allowlisting an unsent header costs nothing, and omitting it the day the emitter lands fails every preflight |
+| `headers` | `X-GH-Key, X-GH-Brand, X-GH-Event-Id, Accept, Content-Type` | `X-GH-Event-Id` is the D9 correlation header and **the shipped SDK sends it on every event** — `emitPageView` mints a UUIDv4 and attaches it under `EVENT_ID_HEADER` (`packages/sdk/src/events.ts:296,331-333`). This is a description of current traffic, not pre-provisioning: omit it and every funnel-event preflight fails |
 | `exposed_headers` | `Retry-After` | Informational only here: the SDK never retries this call, **including on `429`**. A rate-limited event is a lost event, not a delayed one |
 | `credentials` | **`false`** | See Step 4 |
 | `max_age` | `600` | |
@@ -348,21 +348,20 @@ Verified against `packages/sdk/src`, not against docs. One offer-selector page l
 |---|---|---|
 | 6 × `GET /public/v1/destination/<slug>` | read route | Six *distinct* slugs, so the SDK's request cache cannot dedupe them. Three independent dedup layers guarantee six is the exact count, not an upper bound |
 | 1 × `POST /public/v1/session` | session route | Once per page load, guarded by a module-level cache |
-| 1 × `POST /public/v1/funnel-event` | funnel-event route | **Zero today** — `postEvent` has no call site in `packages/sdk/src`; the D9 emitter is in flight. Size for 1 |
-| **7 today / 8 once the emitter lands** | | |
+| 1 × `POST /public/v1/funnel-event` | funnel-event route | Once per page load. `emitPageView` calls `client.postEvent` (`packages/sdk/src/events.ts:336`) and `boot()` installs the emitter (`packages/sdk/src/index.ts:137`); `emitPageViewOnce` dedupes on `(sessionId, 'Page View', step)` via a window-global guard (`events.ts:373,402-409`) |
+| **8 per page load** | | |
 
 One publishable key is shared by every page of a brand, and the documented default is `minute: 60`, `limit_by: consumer`. That is **one bucket for the brand's entire traffic**:
 
 ```
 60 requests/min ÷ 8 requests/page load  =  7.5 page loads per minute, brand-wide
-60 requests/min ÷ 7 requests/page load  =  8.6 page loads per minute, brand-wide   (today, pre-emitter)
 ```
 
 Single-digit page loads per minute for a whole brand. The documented "elevated tier" of `minute: 300` gives 37 page loads/min — still not a pilot number.
 
 ### `proxy-cache` does not relieve any of this
 
-`rate-limiting` (priority 910) runs in the **access phase**; `proxy-cache` (priority 100) runs after it. A cache *hit* has already spent quota by the time the cache is consulted. The existing doc states this at `kong-public-routing.md:102` and calls it intentional — it protects the upstream from runaway clients. Correct behaviour, but it means the cache hit ratio is irrelevant to the tier you need. Size against raw request count.
+`rate-limiting` (priority 910) runs in the **access phase**; `proxy-cache` (priority 100) runs after it. A cache *hit* has already spent quota by the time the cache is consulted. The existing doc states this at `kong-public-routing.md:143` (restated at `:277`) and calls it intentional — it protects the upstream from runaway clients. Correct behaviour, but it means the cache hit ratio is irrelevant to the tier you need. Size against raw request count.
 
 Nor do the two new routes help: they carry no `proxy-cache` at all.
 
@@ -390,7 +389,7 @@ Three things to know about these numbers:
 
 ### Not pilot scope, but size against it
 
-Six sequential destination `GET`s per page is an N+1 shape. A batch destination endpoint would cut a page load from eight requests to three, and the tier by the same factor. Flagged only because the numbers above are sized against the unbatched count.
+Six concurrent destination `GET`s per page is an N+1 shape. A batch destination endpoint would cut a page load from eight requests to three, and the tier by the same factor. Flagged only because the numbers above are sized against the unbatched count.
 
 ---
 
@@ -413,11 +412,11 @@ The `X-Brand` header Kong injects on the funnel-event route will carry the displ
 
 ---
 
-## Step 7 — the undocumented rewrite
+## Step 7 — the path rewrite Steps 2 and 3 depend on
 
-`docs/architecture/kong-public-routing.md` says the `/public/v1` route has **Strip Path off** because "Upstream needs the full `/public/v1/…` path — that's where its handlers are mounted", and that the service Path is empty because "paths flow through unchanged".
+`docs/architecture/kong-public-routing.md` documents the rewrite as route `strip_path: on` with a service `path` of `/hippo-shop/v1` (`:66`, `:79`, and the `Path rewrite` section at `:83-96`). Earlier revisions claimed Strip Path **off** with an empty service path; commit `5c858ce` removed those rows.
 
-**That is false, and it has been false since the first `/public/v1` route was published.** The Commerce API has no `/public` handler at all: `HippoShopController.basePath = 'hippo-shop'` and its routes are declared as `/v1/product/:productSlugOrId`, `/v1/funnel/:funnelSlugOrId`, `/v1/destination/:destinationSlugOrId`. The SDK calls `/public/v1/*` and works in UAT and prod, so a rewrite exists at the edge that the doc does not describe. No `/public/v1` request has ever reached the upstream unchanged.
+The rewrite has been live since the first `/public/v1` route was published. The Commerce API has no `/public` handler at all: `HippoShopController.basePath = 'hippo-shop'` and its routes are declared as `/v1/product/:productSlugOrId`, `/v1/funnel/:funnelSlugOrId`, `/v1/destination/:destinationSlugOrId`, and (new in Cluster G) `POST /v1/session`. No `/public/v1` request has ever reached the upstream unchanged.
 
 | Hop | Path |
 |---|---|
@@ -452,7 +451,7 @@ A request whose path starts with that prefix gets the public wire shape, `HippoS
 
 Step 8.9 is the check that catches drift. Run it after any path change on any of the three routes.
 
-The routing doc still carries the false rows; correcting it is queued work in the Cluster G plan (Steps 25–30) and is not done.
+The routing doc has since been corrected (commit `5c858ce`, Task 42): its service `Path` row now reads `/hippo-shop/v1`, its route `Strip Path` row reads **on**, and it carries a dedicated `Path rewrite — /public/v1/* → /hippo-shop/v1/*` section. Reconcile against it rather than around it. What still has *not* happened is reading the live Admin API — which is why Step 0 and confirm-item 1 stand unchanged.
 
 ---
 
@@ -483,7 +482,7 @@ curl -i -X OPTIONS "${H_CORS[@]}" \
 # 3) Real session POST → 200, cookie set, no stack fingerprint
 curl -i -X POST "${H_CORS[@]}" "${H_AUTH[@]}" \
   -H "Content-Type: application/json" \
-  --data '{"sessionId":"11111111-2222-4333-8444-555555555555","affParameters":{}}' \
+  --data '{"affParameters":{"sessionId":"11111111-2222-4333-8444-555555555555"}}' \
   "$BASE/public/v1/session" \
   | grep -iE 'HTTP|set-cookie|access-control|x-ratelimit|^server|^x-powered'
 
@@ -494,7 +493,7 @@ curl -s -o /dev/null -w "%{http_code}\n" -X POST "${H_CORS[@]}" \
 # 5) X-Domain injection is stripped — the cookie Domain must NOT be attacker.example
 curl -i -X POST "${H_CORS[@]}" "${H_AUTH[@]}" \
   -H "Content-Type: application/json" -H "X-Domain: attacker.example" \
-  --data '{"sessionId":"11111111-2222-4333-8444-555555555555"}' \
+  --data '{"affParameters":{"sessionId":"11111111-2222-4333-8444-555555555555"}}' \
   "$BASE/public/v1/session" | grep -i 'set-cookie'
 
 # 6) Preflight on the funnel-event route → 204, NO credentials header
@@ -548,6 +547,10 @@ Expected outcomes:
 | 10 | `X-RateLimit-Limit-Minute: 3000` for the Superfunnel consumer, `60` for any other consumer's key |
 | 11 | ~120 × `200`/`2xx`, ~30 × `429`. All from one IP, so this exercises `limit_by: ip` |
 
+**Whether a direct navigation emits a funnel event depends on what the page binds.** `resolveEventIdentity` resolves the funnel id in precedence order destination DTO → `data-gh-funnel-id` → `?origmainFunnelIdOrig=` (`packages/sdk/src/events.ts`), so a bound destination is the **highest**-priority source and the `/fst` URL param the lowest. A page that binds `data-gh-destination` therefore takes `funnelId` from the DTO — a required, non-nullable string (`packages/types/src/destination.ts`, whose docblock notes that a blank value makes the event undeliverable, hence required rather than nullable) — and emits a Page View on **any** navigation, a typed URL included. A page that sets `data-gh-funnel-id` emits too. Only a page that binds no destination **and** sets no `data-gh-funnel-id` depends on the `/fst` params minted by the ad-tracker chain `/cid` → `/fst` → funnel.
+
+**Today the DTO does not supply it yet — a temporary gap, not the contract.** As of 2026-08-18 Commerce Tasks 39/40 have not landed: `formatDestinationToDTO` does not yet emit `funnelId`, and the commerce service is still pinned to `@goldenhippo/hippo-shop-types@^3.0.0`. Until that deploys a destination-bound page gets no funnel id from the DTO and falls through to `data-gh-funnel-id` or the `/fst` param, so a direct navigation to such a page emits nothing — it will emit once the commerce follow-up ships. Triage accordingly: a page that sets `data-gh-funnel-id` resolves an id **today**, so if it still reports no events the D5 gate in `emitPageViewOnce` (`packages/sdk/src/events.ts`) is not your problem — check the gateway. The same holds for a destination-bound page once Tasks 39/40 deploy. Only for a page that binds neither should you check how you arrived before you check Kong. One precondition holds on the DTO path either way: identity is read from the runtime destination cache, and the emitter warms it with `ensureDestination` on a cold page but swallows the failure at debug level. So if a destination `GET` is 404ing or being rate-limited the cache stays empty, the DTO supplies no funnel id, and a page without `data-gh-funnel-id` drops the event at the gate — a gateway fault presenting as missing funnel events even after Tasks 39/40 land, and visible only with `data-debug` on.
+
 Common failure modes and which plugin to look at first:
 
 | Symptom | Likely cause |
@@ -583,7 +586,7 @@ Every item below is something this guide could not verify from source. Do not gu
 9. **Whether Altern validates the relayed `Cookie`.** The Express proxy forwards it; Kong will not. If Altern does anything with cookie state beyond attribution capture, behaviour will differ.
 10. **Trailing-slash behaviour under `path_handling: v0`.** Step 8.8 settles it empirically. The `replace.uri` fallback is there if the slash is lost.
 11. **`retries: 0` on the funnel-event service** is a recommendation, not an observed value. Kong's default is 5, and a retry after a write timeout can double-count an event.
-12. **The rate-limit numbers are sized, not measured.** `3000`/`120`/`120` are derived from the verified 7–8 requests per page load against an assumed pilot ceiling. Watch the UAT `429` rate — particularly on the `limit_by: ip` write routes, where CGNAT can put many real visitors behind one address — before promoting them to prod.
+12. **The rate-limit numbers are sized, not measured.** `3000`/`120`/`120` are derived from the verified 8 requests per page load against an assumed pilot ceiling. Watch the UAT `429` rate — particularly on the `limit_by: ip` write routes, where CGNAT can put many real visitors behind one address — before promoting them to prod.
 13. **The session cookie's `SameSite=None; Secure` attributes** are the Commerce API's responsibility, not Kong's. `cors.credentials: true` is necessary but not sufficient; without those attributes the browser drops the cookie and reports nothing.
 14. **Whether the funnel-event route needs a compensating control for the CSRF protection it bypasses.** The Express route sits behind `/api`'s CSRF validate middleware by mount position; a Kong route does not.
 15. **The plugin priorities `800` (response-transformer) and `801` (request-transformer)** are repeated from the existing routing doc and were not checked against Kong 3.9.1's actual schema. Same for the claim that `key-auth`'s `realm` is Enterprise-only. Neither affects any value above.
