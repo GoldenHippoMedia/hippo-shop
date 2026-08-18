@@ -100,7 +100,7 @@ Returns the current `sessionId` cookie value, or `undefined` if `gh:session-read
 
 ### `window.gh.session.params(): ParsedParams | null`
 
-Returns the session parameters parsed from the landing URL and posted to `/session` during this visit, or `null` when the SDK skipped the POST (e.g., `connect.sid` cookie was already present).
+Returns the session parameters parsed from the landing URL and posted to `/public/v1/session` during this visit.
 
 ### Event: `gh:session-ready`
 
@@ -160,7 +160,7 @@ Surface on `window.gh`:
 - `window.gh.format` — the `FormatRegistry` for registering custom formatters and applying them programmatically.
 - `window.gh.checkoutUrl(slug: string): string` — returns the composed checkout URL for the destination identified by `slug`, without navigating. Throws if the destination is not yet cached or if no base URL is configured. See [Checkout handoff](#checkout-handoff) for the closure-capture gotcha.
 - `window.gh.session.id(): string | undefined` — returns the current `sessionId` cookie value, or `undefined` if `gh:session-ready` hasn't fired yet.
-- `window.gh.session.params(): ParsedParams | null` — returns the session parameters parsed from the landing URL and posted to `/session` during this visit, or `null` when the SDK skipped the POST.
+- `window.gh.session.params(): ParsedParams | null` — returns the session parameters parsed from the landing URL and posted to `/public/v1/session` during this visit.
 - `window.gh.debug` — `true` when the SDK booted with `data-debug="true"`. Absent otherwise.
 
 Errors thrown by the data methods are `GhError` instances with a typed `.code` (see "Error contract" below).
