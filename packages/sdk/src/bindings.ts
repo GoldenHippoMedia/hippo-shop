@@ -39,6 +39,14 @@ export const RESOURCE_ATTR: Record<ResourceKind, string> = {
 const LOOP_CLONE_ATTR = 'data-gh-loop-clone';
 const HIDDEN_BY_GH_ATTR = 'data-gh-hidden';
 
+/**
+ * Cluster G: `data-gh-checkout="<slug>"` is a destination reference too — a
+ * checkout link cannot be pointed anywhere until its DTO (and its `url`)
+ * resolves, so `bind()` must await it like any other resource instead of
+ * leaving the link at "#" and hoping something re-binds.
+ */
+const CHECKOUT_ATTR = 'data-gh-checkout';
+
 export interface ResourceRef {
   kind: ResourceKind;
   slug: string;
@@ -55,18 +63,26 @@ export function resourceKey(ref: ResourceRef): string {
 export function collectResources(root: ParentNode | Element): ResourceRef[] {
   const seen = new Set<string>();
   const out: ResourceRef[] = [];
+  const add = (kind: ResourceKind, slug: string): void => {
+    const key = `${kind}:${slug}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({ kind, slug });
+  };
   const consider = (el: Element): void => {
     for (const kind of RESOURCE_KINDS) {
       const slug = el.getAttribute(RESOURCE_ATTR[kind]);
       if (!slug) continue;
-      const key = `${kind}:${slug}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push({ kind, slug });
+      add(kind, slug);
     }
+    const checkoutSlug = el.getAttribute(CHECKOUT_ATTR);
+    if (checkoutSlug) add('destination', checkoutSlug);
   };
   if (root instanceof Element) consider(root);
-  const selector = RESOURCE_KINDS.map(k => `[${RESOURCE_ATTR[k]}]`).join(',');
+  const selector = [
+    ...RESOURCE_KINDS.map(k => `[${RESOURCE_ATTR[k]}]`),
+    `[${CHECKOUT_ATTR}]`,
+  ].join(',');
   // Note: querySelectorAll skips <template> content — good, those are loop bodies.
   for (const el of Array.from(root.querySelectorAll<Element>(selector))) {
     consider(el);
