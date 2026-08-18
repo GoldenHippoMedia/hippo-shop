@@ -20,6 +20,9 @@
 
 import type { GhConfig } from './config';
 import type { SessionState } from './session';
+import type { GhDataClient } from './client';
+import type { Logger } from './log';
+import { generateSessionId } from './session';
 
 /** v4 ships one event type. Adding another is a typed change, not a string. */
 export type FunnelEventType = 'Page View';
@@ -272,4 +275,78 @@ function readCampaignId(search: string, fromParams: string | undefined): string 
 
 function stripQuery(value: string): string {
   return (value ?? '').split('?')[0] ?? '';
+}
+
+// ---------------------------------------------------------------------------
+// Transport (D10)
+// ---------------------------------------------------------------------------
+
+/** POST target: `/public/v1/funnel-event`, Kong-fronted, upstream Altern. */
+export const FUNNEL_EVENT_RESOURCE = 'funnel-event';
+
+/**
+ * Correlation id header. It rides as a HEADER, not a body key: the 36-field
+ * shape is matched byte-for-byte upstream and unrecognised keys are at best
+ * ignored.
+ */
+export const EVENT_ID_HEADER = 'X-GH-Event-Id';
+
+/**
+ * Build and deliver one `Page View`. Fire-and-forget:
+ *   - never retries — notably NOT on 429 (spec non-goals),
+ *   - swallows every error, including synchronous throws,
+ *   - warns (debug mode only) when the D5 funnel-id gate blocks the emit.
+ *
+ * Deliberately does NOT dedupe — `emitPageViewOnce` owns that, so this
+ * function stays a straight-line builder + transport.
+ */
+export async function emitPageView(
+  client: GhDataClient,
+  ctx: PageViewContext,
+  logger: Logger,
+): Promise<void> {
+  let event: FunnelEvent | null = null;
+  try {
+    event = buildPageViewEvent(ctx);
+  } catch (err) {
+    logger.debug('funnel-event: could not build Page View —', err);
+    return;
+  }
+
+  if (!event) {
+    // The reference drops this silently; we log it, but only in debug mode so
+    // a third-party-hosted page stays quiet in production.
+    if (ctx.config.debug) {
+      logger.warn(
+        'funnel-event: no funnel id resolved (bind a data-gh-destination or set data-gh-funnel-id) — Page View not emitted',
+      );
+    }
+    return;
+  }
+
+  const headers: Record<string, string> = {};
+  const eventId = newEventId();
+  if (eventId) headers[EVENT_ID_HEADER] = eventId;
+
+  try {
+    await client.postEvent(FUNNEL_EVENT_RESOURCE, event, headers);
+    logger.debug('funnel-event: Page View sent', eventId);
+  } catch (err) {
+    // Non-fatal by design (Goal 8). No retry, no rethrow.
+    logger.debug('funnel-event: Page View delivery failed —', err);
+  }
+}
+
+/**
+ * UUID v4 for the correlation header, reusing the session generator (contract:
+ * `generateSessionId(): string // UUID v4`). It throws when the platform has
+ * neither `crypto.randomUUID` nor `getRandomValues`; a missing correlation id
+ * must not cost us the event, so we degrade to no header.
+ */
+function newEventId(): string {
+  try {
+    return generateSessionId();
+  } catch {
+    return '';
+  }
 }

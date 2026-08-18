@@ -1,7 +1,18 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
-import { formatVisitDate, detectUserAgent, buildPageViewEvent, type PageViewContext } from '../src/events';
+import {
+  formatVisitDate,
+  detectUserAgent,
+  buildPageViewEvent,
+  emitPageView,
+  FUNNEL_EVENT_RESOURCE,
+  EVENT_ID_HEADER,
+  type PageViewContext,
+} from '../src/events';
 import type { GhConfig } from '../src/config';
 import type { SessionState } from '../src/session';
+import { GhDataClient } from '../src/client';
+import { GhError } from '../src/errors';
+import { createLogger } from '../src/log';
 
 /**
  * A hand-built stand-in for Date. `formatVisitDate` only calls local getters,
@@ -385,5 +396,87 @@ describe('buildPageViewEvent', () => {
       ].sort(),
     );
     expect(Object.keys(event)).toHaveLength(36);
+  });
+});
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function makeClientWithSpy(): {
+  client: GhDataClient;
+  postEvent: ReturnType<typeof vi.fn>;
+} {
+  const client = new GhDataClient(makeConfig(), createLogger(false));
+  const postEvent = vi.fn().mockResolvedValue(undefined);
+  client.postEvent = postEvent as never;
+  return { client, postEvent };
+}
+
+describe('emitPageView', () => {
+  beforeEach(() => {
+    vi.stubGlobal('navigator', { userAgent: UA_CHROME_MAC });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('POSTs the built event to the funnel-event resource with a uuid event-id header', async () => {
+    const { client, postEvent } = makeClientWithSpy();
+    await emitPageView(client, makeCtx(), createLogger(false));
+    expect(postEvent).toHaveBeenCalledOnce();
+    const [resource, body, headers] = postEvent.mock.calls[0]!;
+    expect(resource).toBe('funnel-event');
+    expect(FUNNEL_EVENT_RESOURCE).toBe('funnel-event');
+    expect((body as { eventType: string }).eventType).toBe('Page View');
+    expect((body as { funnelSTFId: string }).funnelSTFId).toBe('a0X000000000001AAA');
+    expect((headers as Record<string, string>)[EVENT_ID_HEADER]).toMatch(UUID_RE);
+    expect(EVENT_ID_HEADER).toBe('X-GH-Event-Id');
+  });
+
+  it('does not POST and warns in debug mode when the funnel id gate blocks', async () => {
+    const { client, postEvent } = makeClientWithSpy();
+    const logger = createLogger(false);
+    const warn = vi.spyOn(logger, 'warn');
+    await emitPageView(
+      client,
+      makeCtx({ funnelId: null, config: makeConfig({ debug: true }) }),
+      logger,
+    );
+    expect(postEvent).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledOnce();
+  });
+
+  it('stays silent when the gate blocks and debug is off', async () => {
+    const { client, postEvent } = makeClientWithSpy();
+    const logger = createLogger(false);
+    const warn = vi.spyOn(logger, 'warn');
+    await emitPageView(client, makeCtx({ funnelId: null }), logger);
+    expect(postEvent).not.toHaveBeenCalled();
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('swallows a network rejection', async () => {
+    const { client, postEvent } = makeClientWithSpy();
+    postEvent.mockRejectedValueOnce(new GhError('network', 'offline'));
+    await expect(
+      emitPageView(client, makeCtx(), createLogger(false)),
+    ).resolves.toBeUndefined();
+  });
+
+  it('never retries on 429', async () => {
+    const { client, postEvent } = makeClientWithSpy();
+    postEvent.mockRejectedValueOnce(new GhError('rate_limited', 'slow down'));
+    await emitPageView(client, makeCtx(), createLogger(false));
+    expect(postEvent).toHaveBeenCalledOnce();
+  });
+
+  it('swallows a thrown non-Error and still resolves', async () => {
+    const { client, postEvent } = makeClientWithSpy();
+    postEvent.mockImplementationOnce(() => {
+      throw 'boom';
+    });
+    await expect(
+      emitPageView(client, makeCtx(), createLogger(false)),
+    ).resolves.toBeUndefined();
   });
 });
