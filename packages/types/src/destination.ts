@@ -3,16 +3,33 @@ import type { HippoShopFrequencyDTO } from './product';
 /**
  * A destination resolves an offer to a funnel and a displayable price.
  *
- * Pre-Purchase only. Cross-brand requests return 404 (no enumeration).
+ * Post-Purchase only. Cross-brand requests return 404 (no enumeration).
  * Split tests are resolved server-side — host pages always see the
  * destination's `defaultFunnel`.
  */
 export interface HippoShopDestinationDTO {
+  /**
+   * Salesforce ID of the destination. Pass-through of the record id, needed
+   * as `destinationId` on funnel-event payloads. Prefer `slug` for anything
+   * addressable — this is an opaque identifier, not a stable public handle.
+   */
+  id: string;
   slug: string;
   name: string;
   description: string | null;
   /** Slug of the funnel this destination resolves to. */
   funnelSlug: string;
+  /**
+   * Salesforce ID of the funnel this destination resolves to (the resolved
+   * `defaultFunnel`). Funnel-event payloads key on this; a blank value makes
+   * the event undeliverable, so it is required rather than nullable.
+   */
+  funnelId: string;
+  /**
+   * Absolute landing URL for this destination. `null` when Salesforce has
+   * none — callers fall back to their own configured checkout base.
+   */
+  url: string | null;
   pricing: HippoShopPricingDTO;
 }
 

@@ -1,8 +1,11 @@
 {
+  "id": "a0D0m000002Dst1EAC",
   "slug": "bio-complete-3-6btl-sub",
   "name": "Bio Complete 3 — 6 Bottle Subscription",
   "description": "Six-bottle subscription with the deepest discount and free shipping.",
   "funnelSlug": "bio-complete-3-main",
+  "funnelId": "a0F0m000002Fnl1EAC",
+  "url": "https://www.gundrymd.com/products/bio-complete-3?p=6btl-sub",
   "pricing": {
     "familyOrBundleId": "a190m000000pjSDAAY",
     "orderFormId": "a0C0m000002Qaf4EAC",

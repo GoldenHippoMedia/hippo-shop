@@ -4,24 +4,28 @@
   "active": true,
   "steps": [
     {
+      "id": "a0P0m000002Stp1EAC",
       "stepNumber": 1,
       "slug": "vsl",
       "name": "Video Sales Letter",
       "kind": "landing"
     },
     {
+      "id": "a0P0m000002Stp2EAC",
       "stepNumber": 2,
       "slug": "order-form",
       "name": "Order Form",
       "kind": "order-form"
     },
     {
+      "id": "a0P0m000002Stp3EAC",
       "stepNumber": 3,
       "slug": "upsell-1",
       "name": "Total Restore Upsell",
       "kind": "upsell"
     },
     {
+      "id": "a0P0m000002Stp4EAC",
       "stepNumber": 4,
       "slug": "thank-you",
       "name": "Thank You",
