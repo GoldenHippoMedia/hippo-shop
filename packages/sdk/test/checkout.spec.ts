@@ -18,13 +18,17 @@ function makeConfig(overrides: Partial<GhConfig> = {}): GhConfig {
 }
 
 function makeDestination(
-  overrides: Partial<HippoShopDestinationDTO['pricing']> = {},
+  pricing: Partial<HippoShopDestinationDTO['pricing']> = {},
+  root: Partial<HippoShopDestinationDTO> = {},
 ): HippoShopDestinationDTO {
   return {
+    id: 'a0X0000000001AAA',
     slug: 'bio3-3p-sub',
     name: 'Bio Complete 3 — 3-pack subscription',
     description: null,
     funnelSlug: 'fnl',
+    funnelId: 'a0Y0000000002BBB',
+    url: null,
     pricing: {
       familyOrBundleId: 'fam1',
       orderFormId: 'OF_123',
@@ -39,8 +43,9 @@ function makeDestination(
       shipping: { domestic: 0, international: 0, freeShippingThreshold: null },
       bumpOffers: [],
       checkoutOverrideUrl: null,
-      ...overrides,
+      ...pricing,
     },
+    ...root,
   };
 }
 
@@ -52,6 +57,48 @@ function makeSession(overrides: Partial<SessionState> = {}): SessionState {
     ...overrides,
   };
 }
+
+import { resolveDestinationBase } from '../src/checkout';
+
+describe('resolveDestinationBase', () => {
+  it('prefers pricing.checkoutOverrideUrl over destination.url and config.checkoutBase', () => {
+    const dest = makeDestination(
+      { checkoutOverrideUrl: 'https://override.example.com/buy' },
+      { url: 'https://dest.gundrymd.com/offer' },
+    );
+    expect(resolveDestinationBase(dest, makeConfig())).toBe('https://override.example.com/buy');
+  });
+
+  it('falls back to destination.url when there is no pricing override', () => {
+    const dest = makeDestination({ checkoutOverrideUrl: null }, { url: 'https://dest.gundrymd.com/offer' });
+    expect(resolveDestinationBase(dest, makeConfig())).toBe('https://dest.gundrymd.com/offer');
+  });
+
+  it('falls back to config.checkoutBase when the destination has no url', () => {
+    const dest = makeDestination({ checkoutOverrideUrl: null }, { url: null });
+    expect(resolveDestinationBase(dest, makeConfig())).toBe('https://checkout.gundrymd.com');
+  });
+
+  it('throws GhError("config") only when all three sources are absent', () => {
+    const dest = makeDestination({ checkoutOverrideUrl: null }, { url: null });
+    const config = makeConfig({ checkoutBase: null });
+    expect(() => resolveDestinationBase(dest, config)).toThrow(GhError);
+    try {
+      resolveDestinationBase(dest, config);
+    } catch (err) {
+      expect((err as GhError).code).toBe('config');
+    }
+  });
+});
+
+describe('composeCheckoutUrl — destination url', () => {
+  it('composes against destination.url when there is no pricing override', () => {
+    const dest = makeDestination({ checkoutOverrideUrl: null }, { url: 'https://dest.gundrymd.com/offer' });
+    const url = new URL(composeCheckoutUrl(dest, makeConfig(), makeSession()));
+    expect(url.origin + url.pathname).toBe('https://dest.gundrymd.com/offer');
+    expect(url.searchParams.get('order_form_id')).toBe('OF_123');
+  });
+});
 
 describe('composeCheckoutUrl', () => {
   it('uses the brand-level checkoutBase when no DTO override', () => {

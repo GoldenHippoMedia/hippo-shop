@@ -1,12 +1,11 @@
 /**
- * Cluster F: outbound checkout URL composition + (in Task 8)
- * `data-gh-checkout` attribute behavior and the `gh.checkoutUrl(slug)`
- * programmatic API.
+ * Cluster G: outbound destination-link composition, the `data-gh-checkout`
+ * attribute behavior, and the `await gh.checkoutUrl(slug)` programmatic twin.
  *
- * `composeCheckoutUrl` is a pure function: given a destination DTO, the
- * SDK config, and the current session state, it returns the outbound
- * URL. Falls back through brand-level `data-checkout-base` if the DTO
- * has no override; throws if neither is configured.
+ * The canonical page shape is an offer selector: several destinations bound
+ * to the available choices, where selecting one navigates the current page to
+ * that destination's URL. The destination URL therefore *is* the checkout
+ * navigation target — one composer, one attribute (spec D7).
  */
 
 import type { HippoShopDestinationDTO } from '@goldenhippo/hippo-shop-types';
@@ -38,6 +37,32 @@ const PARAM_KEY_MAP: Array<[keyof NonNullable<SessionState['params']>, string]> 
 ];
 
 /**
+ * Resolve the base URL a destination's link points at:
+ *
+ *   destination.pricing.checkoutOverrideUrl   // per-destination override
+ *     ?? destination.url                      // the normal case
+ *     ?? config.checkoutBase                  // brand-level data-checkout-base
+ *
+ * @throws GhError('config') when all three are absent.
+ */
+export function resolveDestinationBase(
+  destination: HippoShopDestinationDTO,
+  config: GhConfig,
+): string {
+  const base =
+    destination.pricing.checkoutOverrideUrl ?? destination.url ?? config.checkoutBase;
+  if (!base) {
+    throw new GhError(
+      'config',
+      `No URL resolved for destination "${destination.slug}". Salesforce supplied no ` +
+        `destination url, pricing.checkoutOverrideUrl is unset, and the script tag has ` +
+        `no data-checkout-base.`,
+    );
+  }
+  return base;
+}
+
+/**
  * Compose the outbound checkout URL for a destination.
  *
  * @throws GhError('config') if neither `destination.pricing.checkoutOverrideUrl`
@@ -48,20 +73,13 @@ export function composeCheckoutUrl(
   config: GhConfig,
   session: SessionState,
 ): string {
-  const baseStr = destination.pricing.checkoutOverrideUrl ?? config.checkoutBase;
-  if (!baseStr) {
-    throw new GhError(
-      'config',
-      `No checkout base URL configured for destination "${destination.slug}". ` +
-        `Set the script-tag data-checkout-base or destination.pricing.checkoutOverrideUrl.`,
-    );
-  }
+  const baseStr = resolveDestinationBase(destination, config);
 
   let url: URL;
   try {
     url = new URL(baseStr);
   } catch (err) {
-    throw new GhError('config', `Invalid checkout base URL: ${baseStr}`, { cause: err });
+    throw new GhError('config', `Invalid destination URL: ${baseStr}`, { cause: err });
   }
 
   setIfAbsent(url, 'order_form_id', destination.pricing.orderFormId);
