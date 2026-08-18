@@ -17,7 +17,8 @@
 import type { GhConfig } from './config';
 import type { GhDataClient } from './client';
 import { getCookieDomain, readCookie, writeCookie } from './cookies';
-import { parseLandingParams, type ParsedParams } from './url-params';
+import { parseLandingParams, readSessionIdFromUrl, type ParsedParams } from './url-params';
+import { createLogger, type Logger } from './log';
 
 /**
  * D2. Same name as the funnel app (`hippo-builder-funnel` session.service.ts:11)
@@ -87,13 +88,17 @@ export async function ensureSession(
 ): Promise<SessionState> {
   if (cachedState) return cachedState;
 
+  const logger = createLogger(config.debug);
   const domain = getCookieDomain(config);
+  const search = typeof window !== 'undefined' ? window.location.search : '';
 
-  let sessionId = readCookie(SESSION_COOKIE_NAME);
-  if (!sessionId) {
-    sessionId = generateSessionId();
+  const resolved = resolveSessionId(search, logger);
+  if (resolved.persist) {
     try {
-      writeCookie(SESSION_COOKIE_NAME, sessionId, { maxAgeSec: SESSION_TTL_SEC, domain });
+      writeCookie(SESSION_COOKIE_NAME, resolved.sessionId, {
+        maxAgeSec: SESSION_TTL_SEC,
+        domain,
+      });
     } catch {
       // Cookie write blocked (third-party context, quota). The id still lives
       // in memory for this page load and still rides outbound links.
@@ -112,10 +117,62 @@ export async function ensureSession(
     // Network or non-2xx: attribution degrades, the page never breaks.
   }
 
-  const state: SessionState = { sessionId, adopted: false, params };
+  const state: SessionState = {
+    sessionId: resolved.sessionId,
+    adopted: resolved.adopted,
+    params,
+  };
   cachedState = state;
   fireReady(state);
   return state;
+}
+
+interface ResolvedSessionId {
+  sessionId: string;
+  /** True when the id came from `?sessionid=`. */
+  adopted: boolean;
+  /** True when the id must be written to the cookie. */
+  persist: boolean;
+}
+
+/**
+ * D1 resolution ladder, mirroring `hippo-builder-funnel`
+ * session.service.ts:54-93:
+ *
+ *  1. `?sessionid=` — validated by SESSION_ID_PATTERN, adopted even when a
+ *     *different* cookie value already exists, and re-persisted every time so
+ *     the 30-day window refreshes. Malformed values warn and fall through.
+ *  2. the `hippo_session_id` cookie.
+ *  3. a freshly minted UUIDv4.
+ *
+ * Accepting a URL-supplied id is session fixation by design; for this pilot the
+ * blast radius is analytics, not authentication or payment. The regex and the
+ * debug log line are the mitigations.
+ */
+function resolveSessionId(search: string, logger: Logger): ResolvedSessionId {
+  const fromUrl = readSessionIdFromUrl(search);
+  if (fromUrl) {
+    logger.debug('session: adopting ?sessionid= handoff', fromUrl);
+    return { sessionId: fromUrl, adopted: true, persist: true };
+  }
+
+  if (hasSessionIdParam(search)) {
+    logger.warn('session: ignoring malformed ?sessionid= handoff param');
+  }
+
+  const fromCookie = readCookie(SESSION_COOKIE_NAME);
+  if (fromCookie) return { sessionId: fromCookie, adopted: false, persist: false };
+
+  return { sessionId: generateSessionId(), adopted: false, persist: true };
+}
+
+/** True when a non-blank `sessionid` key is present, whatever its value. */
+function hasSessionIdParam(search: string): boolean {
+  try {
+    return !!new URLSearchParams(search).get('sessionid')?.trim();
+  } catch {
+    return false;
+  }
 }
 
 function fireReady(state: SessionState): void {

@@ -245,3 +245,100 @@ describe('session cookie contract (D2)', () => {
     expect(jar.names()).not.toContain('sessionId');
   });
 });
+
+describe('ensureSession — D1 resolution ladder', () => {
+  let client: GhDataClient;
+  let postSpy: ReturnType<typeof vi.fn>;
+  let jar: CookieJar;
+
+  beforeEach(() => {
+    jar = installCookieJar();
+    client = new GhDataClient(makeConfig(), createLogger(false));
+    postSpy = vi.fn().mockResolvedValue({});
+    client.postJson = postSpy as never;
+    setLocation('https://sf.example.com/offer');
+  });
+
+  afterEach(() => {
+    jar.restore();
+  });
+
+  it('adopts ?sessionid= over a different cookie value', async () => {
+    jar.seed('hippo_session_id', 'cookie-value-111');
+    setLocation('https://sf.example.com/offer?sessionid=url-value-222');
+    const state = await ensureSession(makeConfig(), client);
+    expect(state.sessionId).toBe('url-value-222');
+    expect(state.adopted).toBe(true);
+  });
+
+  it('persists the adopted id to the cookie at the root domain', async () => {
+    jar.seed('hippo_session_id', 'cookie-value-111');
+    setLocation('https://sf.example.com/offer?sessionid=url-value-222');
+    await ensureSession(makeConfig(), client);
+    const rec = jar.get('hippo_session_id');
+    expect(rec!.value).toBe('url-value-222');
+    expect(rec!.domain).toBe('.example.com');
+    expect(rec!.maxAge).toBe(2_592_000);
+    expect(rec!.sameSite).toBe('Lax');
+  });
+
+  it('falls through to the cookie when ?sessionid= is malformed, and warns', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    jar.seed('hippo_session_id', 'cookie-value-111');
+    setLocation('https://sf.example.com/offer?sessionid=bad%20value%3B%20Max-Age%3D0');
+
+    const state = await ensureSession(makeConfig(), client);
+
+    expect(state.sessionId).toBe('cookie-value-111');
+    expect(state.adopted).toBe(false);
+    expect(warn).toHaveBeenCalledWith('[gh]', expect.stringContaining('malformed ?sessionid='));
+    expect(jar.get('hippo_session_id')!.value).toBe('cookie-value-111');
+  });
+
+  it('mints a v4 UUID when there is no URL param and no cookie', async () => {
+    const state = await ensureSession(makeConfig(), client);
+    expect(state.sessionId).toMatch(UUID_V4_RE);
+    expect(state.adopted).toBe(false);
+    expect(jar.get('hippo_session_id')!.value).toBe(state.sessionId);
+  });
+
+  it('adopts ?sessionid= when no cookie exists at all', async () => {
+    setLocation('https://sf.example.com/offer?sessionid=3f6b2c11-1c2a-4b1d-9f0a-77c1d2e3f455');
+    const state = await ensureSession(makeConfig(), client);
+    expect(state.sessionId).toBe('3f6b2c11-1c2a-4b1d-9f0a-77c1d2e3f455');
+    expect(state.adopted).toBe(true);
+    expect(jar.get('hippo_session_id')!.value).toBe('3f6b2c11-1c2a-4b1d-9f0a-77c1d2e3f455');
+  });
+
+  it('ignores ?SessionId= — the key is read case-sensitively', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    jar.seed('hippo_session_id', 'cookie-value-111');
+    setLocation('https://sf.example.com/offer?SessionId=url-value-222');
+    const state = await ensureSession(makeConfig(), client);
+    expect(state.sessionId).toBe('cookie-value-111');
+    expect(state.adopted).toBe(false);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('logs the adoption in debug mode', async () => {
+    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    setLocation('https://sf.example.com/offer?sessionid=url-value-222');
+    await ensureSession(makeConfig({ debug: true }), client);
+    expect(debug).toHaveBeenCalledWith(
+      '[gh]',
+      expect.stringContaining('adopting ?sessionid='),
+      'url-value-222',
+    );
+  });
+
+  it('still resolves the adopted id when the cookie write is blocked', async () => {
+    setLocation('https://sf.example.com/offer?sessionid=url-value-222');
+    const setter = vi.spyOn(document, 'cookie', 'set').mockImplementation(() => {
+      throw new Error('cookie write blocked');
+    });
+    const state = await ensureSession(makeConfig(), client);
+    expect(state.sessionId).toBe('url-value-222');
+    expect(state.adopted).toBe(true);
+    setter.mockRestore();
+  });
+});
