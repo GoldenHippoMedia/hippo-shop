@@ -6,7 +6,7 @@
 
 TypeScript type definitions for the Hippo Shop public API. Zero runtime dependencies — install in your project for IntelliSense and compile-time safety against the live API contract.
 
-> For context on v1.x/v2.x → v3 — see [About this version](../../README.md#about-this-version) in the root README.
+> For context on v1.x/v2.x/v3.x → v4 — see [About this version](../../README.md#about-this-version) in the root README.
 
 > Runtime SDK: [`@goldenhippo/hippo-shop-sdk`](https://www.npmjs.com/package/@goldenhippo/hippo-shop-sdk)
 
@@ -68,23 +68,28 @@ What the API actually returns. All examples use a fictional product (`multi-vita
   "name": "Daily Multi-Vitamin — Main",
   "active": true,
   "steps": [
-    { "stepNumber": 1, "slug": "vsl", "name": "Video Sales Letter", "kind": "landing" },
-    { "stepNumber": 2, "slug": "checkout", "name": "Order Form", "kind": "order-form" },
-    { "stepNumber": 3, "slug": "discount-bump", "name": "10% Off Bump", "kind": "bump" },
-    { "stepNumber": 4, "slug": "upsell-3mo", "name": "3-Month Upsell", "kind": "upsell" },
-    { "stepNumber": 5, "slug": "thank-you", "name": "Thank You", "kind": "thank-you" }
+    { "id": "a0P0m000002Stp1EAC", "stepNumber": 1, "slug": "vsl", "name": "Video Sales Letter", "kind": "landing" },
+    { "id": "a0P0m000002Stp2EAC", "stepNumber": 2, "slug": "checkout", "name": "Order Form", "kind": "order-form" },
+    { "id": "a0P0m000002Stp3EAC", "stepNumber": 3, "slug": "discount-bump", "name": "10% Off Bump", "kind": "bump" },
+    { "id": "a0P0m000002Stp4EAC", "stepNumber": 4, "slug": "upsell-3mo", "name": "3-Month Upsell", "kind": "upsell" },
+    { "id": "a0P0m000002Stp5EAC", "stepNumber": 5, "slug": "thank-you", "name": "Thank You", "kind": "thank-you" }
   ]
 }
 ```
+
+`HippoShopFunnelStepDTO.id` is the step's Salesforce ID — required, and the counterpart to `HippoShopDestinationDTO.funnelId`. A consumer matches a step by `slug` and reads `id` off it.
 
 ### `HippoShopDestinationDTO`
 
 ```json
 {
+  "id": "a0D0m000002Dst1EAC",
   "slug": "multi-vitamin-3pack-sub",
   "name": "3-Pack Subscription",
   "description": "3 bottles delivered every 90 days. Cancel anytime.",
+  "funnelId": "a0F0m000002Fnl1EAC",
   "funnelSlug": "multi-vitamin-funnel",
+  "url": "https://www.example.com/multi-vitamin-3pack-sub",
   "pricing": {
     "familyOrBundleId": "a8r000000000DEF",
     "orderFormId": "01t000000000ABC",
@@ -117,6 +122,16 @@ What the API actually returns. All examples use a fictional product (`multi-vita
   }
 }
 ```
+
+Three of those fields exist because the SDK cannot derive them:
+
+| Field | Type | What it is |
+|-------|------|------------|
+| `id` | `string` | Salesforce ID of the destination. |
+| `funnelId` | `string` | Salesforce ID of the funnel this destination resolves to — the same funnel `funnelSlug` names. |
+| `url` | `string \| null` | Absolute landing URL for the destination. `null` when Salesforce has none; callers then fall back to their own configured checkout base. |
+
+Everything else in the public contract is slug-keyed. These are the deliberate exception: together with `HippoShopFunnelStepDTO.id` they carry the record identity a funnel-event payload needs (`funnelSTFId`, `mainFunnelId`, `destinationId`, `funnelSTPId`) out of a destination fetch a page is already making. All three are **required** on the DTO — `url` is nullable, but the key is always present.
 
 ### `HippoShopProductDTO`
 
