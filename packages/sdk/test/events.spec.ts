@@ -6,6 +6,11 @@ import {
   emitPageView,
   FUNNEL_EVENT_RESOURCE,
   EVENT_ID_HEADER,
+  pageViewDedupeKey,
+  claimPageView,
+  emitPageViewOnce,
+  EVENT_GUARD_KEY,
+  _resetEventsForTests,
   type PageViewContext,
 } from '../src/events';
 import type { GhConfig } from '../src/config';
@@ -478,5 +483,89 @@ describe('emitPageView', () => {
     await expect(
       emitPageView(client, makeCtx(), createLogger(false)),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe('page view dedupe', () => {
+  beforeEach(() => {
+    _resetEventsForTests();
+    vi.stubGlobal('navigator', { userAgent: UA_CHROME_MAC });
+  });
+  afterEach(() => {
+    _resetEventsForTests();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('keys on sessionId, the literal event type, and the step slug', () => {
+    expect(pageViewDedupeKey('sess-1', 'offer-selector', '/lp/gut-health')).toBe(
+      'sess-1|Page View|offer-selector',
+    );
+  });
+
+  it('falls back to location.pathname when no step slug is declared', () => {
+    expect(pageViewDedupeKey('sess-1', null, '/lp/gut-health')).toBe(
+      'sess-1|Page View|/lp/gut-health',
+    );
+    expect(pageViewDedupeKey('sess-1', '', '/lp/gut-health')).toBe(
+      'sess-1|Page View|/lp/gut-health',
+    );
+  });
+
+  it('claimPageView returns true once then false for the same key', () => {
+    expect(claimPageView('k1')).toBe(true);
+    expect(claimPageView('k1')).toBe(false);
+    expect(claimPageView('k2')).toBe(true);
+  });
+
+  it('stores the guard on a window global, not module scope', () => {
+    claimPageView('k1');
+    const store = (window as unknown as Record<string, Set<string>>)[EVENT_GUARD_KEY];
+    expect(store).toBeInstanceOf(Set);
+    expect(store.has('k1')).toBe(true);
+  });
+
+  it('emits once and suppresses the second emit for the same step', async () => {
+    const { client, postEvent } = makeClientWithSpy();
+    const logger = createLogger(false);
+    await emitPageViewOnce(client, makeCtx(), logger, '/lp/gut-health');
+    await emitPageViewOnce(client, makeCtx(), logger, '/lp/gut-health');
+    expect(postEvent).toHaveBeenCalledOnce();
+  });
+
+  it('emits again for a different step slug (SPA route change)', async () => {
+    const { client, postEvent } = makeClientWithSpy();
+    const logger = createLogger(false);
+    await emitPageViewOnce(client, makeCtx({ stepSlug: 'step-1' }), logger, '/p');
+    await emitPageViewOnce(client, makeCtx({ stepSlug: 'step-2' }), logger, '/p');
+    expect(postEvent).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not burn the key when the funnel id gate blocks the emit', async () => {
+    const { client, postEvent } = makeClientWithSpy();
+    const logger = createLogger(false);
+    await emitPageViewOnce(client, makeCtx({ funnelId: null }), logger, '/p');
+    expect(postEvent).not.toHaveBeenCalled();
+    await emitPageViewOnce(client, makeCtx(), logger, '/p');
+    expect(postEvent).toHaveBeenCalledOnce();
+  });
+
+  it('claims the key before awaiting, so concurrent calls cannot double-fire', async () => {
+    const { client, postEvent } = makeClientWithSpy();
+    const logger = createLogger(false);
+    await Promise.all([
+      emitPageViewOnce(client, makeCtx(), logger, '/p'),
+      emitPageViewOnce(client, makeCtx(), logger, '/p'),
+    ]);
+    expect(postEvent).toHaveBeenCalledOnce();
+  });
+
+  it('_resetEventsForTests clears the guard', async () => {
+    const { client, postEvent } = makeClientWithSpy();
+    const logger = createLogger(false);
+    await emitPageViewOnce(client, makeCtx(), logger, '/p');
+    _resetEventsForTests();
+    await emitPageViewOnce(client, makeCtx(), logger, '/p');
+    expect(postEvent).toHaveBeenCalledTimes(2);
   });
 });

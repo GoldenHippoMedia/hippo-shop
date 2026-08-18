@@ -350,3 +350,95 @@ function newEventId(): string {
     return '';
   }
 }
+
+// ---------------------------------------------------------------------------
+// Dedupe (D9) — in-memory, per page load, on a WINDOW GLOBAL
+// ---------------------------------------------------------------------------
+
+/**
+ * The guard lives on `window`, not in module scope: two SDK bundles can
+ * coexist on one page (index.ts only refuses to overwrite `window.gh.data`),
+ * and a module-scoped Set would let each bundle emit its own Page View.
+ *
+ * Deliberately NOT sessionStorage. The reference's Page View dedupe is an
+ * instance field with no persistent marker (emission-driver.service.ts:61);
+ * its conversion events DO use sessionStorage markers, so the omission is a
+ * choice. A persistent marker here would make Superfunnel pages systematically
+ * under-report against funnel pages for identical traffic.
+ */
+export const EVENT_GUARD_KEY = '__ghFunnelEventKeys';
+
+interface EventGuardHost {
+  [EVENT_GUARD_KEY]?: Set<string>;
+}
+
+function guardHost(): EventGuardHost | null {
+  if (typeof window === 'undefined') return null;
+  return window as unknown as EventGuardHost;
+}
+
+/**
+ * Dedupe key: `(sessionId, eventType, stepKey)`. `stepKey` is the step slug
+ * when declared, else `location.pathname`.
+ *
+ * The fallback is page-level on purpose. Keying on the destination slug would
+ * produce six distinct keys on the canonical offer-selector page and defeat
+ * the one-Page-View-per-load rule.
+ */
+export function pageViewDedupeKey(
+  sessionId: string,
+  stepSlug: string | null,
+  pathname: string,
+): string {
+  const stepKey = stepSlug && stepSlug.length > 0 ? stepSlug : pathname;
+  return `${sessionId}|Page View|${stepKey}`;
+}
+
+/** Claim `key` for this page load. `true` means the caller owns the emit. */
+export function claimPageView(key: string): boolean {
+  const host = guardHost();
+  if (!host) return true; // no window (SSR/test harness): nothing to dedupe against
+  const store = (host[EVENT_GUARD_KEY] ??= new Set<string>());
+  if (store.has(key)) return false;
+  store.add(key);
+  return true;
+}
+
+/**
+ * Emit exactly one `Page View` per (session, step) per page load.
+ *
+ * Ordering is load-bearing twice over:
+ *   1. the gate is checked FIRST, so a blocked emit does not burn the key and
+ *      a later resolved-identity emit still lands;
+ *   2. the key is claimed BEFORE the await, so re-entry inside one page load
+ *      cannot double-fire (the reference's SECONDARY-defense ordering).
+ */
+export async function emitPageViewOnce(
+  client: GhDataClient,
+  ctx: PageViewContext,
+  logger: Logger,
+  pathname: string,
+): Promise<void> {
+  if (!ctx.funnelId) {
+    if (ctx.config.debug) {
+      logger.warn(
+        'funnel-event: no funnel id resolved (bind a data-gh-destination or set data-gh-funnel-id) — Page View not emitted',
+      );
+    }
+    return;
+  }
+
+  const key = pageViewDedupeKey(ctx.session.sessionId, ctx.stepSlug, pathname);
+  if (!claimPageView(key)) {
+    logger.debug('funnel-event: duplicate Page View suppressed —', key);
+    return;
+  }
+
+  await emitPageView(client, ctx, logger);
+}
+
+/** Test-only: clears the window-global dedupe guard. Not exported via index.ts. */
+export function _resetEventsForTests(): void {
+  const host = guardHost();
+  if (host) delete host[EVENT_GUARD_KEY];
+}
