@@ -167,6 +167,43 @@ describe('GhDataClient', () => {
     expect(second).toBe(first); // promise cache returns identical reference
     expect(first.variants.subscription.standardByQuantity).toEqual({});
   });
+
+  it('postEvent POSTs with keepalive, extra headers, and no credentials', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    const client = new GhDataClient(CONFIG, createLogger(false));
+
+    await client.postEvent('funnel-event', { eventType: 'Page View' }, {
+      'X-GH-Event-Id': 'b2e4f0a1-7c3d-4a5b-9e8f-0123456789ab',
+    });
+
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    const [url, init] = fetchSpy.mock.calls[0]!;
+    expect(url).toBe('https://api-prod.goldenhippo.io/public/v1/funnel-event');
+    const req = init as RequestInit;
+    expect(req.method).toBe('POST');
+    expect(req.keepalive).toBe(true);
+    expect(req.credentials).toBeUndefined();
+    const headers = req.headers as Record<string, string>;
+    expect(headers['X-GH-Event-Id']).toBe('b2e4f0a1-7c3d-4a5b-9e8f-0123456789ab');
+    expect(headers['Content-Type']).toBe('application/json');
+    expect(headers['X-GH-Key']).toBe('gh_pk_test_consumer_abc123');
+    expect(headers['X-GH-Brand']).toBe('Gundry MD');
+    expect(req.body).toBe(JSON.stringify({ eventType: 'Page View' }));
+  });
+
+  it('postEvent issues exactly one request on 429 (no retry)', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response('{}', { status: 429, headers: { 'Retry-After': '30' } }),
+    );
+    const client = new GhDataClient(CONFIG, createLogger(false));
+    await expect(client.postEvent('funnel-event', { a: 1 })).rejects.toMatchObject({
+      name: 'GhError',
+      code: 'rate_limited',
+    });
+    expect(fetchSpy).toHaveBeenCalledOnce();
+  });
 });
 
 describe('GhDataClient.postJson', () => {

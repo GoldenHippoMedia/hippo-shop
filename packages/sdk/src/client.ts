@@ -51,6 +51,36 @@ export class GhDataClient {
     });
   }
 
+  /**
+   * Cluster G / D10: fire-and-forget event POST to `/public/v1/<resource>`.
+   *
+   * Differs from `postJson` in three load-bearing ways:
+   *   - `keepalive: true` so the request survives page unload (sendBeacon is
+   *     unusable: it cannot set headers, and Kong's key-auth needs `X-GH-Key`).
+   *   - caller-supplied headers, for the `X-GH-Event-Id` correlation id — it
+   *     rides as a header because the 36-field body is matched byte-for-byte
+   *     upstream and unrecognised keys are dropped.
+   *   - no `credentials`, because the funnel-event Kong route is
+   *     `cors.credentials: false` and the body is self-sufficient.
+   *
+   * Never retries — not even on 429 (spec non-goals). Rejects on failure; the
+   * caller is responsible for swallowing.
+   */
+  async postEvent(
+    resource: string,
+    body: unknown,
+    headers: Record<string, string> = {},
+  ): Promise<void> {
+    const url = `${this.config.apiBaseUrl}/public/v1/${resource}`;
+    this.logger.debug('POST keepalive', url);
+    await this.fetchJson<unknown>(url, {
+      method: 'POST',
+      body,
+      keepalive: true,
+      headers,
+    });
+  }
+
   private request<T>(resource: Resource, slugOrId: string): Promise<T> {
     if (!slugOrId) {
       return Promise.reject(
@@ -74,7 +104,13 @@ export class GhDataClient {
 
   private async fetchJson<T>(
     url: string,
-    opts: { method?: string; body?: unknown; credentials?: RequestCredentials } = {},
+    opts: {
+      method?: string;
+      body?: unknown;
+      credentials?: RequestCredentials;
+      keepalive?: boolean;
+      headers?: Record<string, string>;
+    } = {},
   ): Promise<T> {
     const method = opts.method ?? 'GET';
     const init: RequestInit = {
@@ -84,10 +120,12 @@ export class GhDataClient {
         'X-GH-Brand': this.config.brand,
         Accept: 'application/json',
         ...(opts.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+        ...(opts.headers ?? {}),
       },
     };
     if (opts.body !== undefined) init.body = JSON.stringify(opts.body);
     if (opts.credentials) init.credentials = opts.credentials;
+    if (opts.keepalive) init.keepalive = true;
 
     let res: Response;
     try {
