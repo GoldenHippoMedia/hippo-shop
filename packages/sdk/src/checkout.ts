@@ -11,14 +11,20 @@
 import type { HippoShopDestinationDTO } from '@goldenhippo/hippo-shop-types';
 import type { GhConfig } from './config';
 import type { SessionState } from './session';
+import type { ParsedParams } from './url-params';
 import type { Logger } from './log';
 import { GhError } from './errors';
 
 /**
- * Keys in `ParsedParams` → query-param names on the outbound checkout URL.
- * Order matters for deterministic output (tests rely on this).
+ * `ParsedParams` key → outbound query-param name, in the canonical funnel
+ * order (spec D6). Order is part of the contract; tests assert it.
+ *
+ * `subidN` — not `sub_idN` — and `sessionid` (set separately, ahead of this
+ * list) are the spellings the funnel reads. `session_id` and `sub_idN` are
+ * silently ignored by it, which shows up downstream as duplicate sessions
+ * and orphaned attribution.
  */
-const PARAM_KEY_MAP: Array<[keyof NonNullable<SessionState['params']>, string]> = [
+const PARAM_KEY_MAP: Array<[keyof ParsedParams, string]> = [
   ['utmSource', 'utm_source'],
   ['utmMedium', 'utm_medium'],
   ['utmCampaign', 'utm_campaign'],
@@ -29,12 +35,29 @@ const PARAM_KEY_MAP: Array<[keyof NonNullable<SessionState['params']>, string]> 
   ['utmAction', 'utm_action'],
   ['offId', 'off_id'],
   ['affId', 'aff_id'],
-  ['subId1', 'sub_id1'],
-  ['subId2', 'sub_id2'],
-  ['subId3', 'sub_id3'],
-  ['subId4', 'sub_id4'],
-  ['subId5', 'sub_id5'],
+  ['subId1', 'subid1'],
+  ['subId2', 'subid2'],
+  ['subId3', 'subid3'],
+  ['subId4', 'subid4'],
+  ['subId5', 'subid5'],
+  ['landingUrl', 'landing_url'],
+  ['referralUrl', 'referral_url'],
+  ['salesFunnel', 'sales_funnel'],
+  ['fbclid', 'fbclid'],
+  ['gclid', 'gclid'],
+  ['scCid', 'ScCid'],
+  ['qclid', 'qclid'],
+  ['twclid', 'twclid'],
+  ['ndclid', 'ndclid'],
+  ['wbraid', 'wbraid'],
 ];
+
+/**
+ * Forwarded verbatim from the current page URL when present, appended last.
+ * These carry the funnel's own destination and split-test identity across the
+ * hop; the SDK never synthesises them.
+ */
+const FORWARDED_PARAM_NAMES = ['origdsidOrig', 'origsplitTestingFunnelIdOrig'] as const;
 
 /**
  * Resolve the base URL a destination's link points at:
@@ -63,10 +86,15 @@ export function resolveDestinationBase(
 }
 
 /**
- * Compose the outbound checkout URL for a destination.
+ * Compose the outbound URL for a destination: the resolved base plus
+ * `order_form_id`, `sessionid`, the attribution params in canonical order,
+ * and the forwarded `orig*` params from the current page.
  *
- * @throws GhError('config') if neither `destination.pricing.checkoutOverrideUrl`
- *  nor `config.checkoutBase` is set.
+ * `setIfAbsent` semantics: a param already present on the base URL wins.
+ * That is the opposite of the `/cid` merge rule, and deliberate — the base
+ * URL is page-authored, so the author's override is the right behaviour.
+ *
+ * @throws GhError('config') if no base URL resolves, or if it will not parse.
  */
 export function composeCheckoutUrl(
   destination: HippoShopDestinationDTO,
@@ -83,16 +111,28 @@ export function composeCheckoutUrl(
   }
 
   setIfAbsent(url, 'order_form_id', destination.pricing.orderFormId);
-  setIfAbsent(url, 'session_id', session.sessionId);
+  setIfAbsent(url, 'sessionid', session.sessionId);
 
-  if (session.params) {
-    for (const [key, paramName] of PARAM_KEY_MAP) {
-      const value = session.params[key];
-      if (value) setIfAbsent(url, paramName, value);
-    }
+  for (const [key, paramName] of PARAM_KEY_MAP) {
+    setIfAbsent(url, paramName, session.params[key]);
+  }
+
+  const current = currentSearchParams();
+  for (const name of FORWARDED_PARAM_NAMES) {
+    setIfAbsent(url, name, current.get(name));
   }
 
   return url.toString();
+}
+
+/** The current page's query string, or an empty set outside a browser. */
+function currentSearchParams(): URLSearchParams {
+  const search = typeof window !== 'undefined' ? window.location.search : '';
+  try {
+    return new URLSearchParams(search);
+  } catch {
+    return new URLSearchParams();
+  }
 }
 
 /** Set `name=value` on the URL's search params only if not already set. Empty values are skipped. */

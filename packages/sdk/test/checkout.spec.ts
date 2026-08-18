@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { composeCheckoutUrl } from '../src/checkout';
 import { GhError } from '../src/errors';
 import type { HippoShopDestinationDTO } from '@goldenhippo/hippo-shop-types';
@@ -51,7 +51,7 @@ function makeDestination(
 
 function makeSession(overrides: Partial<SessionState> = {}): SessionState {
   return {
-    sessionId: '3f6b2c11-1c2a-4b1d-9f0a-77c1d2e3f455',
+    sessionId: '174710238129',
     adopted: false,
     params: {},
     ...overrides,
@@ -100,77 +100,209 @@ describe('composeCheckoutUrl — destination url', () => {
   });
 });
 
+function setSearch(search: string): void {
+  Object.defineProperty(window, 'location', {
+    value: {
+      ...window.location,
+      hostname: 'sf.gundrymd.com',
+      protocol: 'https:',
+      search,
+      href: `https://sf.gundrymd.com/offer${search}`,
+    },
+    writable: true,
+  });
+}
+
+const FULL_PARAMS = {
+  landingUrl: 'https://sf.gundrymd.com/offer',
+  referralUrl: 'https://www.facebook.com/',
+  salesFunnel: 'Funnel',
+  utmSource: 'fb',
+  utmMedium: 'cpc',
+  utmCampaign: 'summer',
+  utmCampaignId: '12345',
+  utmContent: 'ad1',
+  utmTerm: 'kw',
+  utmChat: 'chat1',
+  utmAction: 'act1',
+  offId: 'OFF1',
+  affId: 'AFF1',
+  subId1: 's1',
+  subId2: 's2',
+  subId3: 's3',
+  subId4: 's4',
+  subId5: 's5',
+  fbclid: 'F',
+  gclid: 'G',
+  scCid: 'S',
+  qclid: 'Q',
+  twclid: 'T',
+  ndclid: 'N',
+  wbraid: 'W',
+};
+
 describe('composeCheckoutUrl', () => {
-  it('uses the brand-level checkoutBase when no DTO override', () => {
+  beforeEach(() => {
+    setSearch('');
+  });
+
+  it('uses the brand-level checkoutBase when no DTO override and no destination url', () => {
     const url = composeCheckoutUrl(makeDestination(), makeConfig(), makeSession());
     expect(url).toMatch(/^https:\/\/checkout\.gundrymd\.com\//);
   });
 
-  it('uses the DTO override when present, ignoring the brand default', () => {
+  it('uses the pricing override when present, ignoring the brand default', () => {
     const dest = makeDestination({ checkoutOverrideUrl: 'https://special.example.com/buy' });
     const url = composeCheckoutUrl(dest, makeConfig(), makeSession());
     expect(url).toMatch(/^https:\/\/special\.example\.com\/buy/);
     expect(url).not.toContain('checkout.gundrymd.com');
   });
 
-  it('throws GhError when no brand base AND no DTO override', () => {
-    const config = makeConfig({ checkoutBase: null });
-    const dest = makeDestination({ checkoutOverrideUrl: null });
-    expect(() => composeCheckoutUrl(dest, config, makeSession())).toThrow(GhError);
+  it('emits sessionid, not session_id', () => {
+    const url = new URL(composeCheckoutUrl(makeDestination(), makeConfig(), makeSession()));
+    expect(url.searchParams.get('sessionid')).toBe('174710238129');
+    expect(url.searchParams.has('session_id')).toBe(false);
   });
 
-  it('always appends order_form_id and session_id', () => {
+  it('emits subidN, not sub_idN', () => {
+    const session = makeSession({ params: { subId1: 'a', subId4: 'wbraid:W', subId5: 'snap' } });
+    const url = new URL(composeCheckoutUrl(makeDestination(), makeConfig(), session));
+    expect(url.searchParams.get('subid1')).toBe('a');
+    expect(url.searchParams.get('subid4')).toBe('wbraid:W');
+    expect(url.searchParams.get('subid5')).toBe('snap');
+    expect(url.searchParams.has('sub_id1')).toBe(false);
+    expect(url.searchParams.has('sub_id4')).toBe(false);
+    expect(url.searchParams.has('sub_id5')).toBe(false);
+  });
+
+  it('always appends order_form_id', () => {
     const url = new URL(composeCheckoutUrl(makeDestination(), makeConfig(), makeSession()));
     expect(url.searchParams.get('order_form_id')).toBe('OF_123');
-    expect(url.searchParams.get('session_id')).toBe('3f6b2c11-1c2a-4b1d-9f0a-77c1d2e3f455');
   });
 
-  it('appends UTM and sub_id params when present in session.params', () => {
+  it('emits the full param set in the canonical D6 order', () => {
+    const session = makeSession({ params: { ...FULL_PARAMS } });
+    const url = new URL(composeCheckoutUrl(makeDestination(), makeConfig(), session));
+    expect(Array.from(url.searchParams.keys())).toEqual([
+      'order_form_id',
+      'sessionid',
+      'utm_source',
+      'utm_medium',
+      'utm_campaign',
+      'utm_campaign_id',
+      'utm_content',
+      'utm_term',
+      'utm_chat',
+      'utm_action',
+      'off_id',
+      'aff_id',
+      'subid1',
+      'subid2',
+      'subid3',
+      'subid4',
+      'subid5',
+      'landing_url',
+      'referral_url',
+      'sales_funnel',
+      'fbclid',
+      'gclid',
+      'ScCid',
+      'qclid',
+      'twclid',
+      'ndclid',
+      'wbraid',
+    ]);
+  });
+
+  it('emits the seven raw click-ids with their canonical spellings', () => {
+    const session = makeSession({ params: { ...FULL_PARAMS } });
+    const url = new URL(composeCheckoutUrl(makeDestination(), makeConfig(), session));
+    expect(url.searchParams.get('fbclid')).toBe('F');
+    expect(url.searchParams.get('gclid')).toBe('G');
+    expect(url.searchParams.get('ScCid')).toBe('S');
+    expect(url.searchParams.get('qclid')).toBe('Q');
+    expect(url.searchParams.get('twclid')).toBe('T');
+    expect(url.searchParams.get('ndclid')).toBe('N');
+    expect(url.searchParams.get('wbraid')).toBe('W');
+  });
+
+  it('emits landing_url, referral_url and sales_funnel from params', () => {
     const session = makeSession({
       params: {
-        landingUrl: 'https://info.gundrymd.com/x',
-        utmSource: 'fb',
-        utmCampaign: 'summer',
-        subId1: 'fb',
-        subId5: 'abc',
+        landingUrl: 'https://sf.gundrymd.com/offer',
+        referralUrl: 'https://www.facebook.com/',
+        salesFunnel: 'Funnel',
       },
     });
     const url = new URL(composeCheckoutUrl(makeDestination(), makeConfig(), session));
-    expect(url.searchParams.get('utm_source')).toBe('fb');
-    expect(url.searchParams.get('utm_campaign')).toBe('summer');
-    expect(url.searchParams.get('sub_id1')).toBe('fb');
-    expect(url.searchParams.get('sub_id5')).toBe('abc');
+    expect(url.searchParams.get('landing_url')).toBe('https://sf.gundrymd.com/offer');
+    expect(url.searchParams.get('referral_url')).toBe('https://www.facebook.com/');
+    expect(url.searchParams.get('sales_funnel')).toBe('Funnel');
   });
 
-  it('omits keys whose session.params values are empty/undefined', () => {
+  it('does not truncate long values', () => {
+    const long = 'x'.repeat(400);
+    const session = makeSession({ params: { fbclid: long } });
+    const url = new URL(composeCheckoutUrl(makeDestination(), makeConfig(), session));
+    expect(url.searchParams.get('fbclid')).toBe(long);
+  });
+
+  it('omits keys whose params values are empty/undefined', () => {
     const session = makeSession({ params: { utmSource: 'fb' } });
     const url = new URL(composeCheckoutUrl(makeDestination(), makeConfig(), session));
     expect(url.searchParams.has('utm_source')).toBe(true);
     expect(url.searchParams.has('utm_medium')).toBe(false);
-    expect(url.searchParams.has('sub_id1')).toBe(false);
+    expect(url.searchParams.has('subid1')).toBe(false);
   });
 
-  it('preserves pre-existing query string on the base URL', () => {
+  it('omits sessionid when the session id is empty', () => {
+    const url = new URL(
+      composeCheckoutUrl(makeDestination(), makeConfig(), makeSession({ sessionId: '' })),
+    );
+    expect(url.searchParams.has('sessionid')).toBe(false);
+  });
+
+  it('preserves a pre-existing query string on the base URL', () => {
     const config = makeConfig({ checkoutBase: 'https://checkout.gundrymd.com/?fbp=existing' });
     const url = new URL(composeCheckoutUrl(makeDestination(), config, makeSession()));
     expect(url.searchParams.get('fbp')).toBe('existing');
     expect(url.searchParams.get('order_form_id')).toBe('OF_123');
   });
 
-  it('author-supplied keys on the base win over SDK additions', () => {
+  it('author-supplied params on the base URL win over SDK additions', () => {
     const config = makeConfig({
-      checkoutBase: 'https://checkout.gundrymd.com/?session_id=author-wins',
+      checkoutBase:
+        'https://checkout.gundrymd.com/?sessionid=author-wins&subid1=author-sub&utm_source=author-src',
     });
-    const url = new URL(composeCheckoutUrl(makeDestination(), config, makeSession()));
-    expect(url.searchParams.get('session_id')).toBe('author-wins');
+    const session = makeSession({ params: { subId1: 'sdk-sub', utmSource: 'sdk-src' } });
+    const url = new URL(composeCheckoutUrl(makeDestination(), config, session));
+    expect(url.searchParams.get('sessionid')).toBe('author-wins');
+    expect(url.searchParams.get('subid1')).toBe('author-sub');
+    expect(url.searchParams.get('utm_source')).toBe('author-src');
+    expect(url.searchParams.getAll('sessionid')).toHaveLength(1);
   });
 
-  it('emits empty string for session_id when sessionId is empty', () => {
-    const url = new URL(
-      composeCheckoutUrl(makeDestination(), makeConfig(), makeSession({ sessionId: '' })),
-    );
-    // empty sessionId is omitted — we don't pollute the URL with empty values
-    expect(url.searchParams.has('session_id')).toBe(false);
+  it('forwards origdsidOrig and origsplitTestingFunnelIdOrig from the current page URL, last', () => {
+    setSearch('?origdsidOrig=DS1&origsplitTestingFunnelIdOrig=ST1');
+    const url = new URL(composeCheckoutUrl(makeDestination(), makeConfig(), makeSession()));
+    expect(url.searchParams.get('origdsidOrig')).toBe('DS1');
+    expect(url.searchParams.get('origsplitTestingFunnelIdOrig')).toBe('ST1');
+    const keys = Array.from(url.searchParams.keys());
+    expect(keys.slice(-2)).toEqual(['origdsidOrig', 'origsplitTestingFunnelIdOrig']);
+  });
+
+  it('omits the orig params when the current page URL has none', () => {
+    setSearch('?utm_source=fb');
+    const url = new URL(composeCheckoutUrl(makeDestination(), makeConfig(), makeSession()));
+    expect(url.searchParams.has('origdsidOrig')).toBe(false);
+    expect(url.searchParams.has('origsplitTestingFunnelIdOrig')).toBe(false);
+  });
+
+  it('does not overwrite an author-supplied origdsidOrig on the base URL', () => {
+    setSearch('?origdsidOrig=from-page');
+    const config = makeConfig({ checkoutBase: 'https://checkout.gundrymd.com/?origdsidOrig=on-base' });
+    const url = new URL(composeCheckoutUrl(makeDestination(), config, makeSession()));
+    expect(url.searchParams.get('origdsidOrig')).toBe('on-base');
   });
 });
 
