@@ -18,6 +18,9 @@
  * row landed — hence the byte-level fidelity of every default below.
  */
 
+import type { GhConfig } from './config';
+import type { SessionState } from './session';
+
 /** v4 ships one event type. Adding another is a typed change, not a string. */
 export type FunnelEventType = 'Page View';
 
@@ -156,4 +159,117 @@ export function detectUserAgent(ua: string): UaDetection {
     }
   }
   return { browser, os, device: /Mobi/.test(s) ? 'Mobile' : 'Desktop' };
+}
+
+// ---------------------------------------------------------------------------
+// Page View payload builder (D5)
+// ---------------------------------------------------------------------------
+
+export interface PageViewContext {
+  config: GhConfig;
+  session: SessionState;
+  /** Destination DTO funnelId, else data-gh-funnel-id. Absent = do not emit. */
+  funnelId: string | null;
+  /** Destination DTO id, else ?origdsidOrig=. */
+  destinationId: string | null;
+  /** Funnel-step DTO id matched by data-gh-step. */
+  stepId: string | null;
+  /** data-gh-step — a step SLUG. Lands in the `url` field. */
+  stepSlug: string | null;
+  /** ?origsplitTestingFunnelIdOrig=. */
+  splitTestId: string | null;
+  /** document.referrer, raw. Query-stripped here (opposite of the D3 rule). */
+  referrer: string;
+  /** location.search, for ?cid=. */
+  search: string;
+}
+
+/**
+ * Build the 36-field `Page View` payload.
+ *
+ * Returns `null` when no `funnelId` resolved — the reference drops the event
+ * on blank `funnelSTFId` (funnel-event.service.ts:82) and so do we. The caller
+ * owns the debug-mode warn; the silent drop is the one reference behaviour
+ * worth not copying.
+ */
+export function buildPageViewEvent(ctx: PageViewContext): FunnelEvent | null {
+  const funnelId = ctx.funnelId;
+  if (!funnelId) return null;
+
+  const p = ctx.session.params;
+  const ua = detectUserAgent(typeof navigator !== 'undefined' ? navigator.userAgent : '');
+
+  return {
+    // --- SFIDs ---
+    funnelSTFId: funnelId,
+    mainFunnelId: funnelId,
+    destinationId: ctx.destinationId ?? null,
+    // `??` not `||`: an empty step id is retained as '', matching
+    // build-funnel-event.utility.ts:107 (`currentFunnelPageId ?? null`) where
+    // the source defaults to ''.
+    funnelSTPId: ctx.stepId ?? null,
+    splitTestingFunnelId: ctx.splitTestId ?? null,
+    splitTestingPageId: null,
+
+    // --- Request-specific ---
+    // `||` not `??`: '' collapses to null (utility.ts:112 `ctx.pageName || null`).
+    url: ctx.stepSlug || null,
+    // Hardcoded literal. Never build this from a variable.
+    eventType: 'Page View',
+    sessionId: ctx.session.sessionId,
+    orderId: null,
+
+    // --- Custom payloads: `Page View` is the no-override branch ---
+    customPayLoad1: null,
+    customPayLoad2: null,
+
+    // --- UTMs ---
+    utmSource: p.utmSource ?? null,
+    utmMedium: p.utmMedium ?? null,
+    utmCampaign: p.utmCampaign ?? null,
+    utmCampaignId: readCampaignId(ctx.search, p.utmCampaignId),
+    utmContent: p.utmContent ?? null,
+    utmTerm: p.utmTerm ?? null,
+
+    // --- Attribution: the '' / null asymmetry is legacy wire shape ---
+    affId: p.affId ?? '',
+    offId: p.offId ?? '',
+    subId1: p.subId1 ?? null,
+    subId2: p.subId2 ?? null,
+    subId3: p.subId3 ?? null,
+    subId4: p.subId4 ?? null,
+    subId5: p.subId5 ?? null,
+
+    // --- Hardcoded: NOT ParsedParams.salesFunnel ---
+    salesFunnel: 'Funnel',
+
+    visitorId: null, // Altern-side visitor identity resolution is a non-goal
+    visitDate: formatVisitDate(),
+    videoPercentage: 0,
+    leadId: null,
+    accountId: null,
+    // This payload's referralUrl IS document.referrer, query-stripped
+    // (funnel-event.service.ts:176-180) — the opposite of the session POST.
+    referralUrl: stripQuery(ctx.referrer),
+    brand: ctx.config.brandToken ?? ctx.config.brand,
+    browser: ua.browser,
+    os: ua.os,
+    device: ua.device,
+  };
+}
+
+/** `?cid=` wins over ParsedParams.utmCampaignId (funnel-event.service.ts:123-131). */
+function readCampaignId(search: string, fromParams: string | undefined): string | null {
+  let cid: string | null = null;
+  try {
+    cid = new URLSearchParams(search).get('cid');
+  } catch {
+    cid = null;
+  }
+  if (cid) return cid;
+  return fromParams ?? null;
+}
+
+function stripQuery(value: string): string {
+  return (value ?? '').split('?')[0] ?? '';
 }
