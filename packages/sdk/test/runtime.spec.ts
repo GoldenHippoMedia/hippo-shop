@@ -207,4 +207,25 @@ describe('GhRuntime — resource state tracking', () => {
     await runtime.refresh();
     expect((document.getElementById('content') as HTMLElement).style.display).not.toBe('none');
   });
+
+  it('getCachedFunnel returns null before load and the DTO after', async () => {
+    const logger = createLogger(false);
+    const client = {
+      funnel: vi.fn().mockResolvedValue({
+        slug: 'bio3-main',
+        name: 'Bio Complete 3 main',
+        active: true,
+        steps: [{ id: 'a0Zstep1', slug: 'offer-selector', stepNumber: 1, name: 'Offer', kind: 'landing' }],
+      }),
+      destination: vi.fn(),
+      product: vi.fn(),
+      clearCache: vi.fn(),
+    } as unknown as GhDataClient;
+    const runtime = new GhRuntime({ doc: document, win: window, logger, client, config: CONFIG });
+
+    expect(runtime.getCachedFunnel('bio3-main')).toBeNull();
+    document.body.innerHTML = '<div data-gh-funnel="bio3-main"></div>';
+    await runtime.bind(document);
+    expect(runtime.getCachedFunnel('bio3-main')?.steps[0]?.id).toBe('a0Zstep1');
+  });
 });

@@ -5,6 +5,12 @@ import { GhRuntime } from './runtime';
 import { FormatRegistry } from './format';
 import { ensureSession, getSessionState } from './session';
 import { makeCheckoutUrlFn } from './checkout';
+import {
+  installPageViewEmitter,
+  makeTrackFn,
+  type FunnelEventType,
+  type PageViewEmitterOptions,
+} from './events';
 
 export { GhDataClient } from './client';
 export { GhError, type GhErrorCode } from './errors';
@@ -27,6 +33,8 @@ export interface GhWindow {
   format: FormatRegistry;
   debug?: boolean;
   checkoutUrl?: (slug: string) => Promise<string>;
+  /** Cluster G / D9: programmatic Page View. Respects the per-page-load dedupe guard. */
+  track?: (eventType: FunnelEventType) => Promise<void>;
   session?: {
     id: () => string | undefined;
     params: () => unknown; // ParsedParams is internal; expose as unknown to keep types clean
@@ -99,6 +107,25 @@ export function boot(doc: Document = document, win: Window = window): boolean {
     getDestination: (slug) => runtime.getCachedDestination(slug),
     ensureDestination: (slug) => runtime.ensureDestination(slug),
   });
+
+  // Cluster G / D9: funnel-event emitter. Deliberately outside bind() —
+  // bind() re-runs on every observer mutation and again on gh:session-ready.
+  // `getSession` is a THUNK (Correction 2): one stable identity always reads
+  // live state, so a captured `gh.track` never goes stale.
+  const emitterOptions: PageViewEmitterOptions = {
+    doc,
+    win,
+    config,
+    client,
+    logger,
+    getSession: () => getSessionState(),
+    sessionPromise: root.__sessionPromise,
+    getDestination: (slug) => runtime.getCachedDestination(slug),
+    getFunnel: (slug) => runtime.getCachedFunnel(slug),
+    ensureDestination: (slug) => runtime.ensureDestination(slug),
+  };
+  root.track = makeTrackFn(emitterOptions);
+  installPageViewEmitter(emitterOptions);
 
   logger.debug('booted', { brand: config.brand, apiBaseUrl: config.apiBaseUrl });
   win.dispatchEvent(new Event(DATA_READY_EVENT));

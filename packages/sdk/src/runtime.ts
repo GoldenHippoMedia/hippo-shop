@@ -10,7 +10,7 @@
  *   4. `gh:bindings-ready` fires once after the initial bind completes.
  */
 
-import type { HippoShopDestinationDTO } from '@goldenhippo/hippo-shop-types';
+import type { HippoShopDestinationDTO, HippoShopFunnelDTO } from '@goldenhippo/hippo-shop-types';
 import type { GhDataClient } from './client';
 import { applyBindings, collectResources, RESOURCE_ATTR, RESOURCE_KINDS, type ResourceState } from './bindings';
 import { FormatRegistry } from './format';
@@ -213,6 +213,14 @@ export class GhRuntime {
   /** Cluster F: synchronous lookup of a cached destination, or null. */
   getCachedDestination(slug: string): HippoShopDestinationDTO | null {
     return (this.resources.get(`destination:${slug}`) as HippoShopDestinationDTO | undefined) ?? null;
+  }
+
+  /**
+   * Cluster G: synchronous lookup of a cached funnel, or null. Funnel-event
+   * identity needs `steps[].id` to resolve `funnelSTPId` from `data-gh-step`.
+   */
+  getCachedFunnel(slug: string): HippoShopFunnelDTO | null {
+    return (this.resources.get(`funnel:${slug}`) as HippoShopFunnelDTO | undefined) ?? null;
   }
 
   /** Cluster F: trigger a destination load (idempotent via in-flight dedup). */

@@ -122,4 +122,24 @@ describe('cluster F wiring on boot', () => {
     // Synchronous immediately after boot — session resolution is async.
     expect(window.gh!.session!.id()).toBeUndefined();
   });
+
+  it('installs gh.track as a stable async function', async () => {
+    document.head.innerHTML = '';
+    document.body.innerHTML = '';
+    const script = document.createElement('script');
+    script.dataset['key'] = 'gh_pk_test_abc123';
+    script.dataset['brand'] = 'Gundry MD';
+    script.src = 'https://api-prod.goldenhippo.io/sdk/v4/gh.js';
+    document.head.appendChild(script);
+    delete (window as { gh?: unknown }).gh;
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }));
+
+    expect(boot(document, window)).toBe(true);
+    expect(typeof window.gh?.track).toBe('function');
+    const captured = window.gh!.track!;
+    await expect(captured('Page View')).resolves.toBeUndefined();
+    // Stable identity: a captured reference is still the live function.
+    expect(window.gh!.track).toBe(captured);
+  });
 });
