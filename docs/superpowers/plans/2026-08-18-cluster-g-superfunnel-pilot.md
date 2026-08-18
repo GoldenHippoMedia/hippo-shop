@@ -34,8 +34,8 @@
 | `packages/sdk/src/client.ts` | HTTP transport; gains the keepalive event POST path |
 | `packages/sdk/src/runtime.ts` | Bind lifecycle, resource collection, MutationObserver, rebind scheduling |
 | `packages/sdk/src/index.ts` | Boot, `window.gh` surface, session thunk wiring |
-| `packages/sdk/src/config.ts` | Script-tag attribute parsing — **no change**. D5 requires `data-gh-step` / `data-gh-funnel-id` to be read from the live DOM at emit time, not frozen into the boot-time `GhConfig` snapshot. |
-| `packages/sdk/src/bindings.ts` | Resource collection — treats `data-gh-checkout` as a destination reference (Task 30) |
+| `packages/sdk/src/config.ts` | Script-tag attribute parsing — adds `data-brand-token` (Task 20). Note `data-gh-step` / `data-gh-funnel-id` are deliberately **not** here: D5 requires them read from the live DOM at emit time, not frozen into the boot-time `GhConfig` snapshot. |
+| `packages/sdk/src/bindings.ts` | Resource collection — treats `data-gh-checkout` as a destination reference (Task 31) |
 | `packages/sdk/test/helpers/cookie-jar.ts` *(new)* | Shared cookie fake that records `Domain`/`Max-Age`/`SameSite` |
 
 **`hippo-shop` — types**
@@ -3670,7 +3670,7 @@ Two Cluster F defects die here: the pre-resolve stub session (a valid URL with n
 - Consumes: `GhConfig`, `Logger` (existing constructor args)
 - Produces: `GhDataClient.prototype.postEvent(resource: string, body: unknown, headers?: Record<string, string>): Promise<void>`
 
-**Answer to "can `postJson` already express it?" — No.** `postJson` (`client.ts:44-52`) hardcodes `credentials: 'include'`, takes no extra headers, and the private `fetchJson` options type (`client.ts:77`) declares only `{ method, body, credentials }` — there is no `keepalive` and no `headers` member, so neither `keepalive: true` (D10) nor `X-GH-Event-Id` (D9) can be passed through it. `credentials: 'include'` is also actively wrong for the funnel-event route, whose Kong config is `cors.credentials: false` (W3). Task 17 therefore adds `postEvent` and widens `fetchJson`'s option bag. No retry logic exists anywhere in `GhDataClient`, so "never retries, notably not on 429" is satisfied structurally; Task 21 pins it with a test.
+**Answer to "can `postJson` already express it?" — No.** `postJson` (`client.ts:44-52`) hardcodes `credentials: 'include'`, takes no extra headers, and the private `fetchJson` options type (`client.ts:77`) declares only `{ method, body, credentials }` — there is no `keepalive` and no `headers` member, so neither `keepalive: true` (D10) nor `X-GH-Event-Id` (D9) can be passed through it. `credentials: 'include'` is also actively wrong for the funnel-event route, whose Kong config is `cors.credentials: false` (W3). Task 17 therefore adds `postEvent` and widens `fetchJson`'s option bag. No retry logic exists anywhere in `GhDataClient`, so "never retries, notably not on 429" is satisfied structurally; Task 22 pins it with a test.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -4208,7 +4208,94 @@ cd /Users/stevenhall/Code/hippo-shop && git add packages/sdk/src/events.ts packa
 
 ---
 
-### Task 20: `buildPageViewEvent` — the gate, the constants, and the null-vs-empty asymmetry
+### Task 20: `data-brand-token` — the Altern payload's brand vocabulary
+
+The funnel-event payload's `brand` field is a **different value space** from `data-brand`. The reference app sends its `BRAND_NAME` env token — `"gundry"` — while `data-brand` is the public display name, `"Gundry MD"` (`docs/architecture/kong-public-routing.md:200`). Both land in the same Salesforce column.
+
+Confirmed with the repo owner: **the payload field is what Altern reads**, not the `X-Brand` header. Kong's `request-transformer` `rename.headers` changes a header key, not a JSON body value, so this cannot be fixed at the edge without `replace.body` — which would need per-consumer body rewriting on a route shared by every brand. The SDK supplies it instead, explicitly.
+
+**Files:**
+- Modify: `/Users/stevenhall/Code/hippo-shop/packages/sdk/src/config.ts` (`GhConfig` interface; `parseScriptConfig` return)
+- Test: `/Users/stevenhall/Code/hippo-shop/packages/sdk/test/config.spec.ts`
+
+**Interfaces:**
+- Consumes: nothing.
+- Produces: `GhConfig.brandToken: string | null` — the Altern brand token from `data-brand-token`, `null` when the attribute is absent. Task 21 reads it as `ctx.config.brandToken ?? ctx.config.brand`.
+
+- [ ] **Step 1: Write the failing test**
+
+Append to `/Users/stevenhall/Code/hippo-shop/packages/sdk/test/config.spec.ts`, inside the existing top-level `describe`:
+
+```ts
+  it('reads data-brand-token when present', () => {
+    const script = makeScript({ 'data-brand-token': 'gundry' });
+    expect(parseScriptConfig(script).brandToken).toBe('gundry');
+  });
+
+  it('is null when data-brand-token is absent — brand is NOT a fallback here', () => {
+    const script = makeScript({});
+    expect(parseScriptConfig(script).brandToken).toBeNull();
+  });
+
+  it('trims and treats whitespace-only as absent', () => {
+    expect(parseScriptConfig(makeScript({ 'data-brand-token': '  gundry  ' })).brandToken).toBe('gundry');
+    expect(parseScriptConfig(makeScript({ 'data-brand-token': '   ' })).brandToken).toBeNull();
+  });
+```
+
+Use whatever script-element helper `config.spec.ts` already defines; if it builds elements inline rather than via a `makeScript` helper, follow that idiom instead and set `data-brand-token` the same way the file sets `data-checkout-base`.
+
+- [ ] **Step 2: Run test to verify it fails**
+
+```bash
+pnpm --filter @goldenhippo/hippo-shop-sdk test -- config
+```
+
+Expected: FAIL — `AssertionError: expected undefined to be 'gundry'`, because `brandToken` is not on `GhConfig` yet.
+
+- [ ] **Step 3: Add the field**
+
+In `/Users/stevenhall/Code/hippo-shop/packages/sdk/src/config.ts`, add to the `GhConfig` interface immediately after the `cookieDomain` line:
+
+```ts
+  /**
+   * Brand token for the funnel-event payload's `brand` field, e.g. `gundry`.
+   * Deliberately separate from `brand` (`Gundry MD`): Altern reads the payload
+   * field, and it expects the BRAND_NAME token vocabulary, not the display name.
+   * `null` when `data-brand-token` is absent — the emitter then falls back to
+   * `brand` and the value may not match what Altern expects.
+   */
+  brandToken: string | null;
+```
+
+and in the returned object of `parseScriptConfig`, alongside `cookieDomain`:
+
+```ts
+    brandToken: (script.dataset['brandToken'] ?? '').trim() || null,
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+```bash
+cd /Users/stevenhall/Code/hippo-shop && pnpm --filter @goldenhippo/hippo-shop-sdk test -- config
+```
+
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd /Users/stevenhall/Code/hippo-shop && git add packages/sdk/src/config.ts packages/sdk/test/config.spec.ts && git commit -m "feat(sdk): add data-brand-token for the funnel-event brand vocabulary
+
+The event payload's brand field is read by Altern and expects the
+BRAND_NAME token (gundry), not the public display name (Gundry MD).
+Kong cannot rewrite a JSON body field per consumer on a shared route,
+so the SDK carries it explicitly."
+```
+
+---
+
+### Task 21: `buildPageViewEvent` — the gate, the constants, and the null-vs-empty asymmetry
 
 **Files:**
 - Modify: `/Users/stevenhall/Code/hippo-shop/packages/sdk/src/events.ts` (append after `detectUserAgent`)
@@ -4575,7 +4662,7 @@ export function buildPageViewEvent(ctx: PageViewContext): FunnelEvent | null {
     // This payload's referralUrl IS document.referrer, query-stripped
     // (funnel-event.service.ts:176-180) — the opposite of the session POST.
     referralUrl: stripQuery(ctx.referrer),
-    brand: ctx.config.brand,
+    brand: ctx.config.brandToken ?? ctx.config.brand,
     browser: ua.browser,
     os: ua.os,
     device: ua.device,
@@ -4613,7 +4700,7 @@ cd /Users/stevenhall/Code/hippo-shop && git add packages/sdk/src/events.ts packa
 
 ---
 
-### Task 21: `emitPageView` — keepalive POST to `funnel-event`, no retry, all errors swallowed
+### Task 22: `emitPageView` — keepalive POST to `funnel-event`, no retry, all errors swallowed
 
 **Files:**
 - Modify: `/Users/stevenhall/Code/hippo-shop/packages/sdk/src/events.ts` (append after `stripQuery`)
@@ -4828,7 +4915,7 @@ cd /Users/stevenhall/Code/hippo-shop && git add packages/sdk/src/events.ts packa
 
 ---
 
-### Task 22: Per-page-load dedupe guard on a window global
+### Task 23: Per-page-load dedupe guard on a window global
 
 **Files:**
 - Modify: `/Users/stevenhall/Code/hippo-shop/packages/sdk/src/events.ts` (append after `newEventId`)
@@ -5065,7 +5152,7 @@ cd /Users/stevenhall/Code/hippo-shop && git add packages/sdk/src/events.ts packa
 
 ---
 
-### Task 23: Identity selection from the DOM — destination, then checkout, then `data-gh-funnel-id`
+### Task 24: Identity selection from the DOM — destination, then checkout, then `data-gh-funnel-id`
 
 **Files:**
 - Modify: `/Users/stevenhall/Code/hippo-shop/packages/sdk/src/events.ts` (append after `_resetEventsForTests`)
@@ -5480,7 +5567,7 @@ cd /Users/stevenhall/Code/hippo-shop && git add packages/sdk/src/events.ts packa
 
 ---
 
-### Task 24: The emitter — join on session + bindings, quiet window, hard deadline, and `gh.track`
+### Task 25: The emitter — join on session + bindings, quiet window, hard deadline, and `gh.track`
 
 **Files:**
 - Modify: `/Users/stevenhall/Code/hippo-shop/packages/sdk/src/events.ts` (append after `resolveEventIdentity`)
@@ -5921,7 +6008,7 @@ cd /Users/stevenhall/Code/hippo-shop && git add packages/sdk/src/events.ts packa
 
 ---
 
-### Additional steps for Task 24 — SPA re-emission of Page View (D9)
+### Additional steps for Task 25 — SPA re-emission of Page View (D9)
 
 **Additional files:**
 - Modify: `/Users/stevenhall/Code/hippo-shop/packages/sdk/src/events.ts` (replace `installPageViewEmitter` and the two readiness-event constants written in Step 3)
@@ -5936,9 +6023,9 @@ cd /Users/stevenhall/Code/hippo-shop && git add packages/sdk/src/events.ts packa
   ```
 - Consumes (runtime.ts): `readStepSlug(doc: Document): string | null`, `notifyStepChanged(win: Window): void`
 
-Spec D9 puts `data-gh-step` in the observer's `attributeFilter` "so an SPA that swaps the attribute gets a new Page View through existing machinery". Task 31 Step 3 adds the attribute to that filter — but the filter only re-triggers `bind()`, and `bind()` had nothing to say about the step. Meanwhile Step 3 above sets `fired = true` permanently and registers both readiness listeners with `{ once: true }`, so the emitter can never re-arm. The only re-emit path is `gh.track`, which D9 designates an escape hatch, not the mechanism.
+Spec D9 puts `data-gh-step` in the observer's `attributeFilter` "so an SPA that swaps the attribute gets a new Page View through existing machinery". Task 32 Step 3 adds the attribute to that filter — but the filter only re-triggers `bind()`, and `bind()` had nothing to say about the step. Meanwhile Step 3 above sets `fired = true` permanently and registers both readiness listeners with `{ once: true }`, so the emitter can never re-arm. The only re-emit path is `gh.track`, which D9 designates an escape hatch, not the mechanism.
 
-These steps close the loop: `bind()` (the observer path's terminus) compares the live `data-gh-step` against the last one it saw and calls `notifyStepChanged(win)` on a change; the emitter listens for that — **not** `{ once: true }` — and, when the observed slug differs from the one its last emission was built from, clears `fired` and reopens the quiet window. It does **not** re-implement dedupe: `emitPageViewOnce` already keys on `(sessionId, 'Page View', stepSlug ?? pathname)` (Task 22), so an unchanged slug is suppressed there. The `lastEmittedStep` comparison exists only to avoid pointless timer churn, and the guard remains the correctness backstop.
+These steps close the loop: `bind()` (the observer path's terminus) compares the live `data-gh-step` against the last one it saw and calls `notifyStepChanged(win)` on a change; the emitter listens for that — **not** `{ once: true }` — and, when the observed slug differs from the one its last emission was built from, clears `fired` and reopens the quiet window. It does **not** re-implement dedupe: `emitPageViewOnce` already keys on `(sessionId, 'Page View', stepSlug ?? pathname)` (Task 23), so an unchanged slug is suppressed there. The `lastEmittedStep` comparison exists only to avoid pointless timer churn, and the guard remains the correctness backstop.
 
 - [ ] **Step 6: Write the failing test**
 
@@ -6052,7 +6139,7 @@ describe('installPageViewEmitter — SPA step change (D9)', () => {
     await vi.advanceTimersByTimeAsync(PAGE_VIEW_QUIET_MS + 1);
     expect(postEvent).toHaveBeenCalledOnce();
 
-    // Task 31 puts data-gh-step in the observer's attributeFilter, so in a real
+    // Task 32 puts data-gh-step in the observer's attributeFilter, so in a real
     // browser this second bind() is the observer's, not the test's.
     document.querySelector('[data-gh-step]')!.setAttribute('data-gh-step', 'step-2');
     await runtime.bind(document);
@@ -6259,7 +6346,7 @@ with:
 
 ```ts
     // Cluster G / D9: an SPA that swaps data-gh-step is declaring a new funnel
-    // step. attachObserver watches that attribute (Task 31) and every such
+    // step. attachObserver watches that attribute (Task 32) and every such
     // mutation lands here — this is where the change becomes a signal the Page
     // View emitter can act on. Adding the attribute to the filter alone only
     // re-runs bind(); the emitter's `fired` latch would never clear.
@@ -6305,7 +6392,7 @@ last emitted. Dedupe is not duplicated — emitPageViewOnce still keys on
 
 ---
 
-### Task 25: Wire the emitter and `gh.track` into boot; expose cached funnels on the runtime
+### Task 26: Wire the emitter and `gh.track` into boot; expose cached funnels on the runtime
 
 **Files:**
 - Modify: `/Users/stevenhall/Code/hippo-shop/packages/sdk/src/runtime.ts` (line 13 import; insert a method after `getCachedDestination`, currently lines 191–194)
@@ -6313,7 +6400,7 @@ last emitted. Dedupe is not duplicated — emitPageViewOnce still keys on
 - Test: `/Users/stevenhall/Code/hippo-shop/packages/sdk/test/index.spec.ts` (append to the existing top-level `describe`)
 
 **Interfaces:**
-- Consumes: `installPageViewEmitter`, `makeTrackFn`, `PageViewEmitterOptions`, `FunnelEventType` (Task 24); `GhRuntime.getCachedDestination`, `GhRuntime.ensureDestination`
+- Consumes: `installPageViewEmitter`, `makeTrackFn`, `PageViewEmitterOptions`, `FunnelEventType` (Task 25); `GhRuntime.getCachedDestination`, `GhRuntime.ensureDestination`
 - Produces: `GhRuntime.prototype.getCachedFunnel(slug: string): HippoShopFunnelDTO | null`; `window.gh.track?: (eventType: FunnelEventType) => Promise<void>`
 
 - [ ] **Step 1: Write the failing test**
@@ -6452,13 +6539,13 @@ cd /Users/stevenhall/Code/hippo-shop && git add packages/sdk/src/runtime.ts pack
 
 ---
 
-### Task 26: Offer-selector integration test — six destinations, one event
+### Task 27: Offer-selector integration test — six destinations, one event
 
 **Files:**
 - Modify: `/Users/stevenhall/Code/hippo-shop/packages/sdk/test/events-emitter.spec.ts` (append one `describe`)
 
 **Interfaces:**
-- Consumes: `installPageViewEmitter`, `_resetEventsForTests`, `PAGE_VIEW_QUIET_MS` (Task 24); `makeEmitterOpts` / `makeDestination` / `setBody` helpers already in this spec file
+- Consumes: `installPageViewEmitter`, `_resetEventsForTests`, `PAGE_VIEW_QUIET_MS` (Task 25); `makeEmitterOpts` / `makeDestination` / `setBody` helpers already in this spec file
 - Produces: no source change — this task pins the behaviour the whole group exists to guarantee
 
 This is the pilot's canonical page shape (six destinations: quantity 1/3/6 × one-time/subscription). Six bound offers are six variants of **one** page view. The dedupe fallback is page-level rather than destination-keyed precisely so this cannot become six events.
@@ -6545,7 +6632,7 @@ describe('offer-selector page: six destinations, one Page View', () => {
 cd /Users/stevenhall/Code/hippo-shop/packages/sdk && pnpm exec vitest run test/events-emitter.spec.ts
 ```
 
-If either test fails, the defect is real: check that `firstDestinationSlug` prefers `[data-gh-destination]` (Task 23) and that `pageViewDedupeKey` keys on the step slug rather than the destination slug (Task 22).
+If either test fails, the defect is real: check that `firstDestinationSlug` prefers `[data-gh-destination]` (Task 24) and that `pageViewDedupeKey` keys on the step slug rather than the destination slug (Task 23).
 
 - [ ] **Step 3: Run the whole SDK suite plus typecheck and lint**
 
@@ -6563,7 +6650,7 @@ cd /Users/stevenhall/Code/hippo-shop && git add packages/sdk/test/events-emitter
 ---
 
 
-### Task 27: Docblock and SPEC corrections (Corrections 5 and 6)
+### Task 28: Docblock and SPEC corrections (Corrections 5 and 6)
 
 **Files:**
 - Modify: `/Users/stevenhall/Code/hippo-shop/packages/types/src/destination.ts` (docblock, lines 3–9)
@@ -6655,7 +6742,7 @@ cd /Users/stevenhall/Code/hippo-shop && git add packages/sdk/test/events-emitter
 
 ---
 
-### Task 28: The runtime carries the boot-time session promise (Corrections 1 and 2)
+### Task 29: The runtime carries the boot-time session promise (Corrections 1 and 2)
 
 **Already landed upstream — do not redo any of it:** Task 4 rewrote the `SessionState` literals (`hasConnectSid` → `adopted`, `params: {}`). Task 15 replaced runtime.ts's snapshot call site with `getSession: () => getSessionState()` and made `bindOne` hold links at `href="#"` while the session is `null`. Task 16 made `makeCheckoutUrlFn` async, changed `GhWindow.checkoutUrl` to `(slug: string) => Promise<string>`, and rewrote boot's wiring to one `const sessionPromise = ensureSession(...)` plus a **single** `root.checkoutUrl = makeCheckoutUrlFn({ … getSession, sessionPromise … })` — the reassignment inside `.then()` is already gone.
 
@@ -6663,9 +6750,9 @@ What is still broken after Task 16: `GhRuntime` has no way to receive that promi
 
 **Files:**
 - Test: create `/Users/stevenhall/Code/hippo-shop/packages/sdk/test/session-promise-wiring.spec.ts`
-- Modify: `/Users/stevenhall/Code/hippo-shop/packages/sdk/src/runtime.ts` (field block, located by the quoted anchors — Task 24 shifts these; the `sessionPromise` argument inside the `applyCheckoutBindings(target, { … })` call Task 15 left at lines 84–95)
+- Modify: `/Users/stevenhall/Code/hippo-shop/packages/sdk/src/runtime.ts` (field block, located by the quoted anchors — Task 25 shifts these; the `sessionPromise` argument inside the `applyCheckoutBindings(target, { … })` call Task 15 left at lines 84–95)
 - Modify: `/Users/stevenhall/Code/hippo-shop/packages/sdk/src/index.ts` (one inserted line after `root.__sessionPromise = sessionPromise;`)
-- Modify: `/Users/stevenhall/Code/hippo-shop/packages/sdk/SPEC.md` (lines 91–95 and line 161 — Task 27 touched 103 and 163, so these are untouched)
+- Modify: `/Users/stevenhall/Code/hippo-shop/packages/sdk/SPEC.md` (lines 91–95 and line 161 — Task 28 touched 103 and 163, so these are untouched)
 
 **Interfaces:**
 - Consumes: `applyCheckoutBindings(root: ParentNode, opts: CheckoutBindingsOptions): void` and `CheckoutBindingsOptions { config; getSession: () => SessionState | null; sessionPromise: Promise<unknown>; getDestination; ensureDestination; logger }` (Task 15); `makeCheckoutUrlFn(opts: Omit<CheckoutBindingsOptions,'logger'>): (slug: string) => Promise<string>` (Task 16); `getSessionState(): SessionState | null`; `ensureSession(config, client): Promise<SessionState>`
@@ -6853,7 +6940,7 @@ What is still broken after Task 16: `GhRuntime` has no way to receive that promi
 
 - [ ] **Step 3: Give `GhRuntime` a session-promise field**
 
-  In `/Users/stevenhall/Code/hippo-shop/packages/sdk/src/runtime.ts`, add the field immediately after `private readonly win: Window;` (locate by the quoted text — Task 24 Step 9 inserts lines into this block, so the pristine line numbers no longer hold):
+  In `/Users/stevenhall/Code/hippo-shop/packages/sdk/src/runtime.ts`, add the field immediately after `private readonly win: Window;` (locate by the quoted text — Task 25 Step 9 inserts lines into this block, so the pristine line numbers no longer hold):
 
   ```ts
     /**
@@ -6865,7 +6952,7 @@ What is still broken after Task 16: `GhRuntime` has no way to receive that promi
     private sessionPromise: Promise<unknown> = Promise.resolve();
   ```
 
-  Then add this method immediately after the constructor's closing `}` (locate by structure, not line number — Task 24 runs first):
+  Then add this method immediately after the constructor's closing `}` (locate by structure, not line number — Task 25 runs first):
 
   ```ts
     /**
@@ -6908,7 +6995,7 @@ What is still broken after Task 16: `GhRuntime` has no way to receive that promi
 
 - [ ] **Step 5: Hand the promise over in `boot()`**
 
-  In `/Users/stevenhall/Code/hippo-shop/packages/sdk/src/index.ts`, insert one line immediately after `root.__sessionPromise = sessionPromise;` (the two-line pair Task 16 wrote; Task 25's emitter block may sit below it — insert above whatever follows), so the sequence reads:
+  In `/Users/stevenhall/Code/hippo-shop/packages/sdk/src/index.ts`, insert one line immediately after `root.__sessionPromise = sessionPromise;` (the two-line pair Task 16 wrote; Task 26's emitter block may sit below it — insert above whatever follows), so the sequence reads:
 
   ```ts
     const sessionPromise = ensureSession(config, client).catch(() => undefined);
@@ -6987,7 +7074,7 @@ What is still broken after Task 16: `GhRuntime` has no way to receive that promi
 
 ---
 
-### Task 29: Register the `gh:session-ready` rebind before `ensureSession` runs (Correction 3)
+### Task 30: Register the `gh:session-ready` rebind before `ensureSession` runs (Correction 3)
 
 **Files:**
 - Test: `/Users/stevenhall/Code/hippo-shop/packages/sdk/test/runtime.spec.ts` (append a new `describe` at the end)
@@ -7261,7 +7348,7 @@ What is still broken after Task 16: `GhRuntime` has no way to receive that promi
 
 ---
 
-### Task 30: `collectResources` treats `data-gh-checkout` as a destination reference (Correction 4a)
+### Task 31: `collectResources` treats `data-gh-checkout` as a destination reference (Correction 4a)
 
 **Files:**
 - Test: `/Users/stevenhall/Code/hippo-shop/packages/sdk/test/bindings.spec.ts` (append inside the existing `describe('collectResources', …)`, after the `<template>` test at lines 89–96)
@@ -7373,7 +7460,7 @@ What is still broken after Task 16: `GhRuntime` has no way to receive that promi
 
 ---
 
-### Task 31: Rebind checkout links on destination load and attribute change (Correction 4b)
+### Task 32: Rebind checkout links on destination load and attribute change (Correction 4b)
 
 **Files:**
 - Test: `/Users/stevenhall/Code/hippo-shop/packages/sdk/test/runtime.spec.ts` (new import at line 1–6; append a new `describe` at the end)
@@ -7629,7 +7716,7 @@ What is still broken after Task 16: `GhRuntime` has no way to receive that promi
 
 ---
 
-### Task 32: Changesets — both packages cut as v4
+### Task 33: Changesets — both packages cut as v4
 
 **Files:**
 - Delete: `/Users/stevenhall/Code/hippo-shop/.changeset/cluster-f-sdk-session-handoff.md`
@@ -7796,7 +7883,7 @@ What is still broken after Task 16: `GhRuntime` has no way to receive that promi
 
 ---
 
-### Task 33: Public session route on `HippoShopController`
+### Task 34: Public session route on `HippoShopController`
 
 Covers Workstream 2 item 1. Adds `POST /hippo-shop/v1/session` to the already-public, brand-scoped `HippoShopController` and delegates to the existing `SessionService.getSession`. The authenticated `SessionController` is left untouched.
 
@@ -8093,7 +8180,7 @@ auth-protected."
 
 ---
 
-### Task 34: Validate the client-supplied session id
+### Task 35: Validate the client-supplied session id
 
 Covers Workstream 2 item 2. No format validation exists anywhere in the service or in `gh-service-utils` today; this handler is the only place on the public path where it can go.
 
@@ -8249,7 +8336,7 @@ format check anywhere on the path. Reject anything outside
 
 ---
 
-### Task 35: Stop logging client-supplied ids and full attribution
+### Task 36: Stop logging client-supplied ids and full attribution
 
 Covers Workstream 2 item 8. Must land before this surface goes public.
 
@@ -8473,7 +8560,7 @@ req.session[brand], which is undefined on the path that throws."
 
 ---
 
-### Task 36: Return the fallback session id under `sessionId`, not `session`
+### Task 37: Return the fallback session id under `sessionId`, not `session`
 
 Covers Workstream 2 item 6. `Session.service.ts:68` emits key `session` where the two happy paths and the OpenAPI response schema both use `sessionId`.
 
@@ -8571,7 +8658,7 @@ neither."
 
 ---
 
-### Task 37: Cache the negative visitor lookup
+### Task 38: Cache the negative visitor lookup
 
 Covers Workstream 2 item 7. `Session.service.ts:38` short-circuits only when the provided id matches **and** `visitorIdFromSession` is truthy, so when AlternActivate has nothing the `getVisitorId` JSONP fetch re-fires on every POST — one wasted outbound call per page view for a value no caller consumes. Pre-existing, but Cluster G formalises always-POST, which turns it from occasional into per-page-load.
 
@@ -8736,7 +8823,7 @@ the miss against the session id and skip the refetch."
 
 ---
 
-### Task 38: Bump the types pin to `^4.0.0`, mirror the schema, and pass destination identity through
+### Task 39: Bump the types pin to `^4.0.0`, mirror the schema, and pass destination identity through
 
 Covers Workstream 2 items 5 **and** 4 in one commit. They cannot be separated: `HippoShop.spec.ts:503-519` asserts bidirectional `Equals<z.infer<typeof ZHippoShopDestinationDTO>, HippoShopDestinationDTO>`, and `HippoShopService`'s return types are the same DTOs — so the pin bump, the Zod mirrors, and the serializer must all move together or `tsc` fails.
 
@@ -8754,7 +8841,7 @@ Every value except `url` and `checkoutOverrideUrl` is already in the payload `De
 
 **Interfaces:**
 - Consumes: `Destination.id`, `Destination.defaultFunnel.id`, `Destination.defaultFunnel.steps[].id` (all present on `ZDestination` from `@goldenhippo/hippo-salesforce-service`).
-- Produces: `HippoShopDestinationDTO` gains `id: string`, `funnelId: string`, `url: string | null`; `HippoShopPricingDTO` gains `checkoutOverrideUrl: string | null`; `HippoShopFunnelStepDTO` gains `id: string`. `url` is emitted as `null` here and wired to the real value in Task 39.
+- Produces: `HippoShopDestinationDTO` gains `id: string`, `funnelId: string`, `url: string | null`; `HippoShopPricingDTO` gains `checkoutOverrideUrl: string | null`; `HippoShopFunnelStepDTO` gains `id: string`. `url` is emitted as `null` here and wired to the real value in Task 40.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -9062,7 +9149,7 @@ equality, so either alone fails tsc."
 
 ---
 
-### Task 39: Interim destination-URL lookup via SOQL
+### Task 40: Interim destination-URL lookup via SOQL
 
 Covers Workstream 2 item 3. Destinations are fetched through an Apex REST route, so the URL is retrieved with a separate direct SOQL query until the managed-package field lands.
 
@@ -9087,10 +9174,10 @@ One deliberate divergence from `CampaignService`: it throws `ApiError(…, BAD_R
 **Files:**
 - Create: `/Users/stevenhall/Code/HippoPackages/GH-Commerce-Service-cluster-g/src/services/destination/DestinationUrl.config.ts`
 - Create: `/Users/stevenhall/Code/HippoPackages/GH-Commerce-Service-cluster-g/src/services/destination/DestinationUrl.service.ts`
-- Modify: `/Users/stevenhall/Code/HippoPackages/GH-Commerce-Service-cluster-g/src/services/hippo-shop/HippoShop.service.ts` (add one import below line 20; replace `getDestinationByIdOrSlug`, lines 101–107; re-sign `formatDestinationToDTO` — the 17-line block Task 38 leaves at lines 227–243)
+- Modify: `/Users/stevenhall/Code/HippoPackages/GH-Commerce-Service-cluster-g/src/services/hippo-shop/HippoShop.service.ts` (add one import below line 20; replace `getDestinationByIdOrSlug`, lines 101–107; re-sign `formatDestinationToDTO` — the 17-line block Task 39 leaves at lines 227–243)
 - Test: `/Users/stevenhall/Code/HippoPackages/GH-Commerce-Service-cluster-g/src/tests/unit-tests/services/destination/DestinationUrl.service.test.ts` (new)
 - Test: `/Users/stevenhall/Code/HippoPackages/GH-Commerce-Service-cluster-g/src/tests/unit-tests/services/destination/DestinationUrl.unconfigured.test.ts` (new)
-- Test: `/Users/stevenhall/Code/HippoPackages/GH-Commerce-Service-cluster-g/src/tests/unit-tests/services/hippo-shop/HippoShop.service.test.ts` (created by Task 38 — add a mock, two imports, and a `describe` block)
+- Test: `/Users/stevenhall/Code/HippoPackages/GH-Commerce-Service-cluster-g/src/tests/unit-tests/services/hippo-shop/HippoShop.service.test.ts` (created by Task 39 — add a mock, two imports, and a `describe` block)
 
 **Interfaces:**
 - Consumes: `SalesforceService.runQueryViaRest(query: string, accessToken?: string, options?: Partial<QueryOptions>): Promise<QueryResult<JSForceRecord>>`; `CacheService.get(key: string, fullKey?: boolean): Promise<string | null>` / `CacheService.set({ key, value, expirationInSeconds }): Promise<boolean>`; `CommerceBrand.id`, `CommerceBrand.name`, `CommerceBrand.accessToken`; `HippoLogger.event({ filePath?, brand?, level?, requestId?, action?, status?, details? }): void`.
@@ -9357,16 +9444,14 @@ Create `/Users/stevenhall/Code/HippoPackages/GH-Commerce-Service-cluster-g/src/s
  *
  * The FIELD is confirmed: `TouchCRBase__Full_Generic_URL__c`.
  *
- * The SOBJECT is not. It is inferred to be `TouchCRBase__Destination__c` from
- * the lookup field of that name on `Campaign` (Campaign.service.ts:52), but
- * destinations reach this service through an Apex REST route rather than SOQL,
- * so nothing in this repository or in hippo-salesforce-service confirms the
- * object's API name. Confirm it with the Salesforce team before filling it in:
- * a wrong object name is a runtime INVALID_TYPE on every destination request,
- * and an offer-selector page issues six of those per load.
+ * The SOBJECT is `TouchCRBase__Destination__c`, confirmed by the repo owner.
  *
- * DO NOT GUESS the object name. `Campaign.TouchCRBase__URL_V2__c` is a
- * different, campaign-scoped field — it is NOT this one.
+ * Both values are isolated here so a future object/field rename is a one-line
+ * change, and so tests can `jest.mock` the module to exercise the unconfigured
+ * path (empty string => no query issued => `url: null`).
+ *
+ * `Campaign.TouchCRBase__URL_V2__c` is a different, campaign-scoped field — do
+ * not substitute it here.
  *
  * While either string is empty, `DestinationUrlService` issues no query at all
  * and every destination serialises `url: null`. That is indistinguishable to the
@@ -9382,8 +9467,7 @@ Create `/Users/stevenhall/Code/HippoPackages/GH-Commerce-Service-cluster-g/src/s
  * This is a separate module purely so tests can `jest.mock` it and exercise both
  * the configured and unconfigured paths.
  */
-// CONFIRM THIS ONE before enabling — see the note above.
-export const DESTINATION_URL_SOBJECT = '' // inferred: 'TouchCRBase__Destination__c'
+export const DESTINATION_URL_SOBJECT = 'TouchCRBase__Destination__c'
 export const DESTINATION_URL_FIELD = 'TouchCRBase__Full_Generic_URL__c'
 ```
 
@@ -9645,7 +9729,7 @@ Replace `getDestinationByIdOrSlug` (lines 101–107) with:
   }
 ```
 
-Then change the signature and the `url` property of `formatDestinationToDTO` (lines 227–243 as Task 38 leaves it):
+Then change the signature and the `url` property of `formatDestinationToDTO` (lines 227–243 as Task 39 leaves it):
 
 ```ts
   private formatDestinationToDTO(
@@ -9679,7 +9763,7 @@ cd /Users/stevenhall/Code/HippoPackages/GH-Commerce-Service-cluster-g && \
   npx tsc --noEmit && npm run lint && npm test
 ```
 
-Expected: clean `tsc`, clean lint, and the whole suite green — 7 tests in `HippoShop.service.test.ts` (3 from Task 38 plus these 4), 16 across the two `DestinationUrl` files, no regressions elsewhere.
+Expected: clean `tsc`, clean lint, and the whole suite green — 7 tests in `HippoShop.service.test.ts` (3 from Task 39 plus these 4), 16 across the two `DestinationUrl` files, no regressions elsewhere.
 
 - [ ] **Step 12: Commit**
 
@@ -9711,11 +9795,11 @@ DestinationUrl.config.ts. While empty, no query is issued."
 
 ---
 
-### Task 40: Integration harness asserts the v4 destination and funnel shapes
+### Task 41: Integration harness asserts the v4 destination and funnel shapes
 
 Covers the Workstream 1 row `apps/integration-harness/src/public-v1.test.ts` — "Assert the new destination fields; assert the full key set rather than the three sampled paths at `:41-46`".
 
-> **IMPLEMENTER NOTE — this task's runtime assertions cannot go green locally.** `apps/integration-harness` talks to a **live** API (`https://api-uat.goldenhippo.io` by default, `X-GH-Key` header, `X-GH-Brand: Gundry MD` — see the existing `get()` at `:17-30`). The new `id` / `funnelId` / `url` / step-`id` fields only exist on the wire once **Task 38** (identity pass-through + Zod schema + `^4.0.0` pin) and **Task 39** (interim SOQL URL lookup) are merged **and deployed to UAT**. Until then Step 2's run fails with a key-set diff, and that failure *is* the point of Step 2 — it is the pre-deploy red. The green re-run is Step 7, which you come back to after the commerce deploy. Everything in between (Steps 3–6) is real, committable work that passes today: the compile-time half of the contract, wired into `pnpm typecheck` so CI enforces it on every PR whether or not a UAT key is present.
+> **IMPLEMENTER NOTE — this task's runtime assertions cannot go green locally.** `apps/integration-harness` talks to a **live** API (`https://api-uat.goldenhippo.io` by default, `X-GH-Key` header, `X-GH-Brand: Gundry MD` — see the existing `get()` at `:17-30`). The new `id` / `funnelId` / `url` / step-`id` fields only exist on the wire once **Task 39** (identity pass-through + Zod schema + `^4.0.0` pin) and **Task 40** (interim SOQL URL lookup) are merged **and deployed to UAT**. Until then Step 2's run fails with a key-set diff, and that failure *is* the point of Step 2 — it is the pre-deploy red. The green re-run is Step 7, which you come back to after the commerce deploy. Everything in between (Steps 3–6) is real, committable work that passes today: the compile-time half of the contract, wired into `pnpm typecheck` so CI enforces it on every PR whether or not a UAT key is present.
 >
 > The suite is gated by `const describeIf = KEY ? describe : describe.skip;` (`:15`), so with no `HIPPO_SHOP_KEY` in the environment the network tests skip and CI stays green — that behaviour is preserved exactly, and Step 5 verifies it.
 
@@ -9883,7 +9967,7 @@ describeIf('public/v1 — UAT E2E', () => {
     expect(dest.funnelId, 'destination.funnelId').toBeTypeOf('string');
     expect(dest.funnelId.length, 'destination.funnelId is blank').toBeGreaterThan(0);
 
-    // Cluster G navigation target. `null` is a valid, expected value: Task 39 degrades to
+    // Cluster G navigation target. `null` is a valid, expected value: Task 40 degrades to
     // null when Salesforce has no URL, when the SOQL lookup fails, and while the sObject
     // name is unconfigured. What is *not* acceptable is a non-absolute string.
     const url = dest.url;
@@ -10125,7 +10209,7 @@ the commerce identity pass-through and destination-URL lookup are deployed."
 
 - [ ] **Step 8: After the commerce deploy, re-run against UAT to verify it passes**
 
-Do not run this until the Task 38 and Task 39 commits are merged on `prerelease` **and** deployed to UAT.
+Do not run this until the Task 39 and Task 40 commits are merged on `prerelease` **and** deployed to UAT.
 
 ```bash
 cd /Users/stevenhall/Code/hippo-shop && \
@@ -10135,20 +10219,20 @@ cd /Users/stevenhall/Code/hippo-shop && \
 
 Expected: `Test Files  1 passed (1)` / `Tests  5 passed (5)`.
 
-If `destination.url` comes back `null`, the test still passes — that is Task 39's documented degradation and cannot be distinguished from "Salesforce has none" at this layer. Confirm the URL is actually populated by reading one response body directly rather than by trusting a green run:
+If `destination.url` comes back `null`, the test still passes — that is Task 40's documented degradation and cannot be distinguished from "Salesforce has none" at this layer. Confirm the URL is actually populated by reading one response body directly rather than by trusting a green run:
 
 ```bash
 curl -s -H "X-GH-Key: <uat publishable key>" -H "X-GH-Brand: Gundry MD" \
   https://api-uat.goldenhippo.io/public/v1/destination/bio-complete-3-6btl-sub | python3 -m json.tool
 ```
 
-A `null` here after the deploy means the `DESTINATION_URL_SOBJECT` value in `DestinationUrl.config.ts` is still empty or wrong — see the open input on Task 39.
+A `null` here after the deploy means the `DESTINATION_URL_SOBJECT` value in `DestinationUrl.config.ts` is still empty or wrong — see the open input on Task 40.
 
 
 ---
 
 
-### Task 41: Documentation for the v4 surface
+### Task 42: Documentation for the v4 surface
 
 > **Locate edits by the quoted text, not by line number.** Every line citation in this task is against the *pristine* file; the task's own earlier steps shift them (Step 2 is +1, Step 3 is +2, Step 4 is +4, and so on cumulatively). Each quoted anchor is unique within its file, so search for it rather than seeking to a line.
 
@@ -10161,7 +10245,7 @@ Covers the `Docs` row of Workstream 1 and the "Reconcile the routing doc" item o
 - Modify: `/Users/stevenhall/Code/hippo-shop/docs/architecture/kong-public-routing.md` (header line 3; diagram lines 7–18; Service table `Path` row line 62; Route table `Strip Path` row line 75 and `Path Handling` row line 77; new section after the Route table which ends line 77; new section before `## Verification` at line 192; smoke test lines 234–263)
 
 **Interfaces:**
-- Consumes (documents, does not define): `window.gh.checkoutUrl(slug: string): Promise<string>` (Task 16); `window.gh.track(eventType: 'Page View'): Promise<void>` (Tasks 24–25); `window.gh.session.id(): string | undefined`; `window.gh.session.params(): ParsedParams | null`; `SESSION_ID_PATTERN: RegExp` = `/^[A-Za-z0-9._-]{1,128}$/` and `readSessionIdFromUrl(search: string): string | null` (Task 2); `SESSION_COOKIE_NAME: 'hippo_session_id'` (Task 5); `STEP_ATTR = 'data-gh-step'` / `FUNNEL_ID_ATTR = 'data-gh-funnel-id'` (Task 23); `HippoShopDestinationDTO.{id, funnelId, url}` and `HippoShopFunnelStepDTO.id` (Task 12); `GhConfig.{checkoutBase, cookieDomain}` (`packages/sdk/src/config.ts:12-15`); `PUBLIC_SDK_PATH_PREFIX = '/hippo-shop/'` (`errorHandler.middleware.ts:15`); `HippoShopController.basePath = 'hippo-shop'` (`HippoShop.controller.ts:12`)
+- Consumes (documents, does not define): `window.gh.checkoutUrl(slug: string): Promise<string>` (Task 16); `window.gh.track(eventType: 'Page View'): Promise<void>` (Tasks 24–25); `window.gh.session.id(): string | undefined`; `window.gh.session.params(): ParsedParams | null`; `SESSION_ID_PATTERN: RegExp` = `/^[A-Za-z0-9._-]{1,128}$/` and `readSessionIdFromUrl(search: string): string | null` (Task 2); `SESSION_COOKIE_NAME: 'hippo_session_id'` (Task 5); `STEP_ATTR = 'data-gh-step'` / `FUNNEL_ID_ATTR = 'data-gh-funnel-id'` (Task 24); `HippoShopDestinationDTO.{id, funnelId, url}` and `HippoShopFunnelStepDTO.id` (Task 12); `GhConfig.{checkoutBase, cookieDomain}` (`packages/sdk/src/config.ts:12-15`); `PUBLIC_SDK_PATH_PREFIX = '/hippo-shop/'` (`errorHandler.middleware.ts:15`); `HippoShopController.basePath = 'hippo-shop'` (`HippoShop.controller.ts:12`)
 - Produces: three new link anchors that other docs point at — `packages/sdk/README.md#session-attribution-and-events`, `packages/sdk/SPEC.md#session-identity-and-inbound-sessionid`, and `packages/sdk/SPEC.md#write-calls-session-and-funnel-events`. No code.
 
 - [ ] **Step 1: Confirm the four documents still describe the v3 surface**
@@ -11269,20 +11353,20 @@ Covers the `Docs` row of Workstream 1 and the "Reconcile the routing doc" item o
 
 ---
 
-### Task 42: ROADMAP correction, and ship as one PR superseding #17
+### Task 43: ROADMAP correction, and ship as one PR superseding #17
 
 **Files:**
 - Modify: `/Users/stevenhall/Code/hippo-shop/ROADMAP.md` — delete the Cluster F entry (lines 39–48 plus its trailing blank line 49) from `## Done`; add a Cluster G entry to `## Open items`
 - Modify: `/Users/stevenhall/Code/hippo-shop/docs/superpowers/specs/2026-08-18-cluster-g-superfunnel-pilot-design.md` — lines 334 and 346, the `ROADMAP.md:98` citation
 - Modify: `/Users/stevenhall/Code/hippo-shop/docs/superpowers/plans/2026-08-18-cluster-g-superfunnel-pilot.md` — line 19, the same citation (this commit also adds the plan file itself if no earlier task tracked it)
 - Create: `/tmp/cluster-g-pr-body.md` — PR body, deliberately outside the repo, not committed
-- Test: none. Prose and repo state; verified by `grep`, `git ls-tree`, and `gh pr view`, as in Task 27.
+- Test: none. Prose and repo state; verified by `grep`, `git ls-tree`, and `gh pr view`, as in Task 28.
 
 **Interfaces:**
 - Consumes: every prior task's commits on `feat/cluster-g-superfunnel-pilot`; PR #17 (`OPEN`, draft, `feat/cluster-f-session-utm-checkout-handoff` → `main`)
 - Produces: one PR `feat/cluster-g-superfunnel-pilot` → `main` on `GoldenHippoMedia/hippo-shop`; PR #17 `CLOSED` with a superseding comment; `ROADMAP.md` carrying zero Cluster F entries and one `Status: in-progress` Cluster G entry
 
-**Decision — fold F into G rather than move it back to Open.** Two entries would imply two pickups. There is only one: `feat/cluster-g-superfunnel-pilot` is branched off F, so F's commits reach `main` inside this PR, corrected, and Task 32 already deleted F's two changesets. Every acceptance criterion an F backlog entry would carry (`subId1='fb'`, `session_id`, the `sessionId` cookie, the `connect.sid` gate) is a behaviour Cluster G replaces — restoring it to Open would restore a spec that is known wrong. Note the two divergent copies this collapses: `origin/main:ROADMAP.md:35` still lists Cluster F as `Status: idea` under Open items, while the branch copy (commits `369de0e`, `9bd587a`) claims `done`. Merging this PR resolves both to a single Cluster G entry.
+**Decision — fold F into G rather than move it back to Open.** Two entries would imply two pickups. There is only one: `feat/cluster-g-superfunnel-pilot` is branched off F, so F's commits reach `main` inside this PR, corrected, and Task 33 already deleted F's two changesets. Every acceptance criterion an F backlog entry would carry (`subId1='fb'`, `session_id`, the `sessionId` cookie, the `connect.sid` gate) is a behaviour Cluster G replaces — restoring it to Open would restore a spec that is known wrong. Note the two divergent copies this collapses: `origin/main:ROADMAP.md:35` still lists Cluster F as `Status: idea` under Open items, while the branch copy (commits `369de0e`, `9bd587a`) claims `done`. Merging this PR resolves both to a single Cluster G entry.
 
 - [ ] **Step 1: Pre-flight — `hippo-shop` tree is clean, on the right branch, with Tasks 1–41 committed**
 
@@ -11290,7 +11374,7 @@ Covers the `Docs` row of Workstream 1 and the "Reconcile the routing doc" item o
   cd /Users/stevenhall/Code/hippo-shop && git branch --show-current && git status --porcelain && git ls-files --error-unmatch packages/sdk/src/events.ts packages/sdk/src/session.ts packages/sdk/src/checkout.ts packages/sdk/src/url-params.ts packages/sdk/test/helpers/cookie-jar.ts .changeset/cluster-g-sdk-superfunnel-pilot.md .changeset/cluster-g-types-destination-identity.md > /dev/null && echo "tracked OK" && ls .changeset/cluster-f-* 2>/dev/null; echo "cluster-f changesets: $(ls .changeset/cluster-f-* 2>/dev/null | wc -l | tr -d ' ')"
   ```
 
-  Expect `feat/cluster-g-superfunnel-pilot`, then **no output** from `git status --porcelain` (an unstaged file here means a prior task did not commit — stop and finish it), then `tracked OK`, then `cluster-f changesets: 0` (Task 32 removed them). If `git ls-files --error-unmatch` errors with `did not match any file(s) known to git`, the named task did not run.
+  Expect `feat/cluster-g-superfunnel-pilot`, then **no output** from `git status --porcelain` (an unstaged file here means a prior task did not commit — stop and finish it), then `tracked OK`, then `cluster-f changesets: 0` (Task 33 removed them). If `git ls-files --error-unmatch` errors with `did not match any file(s) known to git`, the named task did not run.
 
 - [ ] **Step 2: Pre-flight — the commerce worktree is clean and on its own branch**
 
@@ -11582,6 +11666,14 @@ Two acceptance steps that unit tests cannot replace:
 1. **UAT reconciliation.** Emit a known number of `Page View` events for a fixed session id and count the rows that actually land in Salesforce. There is no validation anywhere on that path — the proxy forwards the body verbatim and Salesforce triggers drop unrecognised input silently — so a `200` through the whole chain is **not** evidence the row landed.
 2. **End-to-end handoff.** Land on a `sf.brand.com` page with `?sessionid=<known>` plus UTM parameters. Confirm: the cookie is written at `.brand.com`; the POST body carries the id inside `affParameters`; clicking an offer navigates to the destination URL; the same id arrives as `?sessionid=` and is adopted rather than re-minted.
 
-## Known open input
+## Resolved inputs
 
-**Task 39's SOQL object name.** The URL field is confirmed as `TouchCRBase__Full_Generic_URL__c`. The sObject is inferred to be `TouchCRBase__Destination__c` from the lookup field of that name on `Campaign` (`Campaign.service.ts:52`), but destinations reach the service through an Apex REST route rather than SOQL, so nothing in either repo confirms it. A wrong object name is a runtime `INVALID_TYPE` on every destination request — six per offer-selector page load. Confirm before running that task.
+Both questions the spec left open are now answered by the repo owner; recorded here because the reasoning is not recoverable from the code.
+
+**Destination SOQL object and field (Task 40).** Object `TouchCRBase__Destination__c`, field `TouchCRBase__Full_Generic_URL__c`. Neither is derivable from either repository — destinations reach the commerce service through an Apex REST route rather than SOQL, so nothing there names the sObject. Both live in `DestinationUrl.config.ts` so a rename is a one-line change, and an empty value still degrades to `url: null` rather than erroring.
+
+**Altern brand vocabulary (Task 20).** Altern reads the **payload** `brand` field, not the `X-Brand` header. It expects the `BRAND_NAME` token (`gundry`), not the public display name (`Gundry MD`). Kong cannot fix this at the edge: `rename.headers` changes a header key, not a JSON body value, and `replace.body` would mean per-consumer body rewriting on a route every brand shares. So the SDK carries it as `data-brand-token`, and a page that omits the attribute falls back to `data-brand` — which will not match what Altern expects, so it must be set wherever funnel events matter.
+
+## Still outside this plan
+
+**Kong configuration**, owned by Steven. The plan assumes but does not create: `POST` on the session and funnel-event routes, `cors.credentials` with the Superfunnel origin listed explicitly, an elevated rate tier (an offer-selector page load costs ~8 requests against a 60/min per-consumer bucket), and the `/sdk/v4/*` route plus the `gh-hippo-shop-sdk-v4` Cloudflare Pages project — which must exist **before** the SDK publishes, since the v3 cut failed on exactly that. A configuration guide covering all of it is the final deliverable, written once implementation is complete.
