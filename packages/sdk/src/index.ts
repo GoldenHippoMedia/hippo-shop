@@ -99,6 +99,9 @@ export function boot(doc: Document = document, win: Window = window): boolean {
   // resolved, so any captured reference kept the un-attributed stub forever.
   const sessionPromise = ensureSession(config, client).catch(() => undefined);
   root.__sessionPromise = sessionPromise;
+  // The runtime's checkout bind pass gets this same promise — one session
+  // promise for the whole page, never a second fabricated one.
+  runtime.setSessionPromise(sessionPromise);
 
   root.checkoutUrl = makeCheckoutUrlFn({
     config,

@@ -41,10 +41,26 @@ export class GhRuntime {
   private lastStepSlug: string | null | undefined = undefined;
   private readonly doc: Document;
   private readonly win: Window;
+  /**
+   * The boot-time session promise, handed over by `boot()` right after
+   * `ensureSession` is invoked. Until then it is an already-settled promise,
+   * which is the honest value for the direct-construction path (tests,
+   * embedders) where no session resolution is pending at all.
+   */
+  private sessionPromise: Promise<unknown> = Promise.resolve();
 
   constructor(private readonly opts: RuntimeOptions) {
     this.doc = opts.doc ?? document;
     this.win = opts.win ?? window;
+  }
+
+  /**
+   * Hand the runtime the boot-time session promise, so every checkout bind
+   * pass carries the real promise rather than a fabricated resolved one.
+   * Called once, by `boot()`.
+   */
+  setSessionPromise(promise: Promise<unknown>): void {
+    this.sessionPromise = promise;
   }
 
   /**
@@ -86,12 +102,14 @@ export class GhRuntime {
 
     // Cluster G: also bind [data-gh-checkout] elements. `getSession` is a live
     // read — bindOne holds links at href="#" until the session resolves, and
-    // the gh:session-ready rebind fills them in. The DOM pass never awaits
-    // sessionPromise, so an already-resolved promise is the honest value here.
+    // the gh:session-ready rebind fills them in. `sessionPromise` is boot's
+    // own promise, handed over by setSessionPromise — the synchronous DOM
+    // pass does not await it, but anything reading it back off these options
+    // must get the real one, not a fabricated resolved stand-in.
     applyCheckoutBindings(target, {
       config: this.opts.config,
       getSession: () => getSessionState(),
-      sessionPromise: Promise.resolve(),
+      sessionPromise: this.sessionPromise,
       getDestination: (slug) => this.getCachedDestination(slug),
       ensureDestination: (slug) => this.ensureDestination(slug),
       logger: this.opts.logger,

@@ -88,11 +88,11 @@ Pre-existing query keys on the base URL are preserved; SDK-added keys do not clo
 - `data-checkout-base="https://checkout.brand.com"` — required if any page on this brand uses `[data-gh-checkout]` or `gh.checkoutUrl()` without per-destination overrides. Optional otherwise.
 - `data-cookie-domain=".brand.com"` — optional explicit override for the brand's root cookie domain. When absent, the SDK auto-detects via the safe-TLD allowlist: `com, net, org, io, app, dev, ai, co, us, store, shop`. Multi-part TLDs (`.co.uk`, `.com.au`) require this attribute.
 
-### `window.gh.checkoutUrl(slug: string): string`
+### `window.gh.checkoutUrl(slug: string): Promise<string>`
 
-Returns the composed checkout URL for the destination identified by `slug`, without navigating. Throws if the destination is not yet cached or if no base URL is configured.
+Resolves to the composed destination URL for `slug`, without navigating. Awaits session resolution and loads the destination if it is not yet cached, so it never resolves to an unattributed URL. Rejects with `GhError('not_found')` when the destination cannot be loaded and `GhError('config')` when no base URL resolves for it.
 
-**Important — closure-capture gotcha:** Always call `window.gh.checkoutUrl(slug)` directly on each use. Do NOT cache the function reference, e.g., `const fn = window.gh.checkoutUrl; fn('slug')`. The SDK swaps the underlying closure when the session resolves so subsequent calls pick up the real `session_id` — a cached reference would keep returning URLs with an empty `session_id` indefinitely.
+The function identity is stable for the life of the page and reads live session state, so caching the reference (`const fn = window.gh.checkoutUrl`) is safe. One accepted cost of the async signature: `window.open(await gh.checkoutUrl(slug))` inside a click handler breaks the user-gesture chain and will be popup-blocked — assign `window.location.href` instead.
 
 ### `window.gh.session.id(): string | undefined`
 
@@ -158,7 +158,7 @@ Surface on `window.gh`:
 - `window.gh.bind(root?: Element | Document): Promise<void>` — manually trigger a binding pass against a subtree. Resolves after the post-fetch pass.
 - `window.gh.refresh(): Promise<void>` — clear the resource cache and the lifecycle-state map, then rebind the document. Equivalent to `bind(document)` after a cache wipe.
 - `window.gh.format` — the `FormatRegistry` for registering custom formatters and applying them programmatically.
-- `window.gh.checkoutUrl(slug: string): string` — returns the composed checkout URL for the destination identified by `slug`, without navigating. Throws if the destination is not yet cached or if no base URL is configured. See [Checkout handoff](#checkout-handoff) for the closure-capture gotcha.
+- `window.gh.checkoutUrl(slug: string): Promise<string>` — resolves to the composed destination URL for `slug`, without navigating. Awaits session resolution and loads the destination if needed. The function identity is stable and safe to cache.
 - `window.gh.session.id(): string | undefined` — returns the current `sessionId` cookie value, or `undefined` if `gh:session-ready` hasn't fired yet.
 - `window.gh.session.params(): ParsedParams | null` — returns the session parameters parsed from the landing URL and posted to `/public/v1/session` during this visit.
 - `window.gh.debug` — `true` when the SDK booted with `data-debug="true"`. Absent otherwise.
