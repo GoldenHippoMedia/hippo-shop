@@ -39,6 +39,7 @@ describe('parseScriptConfig', () => {
       apiBaseUrl: 'https://api-prod.goldenhippo.io',
       checkoutBase: null,
       cookieDomain: null,
+      brandToken: null,
     });
   });
 
@@ -108,5 +109,38 @@ describe('parseScriptConfig', () => {
   it('returns null cookieDomain when data-cookie-domain is absent', () => {
     const s = makeScript({ key: goodKey, brand: 'Gundry MD', src: goodSrc });
     expect(parseScriptConfig(s).cookieDomain).toBeNull();
+  });
+
+  it('reads data-brand-token when present', () => {
+    const s = makeScript({
+      key: goodKey,
+      brand: 'Gundry MD',
+      'brand-token': 'gundry',
+      src: goodSrc,
+    });
+    expect(parseScriptConfig(s).brandToken).toBe('gundry');
+  });
+
+  it('is null when data-brand-token is absent — brand is NOT a fallback here', () => {
+    const s = makeScript({ key: goodKey, brand: 'Gundry MD', src: goodSrc });
+    expect(parseScriptConfig(s).brandToken).toBeNull();
+  });
+
+  it('trims and treats whitespace-only as absent', () => {
+    const trimmed = makeScript({
+      key: goodKey,
+      brand: 'Gundry MD',
+      'brand-token': '  gundry  ',
+      src: goodSrc,
+    });
+    expect(parseScriptConfig(trimmed).brandToken).toBe('gundry');
+
+    const blank = makeScript({
+      key: goodKey,
+      brand: 'Gundry MD',
+      'brand-token': '   ',
+      src: goodSrc,
+    });
+    expect(parseScriptConfig(blank).brandToken).toBeNull();
   });
 });

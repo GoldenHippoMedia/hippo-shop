@@ -13,6 +13,14 @@ export interface GhConfig {
   checkoutBase: string | null;
   /** Explicit cookie domain (e.g., `.gundrymd.com`). `null` triggers auto-detect at cookie-write time. */
   cookieDomain: string | null;
+  /**
+   * Brand token for the funnel-event payload's `brand` field, e.g. `gundry`.
+   * Deliberately separate from `brand` (`Gundry MD`): Altern reads the payload
+   * field, and it expects the BRAND_NAME token vocabulary, not the display name.
+   * `null` when `data-brand-token` is absent — the emitter then falls back to
+   * `brand` and the value may not match what Altern expects.
+   */
+  brandToken: string | null;
 }
 
 const KEY_PATTERN = /^gh_pk_[a-z0-9_-]+_[a-f0-9]+$/;
@@ -53,6 +61,7 @@ export function parseScriptConfig(script: HTMLScriptElement): GhConfig {
 
   const checkoutBase = (script.dataset['checkoutBase'] ?? '').trim() || null;
   const cookieDomain = (script.dataset['cookieDomain'] ?? '').trim() || null;
+  const brandToken = (script.dataset['brandToken'] ?? '').trim() || null;
 
   return {
     key,
@@ -61,6 +70,7 @@ export function parseScriptConfig(script: HTMLScriptElement): GhConfig {
     apiBaseUrl: parsed.origin,
     checkoutBase,
     cookieDomain,
+    brandToken,
   };
 }
 
