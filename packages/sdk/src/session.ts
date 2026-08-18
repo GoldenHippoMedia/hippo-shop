@@ -49,6 +49,39 @@ export function getSessionState(): SessionState | null {
 }
 
 /**
+ * Drops keys whose value is null, undefined, or whitespace-only.
+ *
+ * `affParameters` is destructive-on-write: the backend treats every key
+ * present in the body as authoritative, so posting `utmSource: ''` blanks a
+ * real stored value. Empty means omitted, never `""` (spec D3).
+ */
+export function pruneEmpty(
+  input: Record<string, string | null | undefined>,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(input)) {
+    if (value === null || value === undefined) continue;
+    if (value.trim() === '') continue;
+    out[key] = value;
+  }
+  return out;
+}
+
+/**
+ * Builds the POST /public/v1/session request body.
+ *
+ * `sessionId` is nested *inside* `affParameters` because the API lifts
+ * `req.body.affParameters.sessionId` into the server-side session — a
+ * top-level key is ignored (spec D4). An absent id is omitted entirely.
+ */
+export function buildSessionPostBody(
+  params: ParsedParams,
+  sessionId: string,
+): { affParameters: Record<string, string> } {
+  return { affParameters: pruneEmpty({ ...params, sessionId }) };
+}
+
+/**
  * Mint a session id as an RFC-4122 v4 UUID, matching the funnel app's
  * `generateUniqueSessionId` (`hippo-builder-funnel` session.service.ts:164-184).
  *
