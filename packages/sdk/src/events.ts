@@ -727,41 +727,30 @@ export function makeTrackFn(
   };
 }
 
-/**
- * Resolve identity from the live DOM, then emit once. Never throws.
- *
- * The identity resolution and the emit path are wrapped in one try/catch
- * here — the single choke point both the timer-driven `fire()` path (called
- * `void`, so a rejection would otherwise surface as an unhandled promise
- * rejection) and the awaited `gh.track` escape hatch (where a rejection
- * would propagate to caller code) funnel through. `resolveEventIdentity`
- * invokes the caller-supplied `getDestination`/`getFunnel` callbacks
- * unguarded (Task 22–24 carry-forward) — a third-party page's own bug in one
- * of those must degrade to "no Page View this load", never break the page.
- */
+/** Resolve identity from the live DOM, then emit once. Never throws — see the guard note in the body. */
 async function runPageView(opts: PageViewEmitterOptions): Promise<void> {
-  const session = opts.getSession();
-  if (!session) {
-    if (opts.config.debug) {
-      opts.logger.warn('funnel-event: session unresolved — Page View not emitted');
-    }
-    return;
-  }
-
+  // The WHOLE body is one try/catch, from `getSession()` down. This is the
+  // single choke point both the timer-driven `fire()` path (called `void`, so
+  // a rejection would otherwise surface as an unhandled promise rejection)
+  // and the awaited `gh.track` escape hatch (where a rejection would
+  // propagate into caller code) funnel through. `getSession`/`ensureDestination`
+  // are internal SDK closures and safe by construction, but
+  // `resolveEventIdentity` (Task 22-24 carry-forward) calls the caller-facing
+  // `getDestination`/`getFunnel` unguarded — a third-party page's own bug in
+  // one of those must degrade to "no Page View this load", never break the
+  // page, so nothing in this function is allowed to sit outside the guard.
   try {
+    const session = opts.getSession();
+    if (!session) {
+      if (opts.config.debug) {
+        opts.logger.warn('funnel-event: session unresolved — Page View not emitted');
+      }
+      return;
+    }
+
     // Identity comes from a destination binding; with the collectResources
     // fix the DTO is normally already cached by gh:bindings-ready. This
     // covers the deadline path and `gh.track` on a cold page.
-    //
-    // Everything from here down — including this `getDestination` probe — is
-    // one try/catch. `getDestination`/`getFunnel` are caller-supplied and
-    // resolveEventIdentity (Task 22-24) calls them unguarded; this is the
-    // single choke point both the timer-driven `fire()` path (called `void`,
-    // so a rejection would otherwise surface as an unhandled promise
-    // rejection) and the awaited `gh.track` escape hatch (where a rejection
-    // would propagate into caller code) funnel through. A third-party page's
-    // bug in one of those callbacks must degrade to "no Page View this
-    // load", never break the page.
     const slug = firstDestinationSlug(opts.doc);
     if (slug && !opts.getDestination(slug)) {
       try {
