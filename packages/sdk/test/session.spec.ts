@@ -38,31 +38,46 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+const UUID_V4_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
 describe('generateSessionId', () => {
-  it('returns a 12-character string for current epoch milliseconds', () => {
+  it('returns an RFC-4122 v4 UUID', () => {
     const id = generateSessionId();
-    expect(id).toMatch(/^\d{12}$/);
-    expect(id.length).toBe(12);
+    expect(id).toMatch(UUID_V4_RE);
+    expect(id.length).toBe(36);
   });
 
-  it('produces the expected output for a fixed (Date.now, Math.random) pair', () => {
-    // Lock Date.now() to a known value (epoch ms ~1.7e12) and Math.random() to 0.5.
-    // ceil(1747449600000 * 0.5) = 873724800000 — 12 digits exactly.
-    vi.spyOn(Date, 'now').mockReturnValue(1747449600000);
-    vi.spyOn(Math, 'random').mockReturnValue(0.5);
-    expect(generateSessionId()).toBe('873724800000');
+  it('returns a different id on each call', () => {
+    expect(generateSessionId()).not.toBe(generateSessionId());
   });
 
-  it('pads with YYYYMMDD when the random number is shorter than 12 digits', () => {
-    // Choose Date.now and Math.random so that ceil(now * random) produces a
-    // SHORT base (triggers padding) but base + YYYYMMDD reaches >=12 chars.
-    // ceil(100000000 * 0.001) = 100000 (6 chars). +8 (YYYYMMDD) = 14 chars.
-    // sliced to 12 = '100000YYYYMM' or similar (12 chars, prefix '100000').
-    vi.spyOn(Date, 'now').mockReturnValue(100_000_000);
-    vi.spyOn(Math, 'random').mockReturnValue(0.001);
-    const id = generateSessionId();
-    expect(id.length).toBe(12);
-    expect(id.startsWith('100000')).toBe(true);
+  it('delegates to crypto.randomUUID when it exists', () => {
+    const randomUUID = vi.fn().mockReturnValue('11111111-2222-4333-8444-555555555555');
+    vi.stubGlobal('crypto', {
+      randomUUID,
+      getRandomValues: () => {
+        throw new Error('getRandomValues must not be called when randomUUID exists');
+      },
+    });
+    expect(generateSessionId()).toBe('11111111-2222-4333-8444-555555555555');
+    expect(randomUUID).toHaveBeenCalledOnce();
+  });
+
+  it('falls back to a getRandomValues v4 when randomUUID is unavailable', () => {
+    vi.stubGlobal('crypto', {
+      getRandomValues: (buf: Uint8Array) => {
+        buf.fill(0xff);
+        return buf;
+      },
+    });
+    // All-0xff bytes with the version/variant bits forced: byte 6 -> 0x4f, byte 8 -> 0xbf.
+    expect(generateSessionId()).toBe('ffffffff-ffff-4fff-bfff-ffffffffffff');
+    expect(generateSessionId()).toMatch(UUID_V4_RE);
+  });
+
+  it('throws when neither randomUUID nor getRandomValues exists', () => {
+    vi.stubGlobal('crypto', undefined);
+    expect(() => generateSessionId()).toThrow(/no Web Crypto available/);
   });
 });
 
@@ -118,7 +133,7 @@ describe('ensureSession', () => {
 
     const state = await ensureSession(makeConfig(), client);
 
-    expect(state.sessionId).toMatch(/^\d{12}$/);
+    expect(state.sessionId).toMatch(UUID_V4_RE);
     expect(state.params).toMatchObject({
       utmSource: 'fb',
       subId1: 'fb',
@@ -156,7 +171,7 @@ describe('ensureSession', () => {
     postSpy.mockRejectedValueOnce(new Error('network blew up'));
     const state = await ensureSession(makeConfig(), client);
     expect(state.hasConnectSid).toBe(false);
-    expect(state.sessionId).toMatch(/^\d{12}$/);
+    expect(state.sessionId).toMatch(UUID_V4_RE);
     expect(state.params).not.toBeNull(); // params still captured locally
   });
 
@@ -167,7 +182,7 @@ describe('ensureSession', () => {
     expect(handler).toHaveBeenCalledOnce();
     const event = handler.mock.calls[0][0] as CustomEvent;
     expect(event.detail).toMatchObject({
-      sessionId: expect.stringMatching(/^\d{12}$/),
+      sessionId: expect.stringMatching(UUID_V4_RE),
       hasConnectSid: true,
     });
   });
@@ -207,6 +222,6 @@ describe('getSessionState', () => {
     client.postJson = vi.fn().mockResolvedValue({}) as never;
     await ensureSession(makeConfig(), client);
     expect(getSessionState()).not.toBeNull();
-    expect(getSessionState()?.sessionId).toMatch(/^\d{12}$/);
+    expect(getSessionState()?.sessionId).toMatch(UUID_V4_RE);
   });
 });
