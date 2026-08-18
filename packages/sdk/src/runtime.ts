@@ -81,11 +81,14 @@ export class GhRuntime {
       resourceStates: this.resourceStates,
     });
 
-    // Cluster F: also bind [data-gh-checkout] elements.
-    const session = getSessionState() ?? { sessionId: '', adopted: false, params: {} };
+    // Cluster G: also bind [data-gh-checkout] elements. `getSession` is a live
+    // read — bindOne holds links at href="#" until the session resolves, and
+    // the gh:session-ready rebind fills them in. The DOM pass never awaits
+    // sessionPromise, so an already-resolved promise is the honest value here.
     applyCheckoutBindings(target, {
       config: this.opts.config,
-      session,
+      getSession: () => getSessionState(),
+      sessionPromise: Promise.resolve(),
       getDestination: (slug) => this.getCachedDestination(slug),
       ensureDestination: (slug) => this.ensureDestination(slug),
       logger: this.opts.logger,

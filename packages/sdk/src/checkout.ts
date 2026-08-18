@@ -151,7 +151,18 @@ const BOUND_FLAG = 'ghCheckoutBound';
 
 export interface CheckoutBindingsOptions {
   config: GhConfig;
-  session: SessionState;
+  /**
+   * Live read of session state — `null` until `ensureSession` resolves.
+   * A thunk rather than a snapshot: one stable identity always reads current
+   * state, so nothing can hold a pre-resolve, un-attributed session.
+   */
+  getSession: () => SessionState | null;
+  /**
+   * Resolves when `ensureSession` has settled. `makeCheckoutUrlFn` awaits it;
+   * the synchronous DOM pass does not — `bindOne` holds links at `href="#"`
+   * and the `gh:session-ready` rebind fills them in.
+   */
+  sessionPromise: Promise<unknown>;
   /** Resolve a destination slug to its cached DTO, or null if not yet loaded. */
   getDestination: (slug: string) => HippoShopDestinationDTO | null;
   /** Trigger a fetch for a destination if not yet loaded. Returns when loaded. */
@@ -189,7 +200,7 @@ export function applyCheckoutBindings(
 function bindOne(el: HTMLElement, slug: string, opts: CheckoutBindingsOptions): void {
   const destination = opts.getDestination(slug);
   if (!destination) {
-    // Stub href until destination loads; trigger the load.
+    // Stub href until the destination loads; trigger the load.
     if (el instanceof HTMLAnchorElement) el.setAttribute('href', '#');
     opts
       .ensureDestination(slug)
@@ -199,9 +210,19 @@ function bindOne(el: HTMLElement, slug: string, opts: CheckoutBindingsOptions): 
     return;
   }
 
+  // Session unresolved: hold the link inert rather than emitting a
+  // syntactically valid URL with `sessionid` and every UTM silently missing.
+  // The `gh:session-ready` rebind fills it in.
+  const session = opts.getSession();
+  if (!session) {
+    if (el instanceof HTMLAnchorElement) el.setAttribute('href', '#');
+    opts.logger.debug(`checkout: session unresolved — holding "${slug}" at href="#"`);
+    return;
+  }
+
   let url: string;
   try {
-    url = composeCheckoutUrl(destination, opts.config, opts.session);
+    url = composeCheckoutUrl(destination, opts.config, session);
   } catch (err) {
     opts.logger.warn(`checkout: cannot compose URL for "${slug}"`, err);
     if (el instanceof HTMLAnchorElement) el.setAttribute('href', '#');

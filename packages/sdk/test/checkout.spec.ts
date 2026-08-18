@@ -317,7 +317,8 @@ describe('applyCheckoutBindings', () => {
   function makeOptions(overrides: Partial<CheckoutBindingsOptions> = {}): CheckoutBindingsOptions {
     return {
       config: makeConfig(),
-      session: makeSession(),
+      getSession: () => makeSession(),
+      sessionPromise: Promise.resolve(),
       getDestination: () => makeDestination(),
       ensureDestination: () => Promise.resolve(),
       logger: { debug: () => {}, warn: () => {}, error: () => {} },
@@ -325,16 +326,64 @@ describe('applyCheckoutBindings', () => {
     };
   }
 
-  it('writes href on <a data-gh-checkout> when destination is available', () => {
+  beforeEach(() => {
+    setSearch('');
+  });
+
+  it('writes href on <a data-gh-checkout> when destination and session are available', () => {
     setupDom('<a data-gh-checkout="bio3-3p-sub" href="#">Buy</a>');
     applyCheckoutBindings(document, makeOptions());
     const a = document.querySelector<HTMLAnchorElement>('a[data-gh-checkout]')!;
     expect(a.getAttribute('href')).toMatch(/^https:\/\/checkout\.gundrymd\.com\/\?/);
     expect(a.getAttribute('href')).toContain('order_form_id=OF_123');
-    expect(a.getAttribute('href')).toContain('session_id=3f6b2c11-1c2a-4b1d-9f0a-77c1d2e3f455');
+    expect(a.getAttribute('href')).toContain('sessionid=174710238129');
   });
 
-  it('sets href to "#" and triggers ensureDestination when destination not yet loaded', () => {
+  it('leaves href="#" while the session is unresolved — never a params-less URL', () => {
+    setupDom('<a data-gh-checkout="bio3-3p-sub" href="">Buy</a>');
+    applyCheckoutBindings(document, makeOptions({ getSession: () => null }));
+    const a = document.querySelector<HTMLAnchorElement>('a[data-gh-checkout]')!;
+    expect(a.getAttribute('href')).toBe('#');
+    expect(a.getAttribute('href')).not.toContain('order_form_id');
+  });
+
+  it('does not bind a click handler on non-<a> elements while the session is unresolved', () => {
+    setupDom('<button data-gh-checkout="bio3-3p-sub">Buy</button>');
+    applyCheckoutBindings(document, makeOptions({ getSession: () => null }));
+    const button = document.querySelector<HTMLButtonElement>('button[data-gh-checkout]')!;
+    expect(button.dataset['ghCheckoutBound']).toBeUndefined();
+    expect(button.dataset['ghCheckoutUrl']).toBeUndefined();
+  });
+
+  it('fills the href in on a later pass once the session has resolved', () => {
+    setupDom('<a data-gh-checkout="bio3-3p-sub" href="">Buy</a>');
+    let session: ReturnType<typeof makeSession> | null = null;
+    const opts = makeOptions({ getSession: () => session });
+
+    applyCheckoutBindings(document, opts);
+    const a = document.querySelector<HTMLAnchorElement>('a[data-gh-checkout]')!;
+    expect(a.getAttribute('href')).toBe('#');
+
+    session = makeSession({ sessionId: '999999999999' });
+    applyCheckoutBindings(document, opts);
+    expect(a.getAttribute('href')).toContain('sessionid=999999999999');
+  });
+
+  it('reads the session live on every pass rather than closing over a snapshot', () => {
+    setupDom('<a data-gh-checkout="bio3-3p-sub" href="#">Buy</a>');
+    let sessionId = '111111111111';
+    const opts = makeOptions({ getSession: () => makeSession({ sessionId }) });
+
+    applyCheckoutBindings(document, opts);
+    const a = document.querySelector<HTMLAnchorElement>('a[data-gh-checkout]')!;
+    expect(a.getAttribute('href')).toContain('sessionid=111111111111');
+
+    sessionId = '222222222222';
+    applyCheckoutBindings(document, opts);
+    expect(a.getAttribute('href')).toContain('sessionid=222222222222');
+  });
+
+  it('sets href to "#" and triggers ensureDestination when the destination is not yet loaded', () => {
     setupDom('<a data-gh-checkout="not-yet-loaded" href="">Buy</a>');
     const ensure = vi.fn().mockResolvedValue(undefined);
     applyCheckoutBindings(
@@ -346,36 +395,22 @@ describe('applyCheckoutBindings', () => {
     expect(ensure).toHaveBeenCalledWith('not-yet-loaded');
   });
 
-  it('attaches a click handler on non-<a> elements (e.g., <button>)', () => {
+  it('attaches a click handler on non-<a> elements once the session is resolved', () => {
     setupDom('<button data-gh-checkout="bio3-3p-sub">Buy</button>');
     applyCheckoutBindings(document, makeOptions());
     const button = document.querySelector<HTMLButtonElement>('button[data-gh-checkout]')!;
-    // We can't easily test the navigate behavior in jsdom, but we can check the
-    // listener is attached by checking that the element gained a marker dataset.
     expect(button.dataset['ghCheckoutBound']).toBe('1');
+    expect(button.dataset['ghCheckoutUrl']).toContain('sessionid=174710238129');
   });
 
-  it('updates href on re-bind when session_id changes', () => {
-    setupDom('<a data-gh-checkout="bio3-3p-sub" href="#">Buy</a>');
-    const session1 = makeSession({ sessionId: '111111111111' });
-    applyCheckoutBindings(document, makeOptions({ session: session1 }));
-    const a = document.querySelector<HTMLAnchorElement>('a[data-gh-checkout]')!;
-    expect(a.getAttribute('href')).toContain('session_id=111111111111');
-
-    const session2 = makeSession({ sessionId: '222222222222' });
-    applyCheckoutBindings(document, makeOptions({ session: session2 }));
-    expect(a.getAttribute('href')).toContain('session_id=222222222222');
-  });
-
-  it('logs a warning and sets href="#" when no base URL is configured', () => {
+  it('logs a warning and sets href="#" when no URL resolves for the destination', () => {
     setupDom('<a data-gh-checkout="bio3-3p-sub" href="">Buy</a>');
     const warn = vi.fn();
-    const config = makeConfig({ checkoutBase: null });
     applyCheckoutBindings(
       document,
       makeOptions({
-        config,
-        getDestination: () => makeDestination({ checkoutOverrideUrl: null }),
+        config: makeConfig({ checkoutBase: null }),
+        getDestination: () => makeDestination({ checkoutOverrideUrl: null }, { url: null }),
         logger: { debug: () => {}, warn, error: () => {} },
       }),
     );
