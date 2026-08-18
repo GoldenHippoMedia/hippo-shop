@@ -646,8 +646,20 @@ export function installPageViewEmitter(opts: PageViewEmitterOptions): void {
    * Readiness gates the FIRST emission only. Once that has happened the page is
    * live by definition — including on the deadline path, where `sessionReady`
    * may still be false and would otherwise strand every later step change.
+   *
+   * C1: `gh:session-ready` can be the accidental first caller of
+   * `gh:bindings-ready` (runtime.ts's `installSessionReadyRebind` binds
+   * against whatever's in the DOM the instant the session POST returns,
+   * which is typically one round-trip before `DOMContentLoaded`). A bind
+   * pass against a still-parsing document finds no offer markup, so
+   * `firstDestinationSlug` comes back null and the D5 gate drops the event —
+   * but the one-shot `fired` latch is already set and nothing re-arms it.
+   * Refusing to consider the page ready while it is still parsing closes
+   * that hole without touching who is allowed to dispatch
+   * `gh:bindings-ready` (that event is public and documented elsewhere).
    */
-  const ready = (): boolean => firedOnce || (sessionReady && bindingsReady);
+  const ready = (): boolean =>
+    firedOnce || (sessionReady && bindingsReady && opts.doc.readyState !== 'loading');
 
   const restartQuietWindow = (): void => {
     if (fired || myGeneration !== installGeneration || !ready()) return;
@@ -669,6 +681,15 @@ export function installPageViewEmitter(opts: PageViewEmitterOptions): void {
     },
     { once: true },
   );
+
+  // C1: both readiness signals can already be true while the document is
+  // still parsing (see `ready()` above) — nothing else re-checks readiness
+  // once that stops being the case. `readystatechange` only ever fires when
+  // `readyState` has just advanced past 'loading', so a single `once`
+  // listener is enough to retry the join.
+  if (opts.doc.readyState === 'loading') {
+    opts.doc.addEventListener('readystatechange', () => restartQuietWindow(), { once: true });
+  }
 
   /**
    * The SPA re-emission path D9 asks for. NOT `{ once: true }`: a funnel can

@@ -383,6 +383,34 @@ describe('installPageViewEmitter', () => {
     expect(postEvent).toHaveBeenCalledOnce();
   });
 
+  it('C1: does not fire against a still-parsing document, then fires once the join is retried', async () => {
+    const readyStateSpy = vi.spyOn(document, 'readyState', 'get').mockReturnValue('loading');
+    try {
+      const { opts, postEvent } = makeEmitterOpts();
+      installPageViewEmitter(opts);
+
+      // Both readiness signals arrive while the document is still parsing —
+      // the documented head-script install, session POST resolving before
+      // DOMContentLoaded.
+      window.dispatchEvent(new Event('gh:session-ready'));
+      window.dispatchEvent(new Event('gh:bindings-ready'));
+      await vi.advanceTimersByTimeAsync(PAGE_VIEW_QUIET_MS + 1);
+      expect(postEvent).not.toHaveBeenCalled();
+
+      // The document finishes parsing; the browser fires `readystatechange`.
+      readyStateSpy.mockReturnValue('complete');
+      document.dispatchEvent(new Event('readystatechange'));
+      await vi.advanceTimersByTimeAsync(PAGE_VIEW_QUIET_MS + 1);
+
+      expect(postEvent).toHaveBeenCalledOnce();
+      const [, event] = postEvent.mock.calls[0];
+      expect(event.destinationId).toBe('a0Ydest1');
+      expect(event.mainFunnelId).toBe('a0Xfunnel1');
+    } finally {
+      readyStateSpy.mockRestore();
+    }
+  });
+
   it('does not emit when the session never resolves to a state', async () => {
     const { opts, postEvent } = makeEmitterOpts({ getSession: () => null });
     installPageViewEmitter(opts);
