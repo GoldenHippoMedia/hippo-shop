@@ -445,6 +445,7 @@ export async function emitPageViewOnce(
 export function _resetEventsForTests(): void {
   const host = guardHost();
   if (host) delete host[EVENT_GUARD_KEY];
+  installGeneration++;
 }
 
 // ---------------------------------------------------------------------------
@@ -548,4 +549,205 @@ export function resolveEventIdentity(opts: IdentityOptions): EventIdentity {
   }
 
   return { funnelId, destinationId, stepId, splitTestId };
+}
+
+// ---------------------------------------------------------------------------
+// Emitter timing (D9)
+// ---------------------------------------------------------------------------
+
+/** Quiet window so late-injected attributes land in the same event. */
+export const PAGE_VIEW_QUIET_MS = 100;
+/** Hard cap: emit with whatever resolved, or drop per the D5 gate. */
+export const PAGE_VIEW_DEADLINE_MS = 2000;
+
+const SESSION_READY_EVENT = 'gh:session-ready';
+const BINDINGS_READY_EVENT = 'gh:bindings-ready';
+
+/**
+ * Test-isolation guard, NOT a production concern: `installPageViewEmitter` is
+ * called exactly once per real page load (from `boot()`), so there is only
+ * ever one live closure on a given `window`. `_resetEventsForTests` bumps
+ * this between specs; a superseded closure's still-armed `{ once: true }`
+ * listener (e.g. one whose `sessionPromise` deliberately never settles) would
+ * otherwise sit on the shared jsdom `window` for the rest of the test file
+ * and can fire — and win the dedupe race — years after its own test ended.
+ * Comparing the snapshot taken at install time against the live counter makes
+ * that stale closure permanently inert without changing single-install
+ * behaviour at all.
+ */
+let installGeneration = 0;
+
+export interface PageViewEmitterOptions {
+  doc: Document;
+  win: Window;
+  config: GhConfig;
+  client: GhDataClient;
+  logger: Logger;
+  /** Session THUNK, not a snapshot: null until `ensureSession` resolves. */
+  getSession: () => SessionState | null;
+  sessionPromise: Promise<unknown>;
+  getDestination: (slug: string) => HippoShopDestinationDTO | null;
+  getFunnel: (slug: string) => HippoShopFunnelDTO | null;
+  ensureDestination: (slug: string) => Promise<void>;
+}
+
+/**
+ * Install the one-shot Page View emitter.
+ *
+ * MUST live outside `bind()` — `bind()` re-runs on every observer-triggered
+ * mutation (runtime.ts:154-163) and again on `gh:session-ready`
+ * (runtime.ts:219-227).
+ *
+ * A fixed setTimeout races: `ensureSession` can resolve synchronously (so
+ * `gh:session-ready` may fire before DOMContentLoaded — and before this
+ * listener exists), while a cold POST can take 800ms. So readiness joins the
+ * EVENT and the PROMISE, and the whole thing is capped by a hard deadline.
+ */
+export function installPageViewEmitter(opts: PageViewEmitterOptions): void {
+  const { win, logger } = opts;
+  const myGeneration = ++installGeneration;
+  let fired = false;
+  let sessionReady = false;
+  let bindingsReady = false;
+  let quietTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const fire = (reason: string): void => {
+    if (fired || myGeneration !== installGeneration) return;
+    fired = true;
+    if (quietTimer !== null) {
+      clearTimeout(quietTimer);
+      quietTimer = null;
+    }
+    clearTimeout(deadlineTimer);
+    logger.debug('funnel-event: Page View trigger —', reason);
+    void runPageView(opts);
+  };
+
+  const deadlineTimer = setTimeout(() => fire('deadline'), PAGE_VIEW_DEADLINE_MS);
+
+  const restartQuietWindow = (): void => {
+    if (fired || myGeneration !== installGeneration || !sessionReady || !bindingsReady) return;
+    if (quietTimer !== null) clearTimeout(quietTimer);
+    quietTimer = setTimeout(() => fire('quiet-window'), PAGE_VIEW_QUIET_MS);
+  };
+
+  const markSession = (): void => {
+    sessionReady = true;
+    restartQuietWindow();
+  };
+
+  win.addEventListener(SESSION_READY_EVENT, markSession, { once: true });
+  win.addEventListener(
+    BINDINGS_READY_EVENT,
+    () => {
+      bindingsReady = true;
+      restartQuietWindow();
+    },
+    { once: true },
+  );
+
+  // Second path to session readiness: the event can dispatch before this
+  // listener is registered on the synchronous resolution path. `gh:session-ready`
+  // fires on swallowed failure too, and so does this — a rejected promise still
+  // means "attribution is as good as it is going to get".
+  void opts.sessionPromise.then(markSession, markSession);
+}
+
+/**
+ * Programmatic escape hatch: `gh.track('Page View')`.
+ *
+ * Respects the dedupe guard — a caller doing an SPA route push must update
+ * `data-gh-step` before calling, otherwise the call is a deliberate no-op.
+ * Single-member union in v4: adding an event type is a typed change.
+ */
+export function makeTrackFn(
+  opts: PageViewEmitterOptions,
+): (eventType: FunnelEventType) => Promise<void> {
+  return async function track(eventType: FunnelEventType): Promise<void> {
+    if (eventType !== 'Page View') {
+      opts.logger.warn(`gh.track: unsupported event type "${String(eventType)}"`);
+      return;
+    }
+    await opts.sessionPromise.then(
+      () => undefined,
+      () => undefined,
+    );
+    await runPageView(opts);
+  };
+}
+
+/**
+ * Resolve identity from the live DOM, then emit once. Never throws.
+ *
+ * The identity resolution and the emit path are wrapped in one try/catch
+ * here — the single choke point both the timer-driven `fire()` path (called
+ * `void`, so a rejection would otherwise surface as an unhandled promise
+ * rejection) and the awaited `gh.track` escape hatch (where a rejection
+ * would propagate to caller code) funnel through. `resolveEventIdentity`
+ * invokes the caller-supplied `getDestination`/`getFunnel` callbacks
+ * unguarded (Task 22–24 carry-forward) — a third-party page's own bug in one
+ * of those must degrade to "no Page View this load", never break the page.
+ */
+async function runPageView(opts: PageViewEmitterOptions): Promise<void> {
+  const session = opts.getSession();
+  if (!session) {
+    if (opts.config.debug) {
+      opts.logger.warn('funnel-event: session unresolved — Page View not emitted');
+    }
+    return;
+  }
+
+  try {
+    // Identity comes from a destination binding; with the collectResources
+    // fix the DTO is normally already cached by gh:bindings-ready. This
+    // covers the deadline path and `gh.track` on a cold page.
+    //
+    // Everything from here down — including this `getDestination` probe — is
+    // one try/catch. `getDestination`/`getFunnel` are caller-supplied and
+    // resolveEventIdentity (Task 22-24) calls them unguarded; this is the
+    // single choke point both the timer-driven `fire()` path (called `void`,
+    // so a rejection would otherwise surface as an unhandled promise
+    // rejection) and the awaited `gh.track` escape hatch (where a rejection
+    // would propagate into caller code) funnel through. A third-party page's
+    // bug in one of those callbacks must degrade to "no Page View this
+    // load", never break the page.
+    const slug = firstDestinationSlug(opts.doc);
+    if (slug && !opts.getDestination(slug)) {
+      try {
+        await opts.ensureDestination(slug);
+      } catch (err) {
+        opts.logger.debug('funnel-event: destination load failed —', err);
+      }
+    }
+
+    const search = opts.win.location.search;
+    const stepSlug = readStepSlug(opts.doc);
+    const identity = resolveEventIdentity({
+      doc: opts.doc,
+      getDestination: opts.getDestination,
+      getFunnel: opts.getFunnel,
+      stepSlug,
+      search,
+    });
+
+    const ctx: PageViewContext = {
+      config: opts.config,
+      session,
+      funnelId: identity.funnelId,
+      destinationId: identity.destinationId,
+      stepId: identity.stepId,
+      stepSlug,
+      splitTestId: identity.splitTestId,
+      referrer: opts.doc.referrer,
+      search,
+    };
+
+    await emitPageViewOnce(opts.client, ctx, opts.logger, opts.win.location.pathname);
+  } catch (err) {
+    // Defensive guard for the unguarded-callback carry-forward: a throwing
+    // getDestination/getFunnel (or any other synchronous failure in identity
+    // resolution or the emit path) must not become an uncaught rejection out
+    // of the emitter.
+    opts.logger.debug('funnel-event: Page View emission failed —', err);
+  }
 }

@@ -5,6 +5,22 @@ import {
   resolveEventIdentity,
 } from '../src/events';
 import type { HippoShopDestinationDTO, HippoShopFunnelDTO } from '@goldenhippo/hippo-shop-types';
+import {
+  installPageViewEmitter,
+  makeTrackFn,
+  emitPageViewOnce,
+  _resetEventsForTests,
+  PAGE_VIEW_QUIET_MS,
+  PAGE_VIEW_DEADLINE_MS,
+  type PageViewEmitterOptions,
+} from '../src/events';
+import { GhDataClient } from '../src/client';
+import { createLogger } from '../src/log';
+import type { GhConfig } from '../src/config';
+import type { SessionState } from '../src/session';
+
+const UA_CHROME_MAC_EMITTER =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
 function makeDestination(
   slug: string,
@@ -243,5 +259,256 @@ describe('resolveEventIdentity', () => {
     });
     expect(identity.stepId).toBe('a0Zstep2');
     expect(identity.funnelId).toBe('a0Xattr');
+  });
+});
+
+function emitterConfig(overrides: Partial<GhConfig> = {}): GhConfig {
+  return {
+    key: 'gh_pk_test_abc123',
+    brand: 'Gundry MD',
+    debug: false,
+    apiBaseUrl: 'https://api-prod.goldenhippo.io',
+    checkoutBase: 'https://checkout.gundrymd.com',
+    cookieDomain: null,
+    brandToken: null,
+    ...overrides,
+  };
+}
+
+function emitterSession(overrides: Partial<SessionState> = {}): SessionState {
+  return {
+    sessionId: 'b2e4f0a1-7c3d-4a5b-9e8f-0123456789ab',
+    adopted: false,
+    params: { utmSource: 'fb' },
+    ...overrides,
+  };
+}
+
+function makeEmitterOpts(
+  overrides: Partial<PageViewEmitterOptions> = {},
+): { opts: PageViewEmitterOptions; postEvent: ReturnType<typeof vi.fn> } {
+  const config = overrides.config ?? emitterConfig();
+  const client = new GhDataClient(config, createLogger(false));
+  const postEvent = vi.fn().mockResolvedValue(undefined);
+  client.postEvent = postEvent as never;
+  const opts: PageViewEmitterOptions = {
+    doc: document,
+    win: window,
+    config,
+    client,
+    logger: createLogger(false),
+    getSession: () => emitterSession(),
+    sessionPromise: Promise.resolve(undefined),
+    getDestination: (slug) => makeDestination(slug, 'a0Ydest1', 'a0Xfunnel1'),
+    getFunnel: () => null,
+    ensureDestination: vi.fn().mockResolvedValue(undefined),
+    ...overrides,
+  };
+  return { opts, postEvent };
+}
+
+describe('installPageViewEmitter', () => {
+  beforeEach(() => {
+    _resetEventsForTests();
+    vi.useFakeTimers();
+    vi.stubGlobal('navigator', { userAgent: UA_CHROME_MAC_EMITTER });
+    setBody('<div data-gh-destination="bio3-1p-ot"></div>');
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    _resetEventsForTests();
+  });
+
+  it('emits after both readiness signals plus the quiet window', async () => {
+    const { opts, postEvent } = makeEmitterOpts();
+    installPageViewEmitter(opts);
+    window.dispatchEvent(new Event('gh:session-ready'));
+    window.dispatchEvent(new Event('gh:bindings-ready'));
+    expect(postEvent).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(PAGE_VIEW_QUIET_MS + 1);
+    expect(postEvent).toHaveBeenCalledOnce();
+  });
+
+  it('does not emit while only one signal has arrived', async () => {
+    const { opts, postEvent } = makeEmitterOpts({
+      sessionPromise: new Promise<void>(() => {
+        /* never resolves */
+      }),
+    });
+    installPageViewEmitter(opts);
+    window.dispatchEvent(new Event('gh:bindings-ready'));
+    await vi.advanceTimersByTimeAsync(PAGE_VIEW_QUIET_MS + 1);
+    expect(postEvent).not.toHaveBeenCalled();
+  });
+
+  it('emits on the hard deadline when a signal never arrives', async () => {
+    const { opts, postEvent } = makeEmitterOpts({
+      sessionPromise: new Promise<void>(() => {
+        /* never resolves */
+      }),
+    });
+    installPageViewEmitter(opts);
+    window.dispatchEvent(new Event('gh:bindings-ready'));
+    await vi.advanceTimersByTimeAsync(PAGE_VIEW_DEADLINE_MS + 1);
+    expect(postEvent).toHaveBeenCalledOnce();
+  });
+
+  it('joins on the session promise when gh:session-ready fired before install', async () => {
+    const { opts, postEvent } = makeEmitterOpts();
+    installPageViewEmitter(opts);
+    // Only bindings-ready is dispatched; readiness comes from sessionPromise.
+    window.dispatchEvent(new Event('gh:bindings-ready'));
+    await vi.advanceTimersByTimeAsync(PAGE_VIEW_QUIET_MS + 1);
+    expect(postEvent).toHaveBeenCalledOnce();
+  });
+
+  it('treats a rejected session promise as ready (degraded attribution, still emits)', async () => {
+    const { opts, postEvent } = makeEmitterOpts({
+      sessionPromise: Promise.reject(new Error('session blew up')),
+    });
+    installPageViewEmitter(opts);
+    window.dispatchEvent(new Event('gh:bindings-ready'));
+    await vi.advanceTimersByTimeAsync(PAGE_VIEW_QUIET_MS + 1);
+    expect(postEvent).toHaveBeenCalledOnce();
+  });
+
+  it('emits exactly once even after the deadline also elapses', async () => {
+    const { opts, postEvent } = makeEmitterOpts();
+    installPageViewEmitter(opts);
+    window.dispatchEvent(new Event('gh:session-ready'));
+    window.dispatchEvent(new Event('gh:bindings-ready'));
+    await vi.advanceTimersByTimeAsync(PAGE_VIEW_DEADLINE_MS * 2);
+    expect(postEvent).toHaveBeenCalledOnce();
+  });
+
+  it('does not emit when the session never resolves to a state', async () => {
+    const { opts, postEvent } = makeEmitterOpts({ getSession: () => null });
+    installPageViewEmitter(opts);
+    window.dispatchEvent(new Event('gh:session-ready'));
+    window.dispatchEvent(new Event('gh:bindings-ready'));
+    await vi.advanceTimersByTimeAsync(PAGE_VIEW_DEADLINE_MS + 1);
+    expect(postEvent).not.toHaveBeenCalled();
+  });
+});
+
+describe('makeTrackFn', () => {
+  beforeEach(() => {
+    _resetEventsForTests();
+    vi.stubGlobal('navigator', { userAgent: UA_CHROME_MAC_EMITTER });
+    setBody('<div data-gh-destination="bio3-1p-ot"></div>');
+  });
+  afterEach(() => {
+    _resetEventsForTests();
+  });
+
+  it('emits a Page View built from the live DOM', async () => {
+    setBody(`
+      <section data-gh-step="offer-selector"></section>
+      <div data-gh-destination="bio3-1p-ot"></div>
+    `);
+    const { opts, postEvent } = makeEmitterOpts();
+    await makeTrackFn(opts)('Page View');
+    expect(postEvent).toHaveBeenCalledOnce();
+    const body = postEvent.mock.calls[0]![1] as Record<string, unknown>;
+    expect(body['eventType']).toBe('Page View');
+    expect(body['funnelSTFId']).toBe('a0Xfunnel1');
+    expect(body['destinationId']).toBe('a0Ydest1');
+    expect(body['url']).toBe('offer-selector');
+    expect(body['utmSource']).toBe('fb');
+  });
+
+  it('respects the dedupe guard on a second call for the same step', async () => {
+    const { opts, postEvent } = makeEmitterOpts();
+    const track = makeTrackFn(opts);
+    await track('Page View');
+    await track('Page View');
+    expect(postEvent).toHaveBeenCalledOnce();
+  });
+
+  it('emits again once data-gh-step changes (SPA route push)', async () => {
+    setBody(`
+      <section data-gh-step="step-1"></section>
+      <div data-gh-destination="bio3-1p-ot"></div>
+    `);
+    const { opts, postEvent } = makeEmitterOpts();
+    const track = makeTrackFn(opts);
+    await track('Page View');
+    document.querySelector('[data-gh-step]')!.setAttribute('data-gh-step', 'step-2');
+    await track('Page View');
+    expect(postEvent).toHaveBeenCalledTimes(2);
+    expect((postEvent.mock.calls[1]![1] as Record<string, unknown>)['url']).toBe('step-2');
+  });
+
+  it('warns and no-ops on an unsupported event type', async () => {
+    const { opts, postEvent } = makeEmitterOpts();
+    const warn = vi.spyOn(opts.logger, 'warn');
+    await makeTrackFn(opts)('Order Paid' as never);
+    expect(postEvent).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledOnce();
+  });
+
+  it('awaits ensureDestination when the identity destination is not yet cached', async () => {
+    let cached = false;
+    const ensureDestination = vi.fn().mockImplementation(async () => {
+      cached = true;
+    });
+    const { opts, postEvent } = makeEmitterOpts({
+      ensureDestination,
+      getDestination: (slug) =>
+        cached ? makeDestination(slug, 'a0Ylate', 'a0Xlate') : null,
+    });
+    await makeTrackFn(opts)('Page View');
+    expect(ensureDestination).toHaveBeenCalledWith('bio3-1p-ot');
+    expect(postEvent).toHaveBeenCalledOnce();
+    expect((postEvent.mock.calls[0]![1] as Record<string, unknown>)['funnelSTFId']).toBe(
+      'a0Xlate',
+    );
+  });
+});
+
+// Carry-forward from Task 22-24: resolveEventIdentity calls the
+// caller-supplied getDestination/getFunnel callbacks unguarded. The emitter
+// must never propagate a throw from either — this pins that guarantee at
+// both call sites (the timer-driven install() path and the awaited
+// gh.track() escape hatch).
+describe('installPageViewEmitter / makeTrackFn — throwing caller callbacks never escape', () => {
+  beforeEach(() => {
+    _resetEventsForTests();
+    vi.useFakeTimers();
+    vi.stubGlobal('navigator', { userAgent: UA_CHROME_MAC_EMITTER });
+    setBody('<div data-gh-destination="bio3-1p-ot"></div>');
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    _resetEventsForTests();
+  });
+
+  it('installPageViewEmitter does not throw and does not emit when getDestination throws', async () => {
+    const { opts, postEvent } = makeEmitterOpts({
+      getDestination: () => {
+        throw new Error('boom from getDestination');
+      },
+    });
+    expect(() => installPageViewEmitter(opts)).not.toThrow();
+    window.dispatchEvent(new Event('gh:session-ready'));
+    window.dispatchEvent(new Event('gh:bindings-ready'));
+    await vi.advanceTimersByTimeAsync(PAGE_VIEW_QUIET_MS + 1);
+    expect(postEvent).not.toHaveBeenCalled();
+  });
+
+  it('gh.track rejects neither on a throwing getFunnel nor a throwing getDestination', async () => {
+    setBody(`
+      <section data-gh-step="offer-selector"></section>
+      <div data-gh-destination="bio3-1p-ot"></div>
+    `);
+    const { opts, postEvent } = makeEmitterOpts({
+      getFunnel: () => {
+        throw new Error('boom from getFunnel');
+      },
+    });
+    await expect(makeTrackFn(opts)('Page View')).resolves.toBeUndefined();
+    // Identity resolution failed, so there's nothing safe to build a payload
+    // from — the swallow means "no event this load", not "emit garbage".
+    expect(postEvent).not.toHaveBeenCalled();
   });
 });
