@@ -660,3 +660,73 @@ describe('installPageViewEmitter — SPA step change (D9)', () => {
     expect(onStepChanged).not.toHaveBeenCalled();
   });
 });
+
+describe('offer-selector page: six destinations, one Page View', () => {
+  const SIX = [
+    'bio3-1p-ot',
+    'bio3-1p-sub',
+    'bio3-3p-ot',
+    'bio3-3p-sub',
+    'bio3-6p-ot',
+    'bio3-6p-sub',
+  ];
+
+  beforeEach(() => {
+    _resetEventsForTests();
+    vi.useFakeTimers();
+    vi.stubGlobal('navigator', { userAgent: UA_CHROME_MAC_EMITTER });
+    setBody(
+      `<section data-gh-step="offer-selector">` +
+        SIX.map((slug) => `<a data-gh-checkout="${slug}" data-gh-destination="${slug}"></a>`).join('') +
+        `</section>`,
+    );
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    _resetEventsForTests();
+  });
+
+  it('emits exactly one event, identified by the first destination in document order', async () => {
+    const { opts, postEvent } = makeEmitterOpts({
+      getDestination: (slug) =>
+        makeDestination(slug, `id-${slug}`, `funnel-${slug}`, 'bio3-main'),
+      getFunnel: (slug) =>
+        slug === 'bio3-main'
+          ? makeFunnel(slug, [{ slug: 'offer-selector', id: 'a0Zstep1' }])
+          : null,
+    });
+
+    installPageViewEmitter(opts);
+    window.dispatchEvent(new Event('gh:session-ready'));
+    window.dispatchEvent(new Event('gh:bindings-ready'));
+    await vi.advanceTimersByTimeAsync(PAGE_VIEW_QUIET_MS + 1);
+
+    expect(postEvent).toHaveBeenCalledOnce();
+    const body = postEvent.mock.calls[0]![1] as Record<string, unknown>;
+    expect(body['funnelSTFId']).toBe('funnel-bio3-1p-ot');
+    expect(body['mainFunnelId']).toBe('funnel-bio3-1p-ot');
+    expect(body['destinationId']).toBe('id-bio3-1p-ot');
+    expect(body['funnelSTPId']).toBe('a0Zstep1');
+    expect(body['url']).toBe('offer-selector');
+    expect(body['eventType']).toBe('Page View');
+    expect(body['salesFunnel']).toBe('Funnel');
+  });
+
+  it('a late-arriving seventh offer does not produce a second event', async () => {
+    const { opts, postEvent } = makeEmitterOpts({
+      getDestination: (slug) => makeDestination(slug, `id-${slug}`, `funnel-${slug}`),
+    });
+    installPageViewEmitter(opts);
+    window.dispatchEvent(new Event('gh:session-ready'));
+    window.dispatchEvent(new Event('gh:bindings-ready'));
+    await vi.advanceTimersByTimeAsync(PAGE_VIEW_QUIET_MS + 1);
+
+    const extra = document.createElement('a');
+    extra.setAttribute('data-gh-destination', 'bio3-12p-sub');
+    document.querySelector('[data-gh-step]')!.appendChild(extra);
+    window.dispatchEvent(new Event('gh:bindings-ready'));
+    await vi.advanceTimersByTimeAsync(PAGE_VIEW_DEADLINE_MS + 1);
+
+    expect(postEvent).toHaveBeenCalledOnce();
+  });
+});
