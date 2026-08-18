@@ -19,6 +19,7 @@ import type { Logger } from './log';
 import type { GhConfig } from './config';
 import { applyCheckoutBindings } from './checkout';
 import { getSessionState } from './session';
+import { notifyStepChanged, readStepSlug } from './events';
 
 export interface RuntimeOptions {
   doc?: Document;
@@ -36,6 +37,8 @@ export class GhRuntime {
   private observer: MutationObserver | null = null;
   private rebindScheduled = false;
   private bindingsReadyFired = false;
+  /** `undefined` = never observed; the first bind only records a baseline. */
+  private lastStepSlug: string | null | undefined = undefined;
   private readonly doc: Document;
   private readonly win: Window;
 
@@ -93,6 +96,22 @@ export class GhRuntime {
       ensureDestination: (slug) => this.ensureDestination(slug),
       logger: this.opts.logger,
     });
+
+    // Cluster G / D9: an SPA that swaps data-gh-step is declaring a new funnel
+    // step. attachObserver watches that attribute (Task 32) and every such
+    // mutation lands here — this is where the change becomes a signal the Page
+    // View emitter can act on. Adding the attribute to the filter alone only
+    // re-runs bind(); the emitter's `fired` latch would never clear.
+    //
+    // The first observation is a baseline, never a change: bind() runs before
+    // any emission and must not re-arm an emitter that has not fired yet.
+    const stepSlug = readStepSlug(this.doc);
+    const stepChanged = this.lastStepSlug !== undefined && stepSlug !== this.lastStepSlug;
+    this.lastStepSlug = stepSlug;
+    if (stepChanged) {
+      this.opts.logger.debug('data-gh-step changed —', stepSlug);
+      notifyStepChanged(this.win);
+    }
 
     if (!this.bindingsReadyFired) {
       this.bindingsReadyFired = true;

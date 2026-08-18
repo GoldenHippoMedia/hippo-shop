@@ -562,6 +562,16 @@ export const PAGE_VIEW_DEADLINE_MS = 2000;
 
 const SESSION_READY_EVENT = 'gh:session-ready';
 const BINDINGS_READY_EVENT = 'gh:bindings-ready';
+/**
+ * D9: an SPA swapped `data-gh-step`. Dispatched by `GhRuntime.bind()`, which is
+ * where the MutationObserver's `data-gh-step` filter entry lands.
+ */
+export const STEP_CHANGED_EVENT = 'gh:step-changed';
+
+/** Announce that the declared funnel step changed. Safe to call repeatedly. */
+export function notifyStepChanged(win: Window): void {
+  win.dispatchEvent(new Event(STEP_CHANGED_EVENT));
+}
 
 /**
  * Test-isolation guard, NOT a production concern: `installPageViewEmitter` is
@@ -606,14 +616,21 @@ export interface PageViewEmitterOptions {
 export function installPageViewEmitter(opts: PageViewEmitterOptions): void {
   const { win, logger } = opts;
   const myGeneration = ++installGeneration;
+  /** Per-emission latch. Cleared by a step change so the SPA path can re-fire. */
   let fired = false;
+  /** Sticky: the initial emission has happened at least once. */
+  let firedOnce = false;
   let sessionReady = false;
   let bindingsReady = false;
   let quietTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Step slug the last emission was built from. Null until the first fire. */
+  let lastEmittedStep: string | null = null;
 
   const fire = (reason: string): void => {
     if (fired || myGeneration !== installGeneration) return;
     fired = true;
+    firedOnce = true;
+    lastEmittedStep = readStepSlug(opts.doc);
     if (quietTimer !== null) {
       clearTimeout(quietTimer);
       quietTimer = null;
@@ -625,8 +642,15 @@ export function installPageViewEmitter(opts: PageViewEmitterOptions): void {
 
   const deadlineTimer = setTimeout(() => fire('deadline'), PAGE_VIEW_DEADLINE_MS);
 
+  /**
+   * Readiness gates the FIRST emission only. Once that has happened the page is
+   * live by definition — including on the deadline path, where `sessionReady`
+   * may still be false and would otherwise strand every later step change.
+   */
+  const ready = (): boolean => firedOnce || (sessionReady && bindingsReady);
+
   const restartQuietWindow = (): void => {
-    if (fired || myGeneration !== installGeneration || !sessionReady || !bindingsReady) return;
+    if (fired || myGeneration !== installGeneration || !ready()) return;
     if (quietTimer !== null) clearTimeout(quietTimer);
     quietTimer = setTimeout(() => fire('quiet-window'), PAGE_VIEW_QUIET_MS);
   };
@@ -645,6 +669,33 @@ export function installPageViewEmitter(opts: PageViewEmitterOptions): void {
     },
     { once: true },
   );
+
+  /**
+   * The SPA re-emission path D9 asks for. NOT `{ once: true }`: a funnel can
+   * push many steps in one page load.
+   *
+   * The generation check is test-isolation-only (see `installGeneration`
+   * above), but load-bearing here specifically: unlike the readiness
+   * listeners, this one is never auto-removed, so a superseded closure that
+   * already fired once in an earlier test would otherwise stay eligible to
+   * re-arm itself forever on the shared `window`.
+   *
+   * The slug comparison is a cheap filter against timer churn, not the dedupe
+   * rule — `emitPageViewOnce` keys on (sessionId, 'Page View', step) and is the
+   * authority. So a step change signalled after `gh.track` already emitted that
+   * slug re-opens the quiet window here and is then correctly suppressed there.
+   */
+  const onStepChanged = (): void => {
+    if (myGeneration !== installGeneration) return;
+    // Nothing to re-arm yet; the initial emission has its own readiness join.
+    if (!firedOnce) return;
+    const stepSlug = readStepSlug(opts.doc);
+    if (stepSlug === lastEmittedStep) return;
+    logger.debug('funnel-event: step changed, re-arming Page View —', stepSlug);
+    fired = false;
+    restartQuietWindow();
+  };
+  win.addEventListener(STEP_CHANGED_EVENT, onStepChanged);
 
   // Second path to session readiness: the event can dispatch before this
   // listener is registered on the synchronous resolution path. `gh:session-ready`

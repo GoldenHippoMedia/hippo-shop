@@ -18,6 +18,8 @@ import { GhDataClient } from '../src/client';
 import { createLogger } from '../src/log';
 import type { GhConfig } from '../src/config';
 import type { SessionState } from '../src/session';
+import { GhRuntime } from '../src/runtime';
+import { STEP_CHANGED_EVENT } from '../src/events';
 
 const UA_CHROME_MAC_EMITTER =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
@@ -510,5 +512,151 @@ describe('installPageViewEmitter / makeTrackFn — throwing caller callbacks nev
     // Identity resolution failed, so there's nothing safe to build a payload
     // from — the swallow means "no event this load", not "emit garbage".
     expect(postEvent).not.toHaveBeenCalled();
+  });
+});
+
+describe('installPageViewEmitter — SPA step change (D9)', () => {
+  beforeEach(() => {
+    _resetEventsForTests();
+    vi.useFakeTimers();
+    vi.stubGlobal('navigator', { userAgent: UA_CHROME_MAC_EMITTER });
+    setBody('<div data-gh-destination="bio3-1p-ot"></div>');
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    _resetEventsForTests();
+  });
+
+  it('re-emits when data-gh-step is swapped and the step change is signalled', async () => {
+    setBody(`
+      <section data-gh-step="step-1"></section>
+      <div data-gh-destination="bio3-1p-ot"></div>
+    `);
+    const { opts, postEvent } = makeEmitterOpts();
+    installPageViewEmitter(opts);
+    window.dispatchEvent(new Event('gh:session-ready'));
+    window.dispatchEvent(new Event('gh:bindings-ready'));
+    await vi.advanceTimersByTimeAsync(PAGE_VIEW_QUIET_MS + 1);
+    expect(postEvent).toHaveBeenCalledOnce();
+    expect((postEvent.mock.calls[0]![1] as Record<string, unknown>)['url']).toBe('step-1');
+
+    // The SPA swaps the attribute. No gh.track call anywhere in this test.
+    document.querySelector('[data-gh-step]')!.setAttribute('data-gh-step', 'step-2');
+    window.dispatchEvent(new Event(STEP_CHANGED_EVENT));
+    await vi.advanceTimersByTimeAsync(PAGE_VIEW_QUIET_MS + 1);
+
+    expect(postEvent).toHaveBeenCalledTimes(2);
+    expect((postEvent.mock.calls[1]![1] as Record<string, unknown>)['url']).toBe('step-2');
+  });
+
+  it('re-arms on every subsequent step change, not just the first', async () => {
+    setBody(`
+      <section data-gh-step="step-1"></section>
+      <div data-gh-destination="bio3-1p-ot"></div>
+    `);
+    const { opts, postEvent } = makeEmitterOpts();
+    installPageViewEmitter(opts);
+    window.dispatchEvent(new Event('gh:session-ready'));
+    window.dispatchEvent(new Event('gh:bindings-ready'));
+    await vi.advanceTimersByTimeAsync(PAGE_VIEW_QUIET_MS + 1);
+
+    for (const slug of ['step-2', 'step-3', 'step-4']) {
+      document.querySelector('[data-gh-step]')!.setAttribute('data-gh-step', slug);
+      window.dispatchEvent(new Event(STEP_CHANGED_EVENT));
+      await vi.advanceTimersByTimeAsync(PAGE_VIEW_QUIET_MS + 1);
+    }
+
+    expect(postEvent).toHaveBeenCalledTimes(4);
+    expect((postEvent.mock.calls[3]![1] as Record<string, unknown>)['url']).toBe('step-4');
+  });
+
+  it('does not re-emit when the signal arrives but the slug is unchanged', async () => {
+    setBody(`
+      <section data-gh-step="step-1"></section>
+      <div data-gh-destination="bio3-1p-ot"></div>
+    `);
+    const { opts, postEvent } = makeEmitterOpts();
+    installPageViewEmitter(opts);
+    window.dispatchEvent(new Event('gh:session-ready'));
+    window.dispatchEvent(new Event('gh:bindings-ready'));
+    await vi.advanceTimersByTimeAsync(PAGE_VIEW_QUIET_MS + 1);
+    expect(postEvent).toHaveBeenCalledOnce();
+
+    // A checkout-slug swap also lands here via the shared observer filter.
+    window.dispatchEvent(new Event(STEP_CHANGED_EVENT));
+    await vi.advanceTimersByTimeAsync(PAGE_VIEW_DEADLINE_MS + 1);
+
+    expect(postEvent).toHaveBeenCalledOnce();
+  });
+
+  it('re-emits end to end through GhRuntime.bind when data-gh-step is mutated', async () => {
+    setBody(`
+      <section data-gh-step="step-1"></section>
+      <div data-gh-destination="bio3-1p-ot"></div>
+    `);
+    const { opts, postEvent } = makeEmitterOpts();
+    const runtimeClient = {
+      product: vi.fn(),
+      destination: vi
+        .fn()
+        .mockResolvedValue(makeDestination('bio3-1p-ot', 'a0Ydest1', 'a0Xfunnel1')),
+      funnel: vi.fn(),
+      clearCache: vi.fn(),
+    } as unknown as GhDataClient;
+    const runtime = new GhRuntime({
+      doc: document,
+      win: window,
+      logger: opts.logger,
+      client: runtimeClient,
+      config: opts.config,
+    });
+
+    installPageViewEmitter(opts);
+    window.dispatchEvent(new Event('gh:session-ready'));
+    // The runtime's own first bind fires gh:bindings-ready and records the
+    // step-1 baseline; it must NOT signal a change on that first observation.
+    await runtime.bind(document);
+    await vi.advanceTimersByTimeAsync(PAGE_VIEW_QUIET_MS + 1);
+    expect(postEvent).toHaveBeenCalledOnce();
+
+    // Task 32 puts data-gh-step in the observer's attributeFilter, so in a real
+    // browser this second bind() is the observer's, not the test's.
+    document.querySelector('[data-gh-step]')!.setAttribute('data-gh-step', 'step-2');
+    await runtime.bind(document);
+    await vi.advanceTimersByTimeAsync(PAGE_VIEW_QUIET_MS + 1);
+
+    expect(postEvent).toHaveBeenCalledTimes(2);
+    expect((postEvent.mock.calls[1]![1] as Record<string, unknown>)['url']).toBe('step-2');
+  });
+
+  it('GhRuntime.bind stays silent when data-gh-step does not change', async () => {
+    setBody(`
+      <section data-gh-step="step-1"></section>
+      <div data-gh-destination="bio3-1p-ot"></div>
+    `);
+    const runtimeClient = {
+      product: vi.fn(),
+      destination: vi
+        .fn()
+        .mockResolvedValue(makeDestination('bio3-1p-ot', 'a0Ydest1', 'a0Xfunnel1')),
+      funnel: vi.fn(),
+      clearCache: vi.fn(),
+    } as unknown as GhDataClient;
+    const runtime = new GhRuntime({
+      doc: document,
+      win: window,
+      logger: createLogger(false),
+      client: runtimeClient,
+      config: emitterConfig(),
+    });
+    const onStepChanged = vi.fn();
+    window.addEventListener(STEP_CHANGED_EVENT, onStepChanged);
+
+    await runtime.bind(document);
+    await runtime.bind(document);
+    await runtime.bind(document);
+
+    window.removeEventListener(STEP_CHANGED_EVENT, onStepChanged);
+    expect(onStepChanged).not.toHaveBeenCalled();
   });
 });
