@@ -229,3 +229,39 @@ describe('GhRuntime — resource state tracking', () => {
     expect(runtime.getCachedFunnel('bio3-main')?.steps[0]?.id).toBe('a0Zstep1');
   });
 });
+
+describe('GhRuntime — session-ready rebind (Cluster G Correction 3)', () => {
+  beforeEach(() => {
+    document.body.innerHTML = '';
+    vi.restoreAllMocks();
+  });
+
+  it('installSessionReadyRebind() rebinds synchronously when gh:session-ready fires', () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify(PRODUCT), { status: 200 }),
+    );
+    document.body.innerHTML =
+      `<div data-gh-product="bio-complete-3"><span data-field="name"></span></div>`;
+    const runtime = new GhRuntime({ logger: createLogger(false), client: freshClient(), config: CONFIG });
+
+    runtime.installSessionReadyRebind();
+    window.dispatchEvent(new CustomEvent('gh:session-ready', { detail: {} }));
+
+    // bind() reaches fetch() synchronously, so no awaits are needed.
+    expect(fetchSpy).toHaveBeenCalledOnce();
+  });
+
+  it('is idempotent — registering twice binds once per gh:session-ready', () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify(PRODUCT), { status: 200 }),
+    );
+    const runtime = new GhRuntime({ logger: createLogger(false), client: freshClient(), config: CONFIG });
+    const bindSpy = vi.spyOn(runtime, 'bind');
+
+    runtime.installSessionReadyRebind();
+    runtime.installSessionReadyRebind();
+    window.dispatchEvent(new CustomEvent('gh:session-ready', { detail: {} }));
+
+    expect(bindSpy).toHaveBeenCalledTimes(1);
+  });
+});

@@ -97,6 +97,11 @@ export function boot(doc: Document = document, win: Window = window): boolean {
   // One session promise, one stable checkoutUrl identity. Cluster F installed a
   // stub session here and reassigned root.checkoutUrl when the session
   // resolved, so any captured reference kept the un-attributed stub forever.
+  // Registered before ensureSession is invoked: a session that resolves with
+  // no awaits dispatches gh:session-ready synchronously, from inside the call
+  // below, and a listener registered afterwards would never see it.
+  runtime.installSessionReadyRebind();
+
   const sessionPromise = ensureSession(config, client).catch(() => undefined);
   root.__sessionPromise = sessionPromise;
   // The runtime's checkout bind pass gets this same promise — one session

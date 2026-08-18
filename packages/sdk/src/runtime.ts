@@ -37,6 +37,7 @@ export class GhRuntime {
   private observer: MutationObserver | null = null;
   private rebindScheduled = false;
   private bindingsReadyFired = false;
+  private sessionReadyInstalled = false;
   /** `undefined` = never observed; the first bind only records a baseline. */
   private lastStepSlug: string | null | undefined = undefined;
   private readonly doc: Document;
@@ -262,8 +263,24 @@ export class GhRuntime {
       setTimeout(run, 0);
     }
 
-    // Cluster F: re-bind once the session resolves so checkout hrefs pick up
-    // the real session_id. Fire-and-forget; bind() handles its own errors.
+    // Safety net for callers that only call installAutoBind(). boot() calls
+    // this earlier — before ensureSession — and the flag makes it a no-op.
+    this.installSessionReadyRebind();
+  }
+
+  /**
+   * Re-bind once the session resolves, so checkout hrefs pick up the real
+   * `sessionid` instead of staying at "#".
+   *
+   * Must be registered *before* `ensureSession` is invoked: a session that
+   * resolves without awaiting anything dispatches `gh:session-ready`
+   * synchronously, inside the invoking call, and a listener registered
+   * afterwards would never see it. Idempotent. Fire-and-forget; `bind()`
+   * handles its own errors.
+   */
+  installSessionReadyRebind(): void {
+    if (this.sessionReadyInstalled) return;
+    this.sessionReadyInstalled = true;
     this.win.addEventListener(
       'gh:session-ready',
       () => {
