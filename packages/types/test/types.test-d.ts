@@ -88,6 +88,7 @@ expectType<number | null>(variant.alternatePurchaseTypePrice);
 
 // --- Funnel steps are `kind: HippoShopStepKind`, not arbitrary strings ---
 const funnel: HippoShopFunnelDTO = {
+  id: 'a0F0m000002Fnl1EAC',
   slug: 'f', name: 'F', active: true,
   steps: [
     { id: 'a0P0m000002Stp1EAC', stepNumber: 1, slug: 's1', name: 'S1', kind: 'landing' },
@@ -95,6 +96,9 @@ const funnel: HippoShopFunnelDTO = {
 };
 expectType<HippoShopStepKind>(funnel.steps[0]!.kind);
 expectType<string>(funnel.steps[0]!.id);
+// The funnel carries its own Salesforce id, distinct from any step's: it is
+// what a funnel event sends as `funnelSTFId` / `mainFunnelId`.
+expectType<string>(funnel.id);
 
 // --- HippoShopFrequencyDTO has both internal and public interval/scale ---
 const freq: HippoShopFrequencyDTO = {
