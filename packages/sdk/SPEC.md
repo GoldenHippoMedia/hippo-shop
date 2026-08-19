@@ -145,7 +145,7 @@ Marks the element as a checkout-handoff control. On `<a>` elements, the SDK popu
 
 The key is `sessionid` — one word, lowercase, matching the inbound handoff key the SDK itself reads. Affiliate sub-ids are `subid1`–`subid5`, not `sub_id1`–`sub_id5`.
 
-Pre-existing query keys on the base URL are preserved; SDK-added keys do not clobber author-supplied ones. Values are never truncated. If none of the three base sources yields a URL, the SDK sets `href="#"` on `[data-gh-checkout]` elements and logs a debug warning; `gh.checkoutUrl()` rejects with a `config` `GhError` instead (see [Error contract](#error-contract)).
+Pre-existing query keys on the base URL are preserved for the attribution params; those SDK-added keys do not clobber author-supplied ones. `order_form_id` and `sessionid` are the exception: they are SDK-owned and written unconditionally, overwriting whatever the base URL carried, with a warning logged when a different pre-existing value is replaced. Values are never truncated. If none of the three base sources yields a URL, the SDK sets `href="#"` on `[data-gh-checkout]` elements and logs a debug warning; `gh.checkoutUrl()` rejects with a `config` `GhError` instead (see [Error contract](#error-contract)).
 
 ### Script-tag attributes
 
@@ -340,7 +340,7 @@ The package also exports these for advanced consumers building a custom auto-boo
 - `GhRuntime` — DOM-binding runtime class.
 - `parseScriptConfig(script): GhConfig` — extracts config from a script element. Throws `ConfigError` on invalid input.
 - `GhConfig` (type) — the parsed script-tag config shape (`key`, `brand`, `debug`, `apiBaseUrl`).
-- `GhWindow` (interface) — the shape of `window.gh` after boot (`data`, `bind`, `refresh`, `format`, optional `debug`).
+- `GhWindow` (interface) — the shape of `window.gh` after boot (`data`, `bind`, `refresh`, `format`, and the optional `debug`, `checkoutUrl`, `track`, `session`). Declared on `window` as `Partial<GhWindow>`.
 - `FormatRegistry`, `builtinFormatters` — formatter registry class plus the built-in set.
 - `applyBindings`, `collectResources`, `ResourceState` — low-level binding primitives.
 - `getByPath` — dot-path lookup utility.

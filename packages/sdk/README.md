@@ -13,12 +13,12 @@ Both share the same auth, caching, and brand-scoped access rules enforced by the
 
 > Source: [GoldenHippoMedia/hippo-shop](https://github.com/GoldenHippoMedia/hippo-shop) · DTO contract: [`@goldenhippo/hippo-shop-types`](https://www.npmjs.com/package/@goldenhippo/hippo-shop-types)
 
-> For context on v1.x/v2.x/v3.x → v4 — see [About this version](../../README.md#about-this-version) in the root README.
+> New to Hippo Shop? See [About this version](../../README.md#about-this-version) in the root README for what v4 does and the two things worth knowing before you integrate.
 
 ## Contents
 
 - [Installation](#installation)
-- [Quickstart — declarative](#quickstart-declarative)
+- [Quickstart — declarative](#quickstart--declarative)
 - [How it works](#how-it-works)
 - [Script tag config](#script-tag-config)
 - [Declarative attributes](#declarative-attributes)
@@ -35,7 +35,7 @@ Both share the same auth, caching, and brand-scoped access rules enforced by the
 - [HTTP](#http)
 - [Errors](#errors)
 - [Safety](#safety)
-- [Advanced — TypeScript / NPM consumers](#advanced-typescript-npm-consumers)
+- [Advanced — TypeScript / NPM consumers](#advanced--typescript--npm-consumers)
 - [Size budget](#size-budget)
 - [Provenance](#provenance)
 - [License](#license)
@@ -432,7 +432,25 @@ Onto that base the SDK appends, in this order and skipping anything empty: `orde
 https://www.gundrymd.com/bio3-3pk-sub?order_form_id=OF_123&sessionid=3f6b2c11-…&utm_source=fb&subid1=IwAR…&fbclid=IwAR…
 ```
 
-Parameters already present on the base URL win — the SDK only fills what is absent. Values are never truncated.
+Attribution parameters use `setIfAbsent` semantics — a parameter already present on the base URL wins, and the SDK only fills what is absent. `order_form_id` and `sessionid` are the deliberate exception: they are SDK-owned and written unconditionally, overwriting whatever the base URL carried. Overwriting a pre-existing, different value logs a warning — it almost always means a live funnel link with a session already baked into it was pasted into the destination record in Salesforce. Values are never truncated.
+
+### Inbound click-ids → `subid` slots
+
+The SDK derives the `subid` parameters from the click-id on the landing URL, matching the funnel's own normalizer. The raw click-id also rides along outbound under its own name.
+
+| Inbound param | Writes | Also sets `subid5` |
+|---|---|---|
+| `fbclid` | `subid1` | — |
+| `gclid` | `subid1` | — |
+| `ScCid` | `subid1` | `snap` |
+| `qclid` | `subid1` | `quora` |
+| `twclid` | `subid1` | `twitter` |
+| `ndclid` | `subid1` | `nextdoor` |
+| `wbraid` | `subid4`, prefixed `wbraid:` | — |
+
+The slot value is the click-id with the characters `<`, `>`, `'`, `"`, `` ` ``, and `&` stripped. The click-id emitted under its own name is unmodified.
+
+Table order is precedence: the first matching row claims `subid1`, and an already-populated `subid1` / `subid4` is never overwritten. The `subid5` marker is applied independently of the slot write, so `?fbclid=F&ScCid=S` yields `subid1=F` **and** `subid5=snap`. Inbound keys are matched case-insensitively, and both `subidN` (canonical) and `sub_idN` (legacy) are accepted inbound, with the canonical spelling winning; only `subidN` is ever emitted outbound.
 
 ### `await gh.checkoutUrl(slug)`
 
@@ -869,6 +887,7 @@ type GhErrorCode =
   | 'bad_request'
   | 'network'
   | 'bad_config'
+  | 'config'
   | 'server';
 ```
 
@@ -882,6 +901,7 @@ type GhErrorCode =
 | `bad_request` | Other 4xx from the API | Malformed slug, unknown resource type, or a programmatic call with an empty argument. |
 | `network` | Fetch rejected before getting a response | DNS, CORS, offline. Check the `cause` for the underlying `TypeError`. |
 | `bad_config` | Thrown during boot | Bad `data-key` format, missing `data-brand`, script loaded from a disallowed host. Surfaces in the console, not as a rejected promise. |
+| `config` | Runtime configuration error | `gh.checkoutUrl()` or a `data-gh-checkout` binding cannot compose a URL because **none** of the three base sources resolved: the destination has no `pricing.checkoutOverrideUrl`, no `url`, and the script tag has no `data-checkout-base`. `gh.checkoutUrl()` rejects with it; `[data-gh-checkout]` elements fall back to `href="#"` instead. |
 | `server` | 5xx from the API, or a response that wasn't valid JSON | Retry with backoff. |
 
 `retryAfterMs` is populated for `rate_limited` errors and any other response that carried a `Retry-After` header — see [HTTP](#http).
@@ -932,6 +952,7 @@ Import from the package root:
 ```ts
 import {
   applyBindings,
+  boot,
   builtinFormatters,
   collectResources,
   FormatRegistry,
@@ -942,7 +963,7 @@ import {
   parseScriptConfig,
 } from '@goldenhippo/hippo-shop-sdk';
 
-import type { GhConfig, GhErrorCode, ResourceState } from '@goldenhippo/hippo-shop-sdk';
+import type { GhConfig, GhErrorCode, GhWindow, ResourceState } from '@goldenhippo/hippo-shop-sdk';
 ```
 
 ### Barrel exports
@@ -950,6 +971,7 @@ import type { GhConfig, GhErrorCode, ResourceState } from '@goldenhippo/hippo-sh
 | Export | Kind | Purpose |
 |--------|------|---------|
 | `applyBindings(root, opts)` | function | Apply bindings to a subtree against an explicit `{ formatters, resources, resourceStates? }` bag. The low-level core that `gh.bind` wraps. |
+| `boot(doc?, win?)` | function | The auto-boot entry point: locates the SDK `<script>` tag, parses its config, attaches `window.gh`, and starts the session and event work. Returns `true` when it attached and `false` when it declined (no script tag found, invalid config, or `window.gh.data` already exists). Call it yourself when you are constructing the script element rather than letting the tag boot itself. |
 | `collectResources(root)` | function | Return every `(kind, slug)` referenced under a node. Useful for prefetching server-side or warming a cache. |
 | `getByPath(obj, path)` | function | Resolve a dot-path against any object. Returns `undefined` on miss; never throws. Reusable outside the SDK. |
 | `parseScriptConfig(scriptEl)` | function | Validate a `<script>` element's `data-*` config and produce a `GhConfig`. Throws on invalid input. |
@@ -959,7 +981,8 @@ import type { GhConfig, GhErrorCode, ResourceState } from '@goldenhippo/hippo-sh
 | `GhRuntime` | class | The high-level orchestrator: ties a `GhDataClient` to the binding pass and manages the resource + lifecycle caches. |
 | `GhError` | class | The error class thrown by all data methods. |
 | `GhConfig` | type | The parsed config produced by `parseScriptConfig`. |
-| `GhErrorCode` | type | Union of `'not_found' \| 'rate_limited' \| 'forbidden' \| 'bad_request' \| 'network' \| 'bad_config' \| 'server'`. |
+| `GhErrorCode` | type | Union of `'not_found' \| 'rate_limited' \| 'forbidden' \| 'bad_request' \| 'network' \| 'bad_config' \| 'config' \| 'server'`. |
+| `GhWindow` | type | The shape of `window.gh` after boot — `data`, `bind`, `refresh`, `format`, and the optional `debug`, `checkoutUrl`, `track`, and `session` members. Useful for typing `window` in a TypeScript project. Note the SDK declares `window.gh` as `Partial<GhWindow>`, since the object exists only once boot has attached to it. |
 | `ResourceState` | type | Union of `'loading' \| 'loaded' \| 'failed'` — the values passed in `ApplyBindingsOptions.resourceStates`. |
 
 ### DTO types
