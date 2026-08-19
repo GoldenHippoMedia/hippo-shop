@@ -178,8 +178,25 @@
       <!--
         12 destination cards. Each carries data-flavor + data-purchase markers
         so the inline JS at the bottom can toggle [hidden] on the 9 cards that
-        don't match the current filter pair. The CTA href is bound to
-        funnelSlug so click routes to the correct post-purchase funnel.
+        don't match the current filter pair.
+
+        The CTA is `data-gh-checkout="<destination-slug>"` — the same slug the
+        card already binds with data-gh-destination. On an <a>, the SDK writes
+        the composed checkout URL straight into href: the resolved destination
+        base (pricing.checkoutOverrideUrl ?? destination.url ?? the script
+        tag's data-checkout-base) plus order_form_id, sessionid, and the
+        attribution params carried in from the current page URL. Note the
+        anchors carry NO href of their own — the SDK holds them at href="#"
+        until both the session and the destination resolve, then fills them in
+        on the gh:session-ready / gh:bindings-ready rebind. Do not hand-write
+        an href here; a page-authored one would navigate before the session
+        exists and drop every attribution param.
+
+        The programmatic twin is `await gh.checkoutUrl(slug)`. If you use it
+        inside a click handler, navigate with `window.location.href = url` —
+        `window.open(await gh.checkoutUrl(x))` breaks the user-gesture chain
+        across the await and is popup-blocked. This page needs no such JS: the
+        declarative attribute is the canonical form.
       -->
       <section class="offers">
         <!-- Strawberry Lemonade · Subscription -->
@@ -196,7 +213,7 @@
           <p class="savings" data-if="pricing.price.savings">
             Save <span data-field="pricing.price.savings" data-format="currency:USD">$0</span>
           </p>
-          <a class="btn" data-attr-href="funnelSlug" data-attr-aria-label="name" href="#">
+          <a class="btn" href="#" data-gh-checkout="d_mctwellness_1unitsub_mf_240210" data-attr-aria-label="name">
             Continue →
           </a>
           <p class="sku"><span data-field="pricing.sku">SKU</span></p>
@@ -215,7 +232,7 @@
           <p class="savings" data-if="pricing.price.savings">
             Save <span data-field="pricing.price.savings" data-format="currency:USD">$0</span>
           </p>
-          <a class="btn" data-attr-href="funnelSlug" data-attr-aria-label="name" href="#">
+          <a class="btn" href="#" data-gh-checkout="d_mctwellness_3unitsub_mf_240210" data-attr-aria-label="name">
             Continue →
           </a>
           <p class="sku"><span data-field="pricing.sku">SKU</span></p>
@@ -235,7 +252,7 @@
           <p class="savings" data-if="pricing.price.savings">
             Save <span data-field="pricing.price.savings" data-format="currency:USD">$0</span>
           </p>
-          <a class="btn" data-attr-href="funnelSlug" data-attr-aria-label="name" href="#">
+          <a class="btn" href="#" data-gh-checkout="d_mctwellness_6unitsub_mf_240210" data-attr-aria-label="name">
             Continue →
           </a>
           <p class="sku"><span data-field="pricing.sku">SKU</span></p>
@@ -252,7 +269,7 @@
           <p class="savings" data-if="pricing.price.savings">
             Save <span data-field="pricing.price.savings" data-format="currency:USD">$0</span>
           </p>
-          <a class="btn" data-attr-href="funnelSlug" data-attr-aria-label="name" href="#">
+          <a class="btn" href="#" data-gh-checkout="d_mctwellness_1unit_mf_221006" data-attr-aria-label="name">
             Continue →
           </a>
           <p class="sku"><span data-field="pricing.sku">SKU</span></p>
@@ -268,7 +285,7 @@
           <p class="savings" data-if="pricing.price.savings">
             Save <span data-field="pricing.price.savings" data-format="currency:USD">$0</span>
           </p>
-          <a class="btn" data-attr-href="funnelSlug" data-attr-aria-label="name" href="#">
+          <a class="btn" href="#" data-gh-checkout="d_mctwellness_3unit_mf_240210" data-attr-aria-label="name">
             Continue →
           </a>
           <p class="sku"><span data-field="pricing.sku">SKU</span></p>
@@ -285,7 +302,7 @@
           <p class="savings" data-if="pricing.price.savings">
             Save <span data-field="pricing.price.savings" data-format="currency:USD">$0</span>
           </p>
-          <a class="btn" data-attr-href="funnelSlug" data-attr-aria-label="name" href="#">
+          <a class="btn" href="#" data-gh-checkout="d_mctwellness_6unit_mf_240210" data-attr-aria-label="name">
             Continue →
           </a>
           <p class="sku"><span data-field="pricing.sku">SKU</span></p>
@@ -305,7 +322,7 @@
           <p class="savings" data-if="pricing.price.savings">
             Save <span data-field="pricing.price.savings" data-format="currency:USD">$0</span>
           </p>
-          <a class="btn" data-attr-href="funnelSlug" data-attr-aria-label="name" href="#">
+          <a class="btn" href="#" data-gh-checkout="d_mctwellnessraspberry_1unitsub_mf_240210" data-attr-aria-label="name">
             Continue →
           </a>
           <p class="sku"><span data-field="pricing.sku">SKU</span></p>
@@ -324,7 +341,7 @@
           <p class="savings" data-if="pricing.price.savings">
             Save <span data-field="pricing.price.savings" data-format="currency:USD">$0</span>
           </p>
-          <a class="btn" data-attr-href="funnelSlug" data-attr-aria-label="name" href="#">
+          <a class="btn" href="#" data-gh-checkout="d_mctwellnessraspberry_3unitsub_mf_240210" data-attr-aria-label="name">
             Continue →
           </a>
           <p class="sku"><span data-field="pricing.sku">SKU</span></p>
@@ -344,7 +361,7 @@
           <p class="savings" data-if="pricing.price.savings">
             Save <span data-field="pricing.price.savings" data-format="currency:USD">$0</span>
           </p>
-          <a class="btn" data-attr-href="funnelSlug" data-attr-aria-label="name" href="#">
+          <a class="btn" href="#" data-gh-checkout="d_mctwellnessraspberry_6unitsub_mf_240210" data-attr-aria-label="name">
             Continue →
           </a>
           <p class="sku"><span data-field="pricing.sku">SKU</span></p>
@@ -361,7 +378,7 @@
           <p class="savings" data-if="pricing.price.savings">
             Save <span data-field="pricing.price.savings" data-format="currency:USD">$0</span>
           </p>
-          <a class="btn" data-attr-href="funnelSlug" data-attr-aria-label="name" href="#">
+          <a class="btn" href="#" data-gh-checkout="d_mctwellnessraspberry_1unit_mf_11164" data-attr-aria-label="name">
             Continue →
           </a>
           <p class="sku"><span data-field="pricing.sku">SKU</span></p>
@@ -377,7 +394,7 @@
           <p class="savings" data-if="pricing.price.savings">
             Save <span data-field="pricing.price.savings" data-format="currency:USD">$0</span>
           </p>
-          <a class="btn" data-attr-href="funnelSlug" data-attr-aria-label="name" href="#">
+          <a class="btn" href="#" data-gh-checkout="d_mctwellnessraspberry_3unit_mf_240210" data-attr-aria-label="name">
             Continue →
           </a>
           <p class="sku"><span data-field="pricing.sku">SKU</span></p>
@@ -394,7 +411,7 @@
           <p class="savings" data-if="pricing.price.savings">
             Save <span data-field="pricing.price.savings" data-format="currency:USD">$0</span>
           </p>
-          <a class="btn" data-attr-href="funnelSlug" data-attr-aria-label="name" href="#">
+          <a class="btn" href="#" data-gh-checkout="d_mctwellnessraspberry_6unit_mf_240210" data-attr-aria-label="name">
             Continue →
           </a>
           <p class="sku"><span data-field="pricing.sku">SKU</span></p>
@@ -405,22 +422,37 @@
         All 12 destinations fetch concurrently when the page loads — the SDK
         dedupes requests by slug. Filter pills toggle <code>hidden</code> on the
         9 non-matching cards purely in client JS; no extra fetches happen when
-        you change a filter.
+        you change a filter. Every CTA stays at <code>href="#"</code> until the
+        session resolves, then flips to its composed checkout URL.
       </p>
 
       <footer class="demo-footer">
         <p>← <a href="./index.html">Back to demos</a></p>
         <p>
-          SDK loaded from <code>api-uat.goldenhippo.io</code>. 12 destination slugs
-          listed in the page source.
+          SDK v4 loaded from <code>api-uat.goldenhippo.io</code>. 12 destination
+          slugs listed in the page source.
         </p>
       </footer>
     </main>
 
+    <!--
+      data-brand-token is the Altern *payload* brand vocabulary, and it is a
+      different value space from data-brand: data-brand is the public display
+      name ("Gundry MD"), data-brand-token is the BRAND_NAME token ("gundry").
+      The funnel-event builder sends `brandToken ?? brand`.
+
+      Omit it and every funnel event this page emits is attributed to the
+      display name instead — which Altern accepts with a 200 and writes to the
+      same Salesforce column, so the mis-attribution appears in no log
+      anywhere. This page binds 12 destinations, so its funnel identity does
+      resolve and it does emit; the token is not optional here.
+    -->
     <script
-      src="https://api-uat.goldenhippo.io/sdk/v3/gh.js"
+      src="https://api-uat.goldenhippo.io/sdk/v4/gh.js"
       data-key="gh_pk_test_all_feab8e2ae18f8164ee7e1f36412b774a"
       data-brand="Gundry MD"
+      data-brand-token="gundry"
+      data-debug="true"
     ></script>
 
     <script>

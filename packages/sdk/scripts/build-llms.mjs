@@ -5,12 +5,15 @@
 // Runs as part of `pnpm --filter @goldenhippo/hippo-shop-sdk build`. The
 // existing Cloudflare Pages deploy in .github/workflows/release.yml publishes
 // everything in dist/, so the resulting files land at
-// https://api-prod.goldenhippo.io/sdk/v3/{llms.txt,llms-full.txt} after the
-// next release. (The prior `/sdk/v1/` URL line is frozen at v2.1.1.)
+// https://api-prod.goldenhippo.io/sdk/v<major>/{llms.txt,llms-full.txt} after the
+// next release, where <major> comes from package.json. (Earlier majors keep their own
+// frozen lines: /sdk/v3/ at the last 3.x build, /sdk/v1/ at v2.1.1.)
 //
 // Source: docs/superpowers/specs/2026-05-16-llms-txt-design.md
 
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
+// Sync read: LLMS_TXT_BODY is a top-level template literal, so the major must resolve at module scope.
+import { readFileSync } from 'node:fs';
 
 const SCRIPT_DIR   = new URL('.', import.meta.url);
 const SDK_README   = new URL('../README.md', SCRIPT_DIR);
@@ -18,6 +21,13 @@ const TYPES_README = new URL('../../types/README.md', SCRIPT_DIR);
 const DIST_DIR     = new URL('../dist/', SCRIPT_DIR);
 const LLMS_TXT     = new URL('llms.txt', DIST_DIR);
 const LLMS_FULL    = new URL('llms-full.txt', DIST_DIR);
+
+// The CDN line tracks the SDK's major 1:1 (/sdk/v4/ for 4.x). Derive it rather than
+// hardcoding: this file ships in dist/ and is served FROM that line, so a stale literal
+// publishes a v4 artifact pointing at the frozen v3 one — which is exactly what happened
+// through 4.0.0.
+const SDK_MAJOR    = JSON.parse(readFileSync(new URL('../package.json', SCRIPT_DIR), 'utf8')).version.split('.')[0];
+const CDN_BASE     = `https://api-prod.goldenhippo.io/sdk/v${SDK_MAJOR}`;
 
 // Static curated index. To add a new doc source, edit this string.
 const LLMS_TXT_BODY = `# Hippo Shop SDK
@@ -30,7 +40,7 @@ The SDK ships two complementary surfaces: declarative \`data-gh-*\` attribute bi
 
 - [SDK README](https://github.com/GoldenHippoMedia/hippo-shop/blob/main/packages/sdk/README.md): Full attribute reference, built-in and custom formatters, lifecycle events, programmatic API, error codes, safety guarantees, and the advanced TypeScript / NPM surface
 - [Types README](https://github.com/GoldenHippoMedia/hippo-shop/blob/main/packages/types/README.md): DTO shapes for funnel, destination, and product resources, with field definitions and example JSON responses
-- [Full content (one-fetch)](https://api-prod.goldenhippo.io/sdk/v3/llms-full.txt): Both READMEs concatenated for LLMs that want a single download
+- [Full content (one-fetch)](${CDN_BASE}/llms-full.txt): Both READMEs concatenated for LLMs that want a single download
 
 ## Packages
 

@@ -2,11 +2,11 @@
 const steps = [
   {
     title: 'Drop the SDK script tag on your page',
-    body: 'Add the script with your access key and brand. The SDK boots automatically and attaches <code class="font-mono text-[13px]">window.gh</code>.',
+    body: 'Add the script with your access key, your brand display name, and <code class="font-mono text-[13px]">data-brand-token</code> — the brand vocabulary funnel events are attributed by. The SDK boots automatically, attaches <code class="font-mono text-[13px]">window.gh</code>, and establishes the visitor session.',
   },
   {
-    title: 'Wrap your CTA in <code class="font-mono text-[13px]">data-gh-destination</code>',
-    body: 'One destination per offer. Inside it, bind the price, the offer name, and the order form ID with <code class="font-mono text-[13px]">data-field</code> and <code class="font-mono text-[13px]">data-attr-*</code>.',
+    title: 'Bind the offer with <code class="font-mono text-[13px]">data-gh-destination</code>, the CTA with <code class="font-mono text-[13px]">data-gh-checkout</code>',
+    body: 'One destination per offer. Inside it, bind the price and the offer name with <code class="font-mono text-[13px]">data-field</code> and <code class="font-mono text-[13px]">data-attr-*</code>, and put <code class="font-mono text-[13px]">data-gh-checkout</code> on the CTA itself — the SDK composes the outbound URL with the session id and the attribution params. On a funnel page, add <code class="font-mono text-[13px]">data-gh-step</code> so Page Views report the right step.',
   },
   {
     title: 'Marketing edits the destination, the page updates',

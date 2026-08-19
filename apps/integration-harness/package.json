@@ -2,7 +2,7 @@
   "name": "@hippo-shop/integration-harness",
   "version": "0.0.0",
   "private": true,
-  "description": "Vitest E2E tests for /public/v1/* — gated on UAT_KEY env var.",
+  "description": "Vitest E2E tests for /public/v1/* — gated on the HIPPO_SHOP_KEY env var.",
   "type": "module",
   "scripts": {
     "test": "vitest run",

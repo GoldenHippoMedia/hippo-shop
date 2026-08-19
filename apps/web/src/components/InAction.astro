@@ -4,7 +4,7 @@ import CodeBlock from './CodeBlock.astro';
 <section class="bg-white px-8 py-16">
   <h2 class="font-display font-bold text-3xl text-center mb-2">See it in action</h2>
   <p class="text-sm text-gh-ink-500 text-center mb-10 max-w-[540px] mx-auto">
-    A real destination binding — price, offer name, and the order form ID that hands off to checkout.
+    A real destination binding — price and offer name from your data source, and a CTA the SDK turns into a composed checkout URL carrying the session id and every attribution param.
   </p>
 
   <div class="flex flex-col gap-4 max-w-[760px] mx-auto">
@@ -14,9 +14,9 @@ import CodeBlock from './CodeBlock.astro';
         <span style="color: var(--gh-yellow-400)">data-format</span><span style="color: var(--gh-ink-500)">=</span><span style="color: var(--gh-yellow-100)">"currency:USD"</span><span style="color: var(--gh-ink-500)">&gt;</span>--<span style="color: var(--gh-ink-500)">&lt;/span&gt;</span>
   / <span style="color: var(--gh-ink-500)">&lt;span</span> <span style="color: var(--gh-yellow-400)">data-field</span><span style="color: var(--gh-ink-500)">=</span><span style="color: var(--gh-yellow-100)">"name"</span><span style="color: var(--gh-ink-500)">&gt;</span>Loading…<span style="color: var(--gh-ink-500)">&lt;/span&gt;</span>
 
-  <span style="color: var(--gh-ink-500)">&lt;button</span> <span style="color: var(--gh-yellow-400)">data-attr-data-order-form-id</span><span style="color: var(--gh-ink-500)">=</span><span style="color: var(--gh-yellow-100)">"pricing.orderFormId"</span><span style="color: var(--gh-ink-500)">&gt;</span>
+  <span style="color: var(--gh-ink-500)">&lt;a</span> <span style="color: var(--gh-yellow-400)">data-gh-checkout</span><span style="color: var(--gh-ink-500)">=</span><span style="color: var(--gh-yellow-100)">"krill-oil-6pack-sub"</span><span style="color: var(--gh-ink-500)">&gt;</span>
     Get Yours →
-  <span style="color: var(--gh-ink-500)">&lt;/button&gt;</span>
+  <span style="color: var(--gh-ink-500)">&lt;/a&gt;</span>
 <span style="color: var(--gh-ink-500)">&lt;/div&gt;</span>`} />
     </CodeBlock>
 
@@ -27,11 +27,14 @@ import CodeBlock from './CodeBlock.astro';
       <div class="font-bold text-xl text-gh-ink-900 mb-1">
         $59.99 / Krill Oil 6-Pack Subscription
       </div>
-      <button class="bg-gh-yellow-500 text-gh-ink-900 font-semibold text-sm px-4 py-2 rounded-lg mt-3" type="button">
+      <a class="inline-block bg-gh-yellow-500 text-gh-ink-900 font-semibold text-sm px-4 py-2 rounded-lg mt-3" href="#">
         Get Yours →
-      </button>
-      <div class="text-[11px] font-mono text-gh-ink-500 mt-2">
-        data-order-form-id="a1B5x000000QkPaEAK"
+      </a>
+      <div class="text-[11px] font-mono text-gh-ink-500 mt-2 break-all">
+        href="https://…/checkout?order_form_id=…&amp;sessionid=…&amp;utm_source=…"
+      </div>
+      <div class="text-[11px] text-gh-ink-500 mt-1">
+        The link stays at <span class="font-mono">#</span> until the session resolves, then the SDK fills it in.
       </div>
     </div>
   </div>

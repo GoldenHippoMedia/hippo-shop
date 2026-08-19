@@ -83,9 +83,31 @@
   </head>
   <body>
     <main class="page page-narrow">
+      <!--
+        data-gh-step declares WHICH step of the funnel this page is. It feeds
+        step identity on funnel-event Page Views: the emitter matches this
+        slug against funnel.steps[].slug on the funnel DTO resolved from
+        data-gh-funnel, and the matched step's Salesforce id becomes the
+        payload's funnelSTPId. The raw slug lands in the payload's `url`
+        field. Without it, funnelSTPId falls back to the inbound
+        ?funnelSTPId= param, which /fst always mints as step 1 and never
+        advances — so every step of the funnel reports as step 1.
+
+        It is deliberately NOT a script-tag config field. The emitter reads it
+        from the live DOM at emit time, so an SPA that swaps this attribute is
+        declaring a new step: the MutationObserver picks the change up, fires
+        gh:step-changed, and re-arms the emitter for a second Page View.
+
+        PLACEHOLDER — this slug is illustrative, not a real step on this
+        funnel. Replace it with an actual steps[].slug before using this page
+        against live data; a slug that matches nothing resolves no funnelSTPId.
+        This demo sits on step 3 of 5 (currentIndex = 2 in the inline JS below),
+        so whatever you put here and that index have to stay in step.
+      -->
       <article
         class="card funnel-card"
         data-gh-funnel="demo_mct_cms_survey_260427"
+        data-gh-step="mct_cms_survey_step3_checkin"
       >
         <p class="funnel-name">
           You're inside <strong data-field="name">…</strong>
@@ -148,16 +170,36 @@
           ← <a href="./index.html">Back to demos</a>
         </p>
         <p>
-          SDK loaded from <code>api-uat.goldenhippo.io</code>. Funnel slug:
-          <code>demo_mct_cms_survey_260427</code>.
+          SDK v4 loaded from <code>api-uat.goldenhippo.io</code>. Funnel slug:
+          <code>demo_mct_cms_survey_260427</code>; the step slug is a
+          placeholder — swap it for a real <code>steps[].slug</code>.
         </p>
       </footer>
     </main>
 
+    <!--
+      data-brand-token is the Altern *payload* brand vocabulary, and it is a
+      different value space from data-brand: data-brand is the public display
+      name ("Gundry MD"), data-brand-token is the BRAND_NAME token ("gundry").
+      The funnel-event builder sends `brandToken ?? brand`. Leave it off and
+      every event is attributed to the display name instead — Altern answers
+      200 and writes it to the same Salesforce column, so the mis-attribution
+      never appears in a log.
+
+      data-debug=true turns on the emitter's diagnostics. That matters on this
+      page: data-gh-step supplies the STEP, but the funnel ID still has to
+      come from a bound destination, an explicit data-gh-funnel-id, or the
+      ?origmainFunnelIdOrig= param that /fst mints. Opened straight off the
+      filesystem this page has none of those, so the Page View is gated and
+      never emitted — with debug on you see exactly that in the console
+      instead of silence.
+    -->
     <script
-      src="https://api-uat.goldenhippo.io/sdk/v3/gh.js"
+      src="https://api-uat.goldenhippo.io/sdk/v4/gh.js"
       data-key="gh_pk_test_all_feab8e2ae18f8164ee7e1f36412b774a"
       data-brand="Gundry MD"
+      data-brand-token="gundry"
+      data-debug="true"
     ></script>
 
     <script>
