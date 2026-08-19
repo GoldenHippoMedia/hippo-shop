@@ -63,12 +63,13 @@ function setHead(html: string): void {
 }
 
 /** Mirrors checkout.spec.ts's helper: override window.location.search for one test. */
-function setSearch(search: string): void {
+function setSearch(search: string, pathname = '/offer'): void {
   Object.defineProperty(window, 'location', {
     value: {
       ...window.location,
       search,
-      href: `https://sf.gundrymd.com/offer${search}`,
+      pathname,
+      href: `https://sf.gundrymd.com${pathname}${search}`,
     },
     writable: true,
   });
@@ -952,6 +953,62 @@ describe('makeTrackFn', () => {
     expect((postEvent.mock.calls[0]![1] as Record<string, unknown>)['destinationId']).toBe(
       'a0Ylate',
     );
+  });
+
+  // The regression this guards is "no request to the funnel route at all" — a
+  // page arriving with only ?origmainFunnelIdOrig= had no lookup key, so
+  // ensureFunnel was never called and the step silently stayed null.
+  //
+  // This has to be an EMITTER-level test. resolveEventIdentity only ever calls
+  // the synchronous getFunnel it is handed, so a unit test there passes whether
+  // or not runPageView awaits ensureFunnel — it cannot see the fetch.
+  it('fetches the funnel by ?origmainFunnelIdOrig= when the cache is cold, then resolves the step from the path', async () => {
+    // No data-gh-funnel-id and no data-gh-funnel: the URL param must be the only
+    // lookup key, otherwise the attribute would outrank it and prove nothing.
+    setBody('<div data-gh-destination="bio3-1p-ot"></div>');
+    setSearch('?origmainFunnelIdOrig=a0qQL00000NR2IEYA1', '/order-form');
+
+    let cached = false;
+    const ensureFunnel = vi.fn().mockImplementation(async () => {
+      cached = true;
+    });
+    const { opts, postEvent } = makeEmitterOpts({
+      ensureFunnel,
+      getFunnel: (key) =>
+        cached && key === 'a0qQL00000NR2IEYA1'
+          ? makeFunnel(
+              'demo_superfunnel_offer-selector',
+              [
+                { slug: 'order-form', id: 'a0Zorderform' },
+                { slug: 'upsell', id: 'a0Zupsell' },
+              ],
+              'a0qQL00000NR2IEYA1',
+            )
+          : null,
+    });
+
+    await makeTrackFn(opts)('Page View');
+
+    expect(ensureFunnel).toHaveBeenCalledWith('a0qQL00000NR2IEYA1');
+    expect(postEvent).toHaveBeenCalledOnce();
+    const event = postEvent.mock.calls[0]![1] as Record<string, unknown>;
+    expect(event['mainFunnelId']).toBe('a0qQL00000NR2IEYA1');
+    // The proof the await happened: the step id only exists on the LATE-cached
+    // DTO, and it is matched from the path segment, not from any attribute.
+    // Two steps, so this cannot be the single-step fallback.
+    expect(event['funnelSTPId']).toBe('a0Zorderform');
+  });
+
+  it('does not call ensureFunnel when the page declares no funnel at all', async () => {
+    setBody('<div data-gh-destination="bio3-1p-ot"></div>');
+    setSearch('', '/order-form');
+    const ensureFunnel = vi.fn().mockResolvedValue(undefined);
+    const { opts, postEvent } = makeEmitterOpts({ ensureFunnel, getFunnel: () => null });
+
+    await makeTrackFn(opts)('Page View');
+
+    expect(ensureFunnel).not.toHaveBeenCalled();
+    expect(postEvent).not.toHaveBeenCalled();
   });
 });
 

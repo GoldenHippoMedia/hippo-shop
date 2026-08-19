@@ -515,11 +515,11 @@ const DESTINATION_ID_PARAM = 'origdsidOrig';
 const DESTINATION_ID_PARAM_INTERNAL = 'dsid';
 const STEP_ID_PARAM = 'funnelSTPId';
 /**
- * The funnel SLUG, which is the only key `GET /public/v1/funnel/<slug>`
- * resolves by — verified against UAT: the slug `ultimateh2_cms_osstart_260520_p`
- * returns 200 with its step list, while the funnel *id* from
- * `origmainFunnelIdOrig` returns 404. The /fst hop mints both spellings; the
- * `orig…Orig` form is the one that survives later hops, so it is checked first.
+ * The funnel slug as minted by the /fst hop. `GET /public/v1/funnel/{slugOrId}`
+ * resolves a slug OR a Salesforce id — see `resolveFunnelLookupKey`, which is
+ * why FUNNEL_ID_PARAM above is a lookup key too. The hop mints both spellings of
+ * the slug; the `orig…Orig` form is the one that survives later hops, so it is
+ * checked first.
  */
 const FUNNEL_SLUG_PARAM = 'origuidOrig';
 const FUNNEL_SLUG_PARAM_SHORT = 'uid';
