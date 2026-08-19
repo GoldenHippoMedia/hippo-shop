@@ -12,8 +12,8 @@ The package has one barrel export at `@goldenhippo/hippo-shop-types`. Every type
 
 | Type | What it represents |
 |---|---|
-| `HippoShopFunnelDTO` | A pre-purchase funnel as exposed publicly — `slug`, `name`, `active`, ordered `steps[]`. Inactive funnels return 404 server-side; inactive steps are pre-filtered out of `steps`. Post-purchase funnels are not exposed publicly. |
-| `HippoShopFunnelStepDTO` | One step within a funnel — `stepNumber` (1-indexed), `slug`, `name`, `kind` (a closed enum). |
+| `HippoShopFunnelDTO` | A pre-purchase funnel as exposed publicly — `id` (Salesforce), `slug`, `name`, `active`, ordered `steps[]`. Inactive funnels return 404 server-side; inactive steps are pre-filtered out of `steps`. Post-purchase funnels are not exposed publicly. |
+| `HippoShopFunnelStepDTO` | One step within a funnel — `id` (Salesforce), `stepNumber` (1-indexed), `slug`, `name`, `kind` (a closed enum). |
 | `HippoShopStepKind` | Closed enum: `'landing' \| 'content' \| 'order-form' \| 'bump' \| 'upsell' \| 'downsell' \| 'thank-you'`. The internal `pageType` is mapped to this set server-side; unknown internal values are dropped (and logged) so the host page never sees garbage. |
 
 ### Destination types
@@ -49,6 +49,13 @@ The package has one barrel export at `@goldenhippo/hippo-shop-types`. Every type
 
 - Type: `string | null`
 - Optional override for the checkout base URL on handoff. When non-null, the SDK uses this URL instead of the brand-level `data-checkout-base` script-tag attribute. When `null`, the brand default applies. See the SDK SPEC's [Checkout handoff](../sdk/SPEC.md#checkout-handoff) section for full details on how this is used in URL composition.
+
+## Field details (Cluster G additions)
+
+### `HippoShopFunnelDTO.id`
+
+- Type: `string` — required, always present.
+- The funnel's own Salesforce ID. Everything else addressable in this contract is slug-keyed; this key exists because a funnel event has to carry the funnel's record id as `funnelSTFId` / `mainFunnelId`, and the upstream drops any event whose funnel id is blank. Without it, a page that names its funnel by `slug` alone — how a funnel is fetched — could not emit an event at all. Prefer `slug` for anything addressable; this key exists to stamp events, not to fetch with. See the SDK README's [Funnel events](../sdk/README.md#funnel-events) section for where the value ends up.
 
 ## Invariants
 

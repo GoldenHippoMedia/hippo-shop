@@ -4,7 +4,7 @@
 [![Release](https://github.com/GoldenHippoMedia/hippo-shop/actions/workflows/release.yml/badge.svg)](https://github.com/GoldenHippoMedia/hippo-shop/actions/workflows/release.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
 
-Typed, key-authenticated, brand-scoped public surface for Golden Hippo data — funnels, destinations, products — readable from external pages with two lines of HTML. As of v4 the SDK also carries Golden Hippo's session and attribution model: it writes a first-party session cookie and posts attribution and `Page View` funnel events.
+Typed, key-authenticated, brand-scoped public surface for Golden Hippo data — funnels, destinations, products — readable from external pages with two lines of HTML. As of v4 the SDK also carries Golden Hippo's session and attribution model: it writes a first-party session cookie and posts attribution and funnel events (`Page View`, plus a `New Session` on the load that establishes the session).
 
 ## Packages
 
@@ -25,13 +25,16 @@ Both are published with [SLSA provenance](https://slsa.dev/spec/v1.0/provenance)
 
 ## About this version
 
-**v4 is the current release.** It is the first version of Hippo Shop that participates in Golden Hippo's session and attribution model. A v4 page reads funnels, destinations, and products exactly as v3 did, and additionally resolves a session id, writes a first-party `hippo_session_id` cookie, POSTs this visit's attribution to `/public/v1/session`, stamps the session onto outbound offer links, and emits a `Page View` funnel event.
+**v4 is the current release.** It is the first version of Hippo Shop that participates in Golden Hippo's session and attribution model. A v4 page reads funnels, destinations, and products exactly as v3 did, and additionally resolves a session id, writes a first-party `hippo_session_id` cookie, POSTs this visit's attribution to `/public/v1/session`, stamps the session onto outbound offer links, and emits its funnel events — a `Page View` per page load, plus a `New Session` on the load that establishes the session.
 
 v1.x, v2.x, and v3.x remain on npm but are no longer maintained. There are no production consumers of those lines, so v4 is a clean cut rather than a migration — start on v4.
 
-Two things to know before you integrate, because neither fails loudly:
+Three things to know before you integrate, because none of them fails loudly:
 
 - **Set `data-brand-token` on any page that binds a destination or checkout link.** It fills the `brand` field on funnel events, as `data-brand-token ?? data-brand`. Omit it and every event on the page is attributed to the display name instead of the brand token — with a `200` from the API and nothing in any log to tell you.
+
+- **A page that only binds destinations emits no funnel event.** Funnel identity comes from `data-gh-funnel-id`, from the funnel named by `data-gh-funnel` / `?origuidOrig=`, or from `?origmainFunnelIdOrig=` — never from a bound destination. An offer selector that binds six offers and declares no funnel of its own is silently absent from funnel reporting, by design; give the page a funnel of its own if you want page views from it.
+
 - **`gh.checkoutUrl()` returns a `Promise<string>`**, because it awaits session resolution before composing the URL. Assign the result to `window.location.href`; `window.open(await gh.checkoutUrl(slug))` is popup-blocked in every major browser, because the `await` breaks the user-gesture chain. See [Session, attribution, and events](./packages/sdk/README.md#session-attribution-and-events) for the full surface, including how to open a new tab safely.
 
 ## Quickstart

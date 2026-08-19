@@ -55,6 +55,8 @@ function makeSession(overrides: Partial<SessionState> = {}): SessionState {
     sessionId: '174710238129',
     adopted: false,
     params: {},
+    isNew: false,
+    data: null,
     ...overrides,
   };
 }

@@ -258,6 +258,19 @@ export class GhRuntime {
     return this.loadOne('destination', slug);
   }
 
+  /**
+   * Trigger a funnel load (idempotent via the same in-flight dedup).
+   *
+   * Needed because nothing else on a Superfunnel page ever fetches a funnel:
+   * `bind()` only loads resources it finds bound in the DOM, so without this
+   * `getCachedFunnel` returns null forever and step resolution can never get
+   * past the URL-param fallback. The emitter calls this when the page asserts
+   * a funnel slug (`data-gh-funnel`, `?origuidOrig=`, `?uid=`).
+   */
+  ensureFunnel(slug: string): Promise<void> {
+    return this.loadOne('funnel', slug);
+  }
+
   /** Wire DOMContentLoaded → initial bind. Idempotent. */
   installAutoBind(): void {
     const run = (): void => {

@@ -42,13 +42,38 @@ export const SESSION_COOKIE_NAME = 'hippo_session_id';
 const SESSION_TTL_SEC = 30 * 24 * 60 * 60; // 30 days
 const SESSION_READY_EVENT = 'gh:session-ready';
 
+/**
+ * The session POST's response body. The server echoes the attribution it stored
+ * plus the identity it resolved, so this — not the local guess — is the record
+ * of what the session actually is. Every key is optional: the route prunes
+ * empty values, so a sparse landing produces a sparse object.
+ *
+ * Carried on `SessionState.data` and forwarded verbatim as the funnel event's
+ * `affParams`. That forwarding is why this is deliberately not narrowed to a
+ * hand-written field list: the server owns the shape, and a stale local copy of
+ * it would silently drop whatever the server adds next.
+ */
+export type SessionResponse = Record<string, unknown> & {
+  sessionId?: string;
+  visitorId?: string;
+};
+
 export interface SessionState {
-  /** Resolved session id: adopted from `?sessionid=`, restored from the cookie, or minted. */
+  /** Resolved session id: restored from the cookie, adopted from `?sessionid=`, minted, or replaced by the server. */
   sessionId: string;
   /** True when the id came from `?sessionid=` on this page load (spec D1 handoff). */
   adopted: boolean;
   /** Landing-URL attribution. Always parsed — never null (spec D4). */
   params: ParsedParams;
+  /**
+   * True when this page load established a session rather than resuming one —
+   * a mint, a `?sessionid=` adoption, or a server-side replacement. Gates the
+   * one-shot `New Session` funnel event, mirroring the reference's
+   * `wasNewlyGenerated` (`emission-driver.service.ts:107-117`).
+   */
+  isNew: boolean;
+  /** The session POST's response body, or null if the POST failed. Becomes `affParams` on funnel events. */
+  data: SessionResponse | null;
 }
 
 let cachedState: SessionState | null = null;
@@ -147,6 +172,9 @@ export async function ensureSession(
   const search = typeof window !== 'undefined' ? window.location.search : '';
 
   const resolved = resolveSessionId(search, logger);
+  // Hoisted out of the write below because the server-replacement path further
+  // down needs the same scoping decision, and the two must not drift.
+  const cookieDomain = resolved.adopted ? null : getCookieDomain(config);
   if (resolved.persist) {
     // I4: an adopted id (from `?sessionid=`) is written host-only — the
     // sf -> www handoff already works via the URL (see the
@@ -155,11 +183,10 @@ export async function ensureSession(
     // one visitor's chosen session for the full 30-day TTL. Minted ids keep
     // root-domain scoping, which is what makes returning-visit continuity
     // work across subdomains.
-    const domain = resolved.adopted ? null : getCookieDomain(config);
     try {
       writeCookie(SESSION_COOKIE_NAME, resolved.sessionId, {
         maxAgeSec: SESSION_TTL_SEC,
-        domain,
+        domain: cookieDomain,
       });
     } catch {
       // Cookie write blocked (third-party context, quota). The id still lives
@@ -183,20 +210,63 @@ export async function ensureSession(
   // the state transition below (see the note on it), and boxing keeps a thrown
   // `undefined` distinguishable from "no failure".
   let postFailure: { err: unknown } | null = null;
+  let data: SessionResponse | null = null;
   try {
     // D4: POST once per page load, unconditionally. `sessionId` is nested
     // inside `affParameters` and empty values are pruned before send.
-    await client.postJson('session', buildSessionPostBody(params, resolved.sessionId));
+    data = await client.postJson<SessionResponse>(
+      'session',
+      buildSessionPostBody(params, resolved.sessionId),
+    );
   } catch (err) {
     // Network or non-2xx: attribution degrades, the page never breaks. Still
     // swallowed — D4 is fire-and-forget with no retry, not even on 429.
     postFailure = { err };
   }
 
+  // The server reconciles the id we sent against its own express-session (keyed
+  // by `connect.sid`) and returns the id actually in force. That one is
+  // authoritative: it is what the funnel-event pipeline and Salesforce will
+  // see. Adopting it here — before `cachedState` is set, so before
+  // `gh:session-ready` fires — keeps `gh.session.id()`, every outbound
+  // `sessionid=`, the funnel event and the Page View dedupe key on one value.
+  //
+  // Validated with the same pattern as every other tier: this value reaches a
+  // cookie write and a query string, and "the server sent it" is not on its own
+  // a reason to skip the check the ladder applies to all three other sources.
+  //
+  // A deliberate divergence from the reference, which discards the response —
+  // its `HippoSession` model declares no `sessionId` field at all. It can
+  // afford to because its `/cid` router already reconciled server-side.
+  const returnedId = typeof data?.sessionId === 'string' ? data.sessionId.trim() : '';
+  const replaced =
+    returnedId !== '' && SESSION_ID_PATTERN.test(returnedId) && returnedId !== resolved.sessionId;
+  if (returnedId !== '' && !SESSION_ID_PATTERN.test(returnedId)) {
+    logger.warn('session: ignoring malformed sessionId in the session response');
+  }
+  const sessionId = replaced ? returnedId : resolved.sessionId;
+
+  if (replaced) {
+    logger.debug('session: server replaced the resolved id', resolved.sessionId, '->', sessionId);
+    try {
+      writeCookie(SESSION_COOKIE_NAME, sessionId, {
+        maxAgeSec: SESSION_TTL_SEC,
+        domain: cookieDomain,
+      });
+    } catch {
+      // Same non-fatal contract as the first write: the id still lives in
+      // memory for this page load and still rides outbound links.
+    }
+  }
+
   const state: SessionState = {
-    sessionId: resolved.sessionId,
+    sessionId,
     adopted: resolved.adopted,
     params,
+    // A mint or an adoption established a session; so did a server replacement,
+    // which means the id we were carrying was not the one in force.
+    isNew: resolved.persist || replaced,
+    data,
   };
   cachedState = state;
   fireReady(state);
@@ -236,24 +306,42 @@ interface ResolvedSessionId {
 }
 
 /**
- * D1 resolution ladder, mirroring `hippo-builder-funnel`
- * session.service.ts:54-93:
+ * D1 resolution ladder. **Cookie outranks `?sessionid=`** — the reverse of
+ * `hippo-builder-funnel` session.service.ts:54-93, and deliberately so.
  *
- *  1. `?sessionid=` — validated by SESSION_ID_PATTERN, adopted even when a
- *     *different* cookie value already exists, and re-persisted every time so
- *     the 30-day window refreshes. Malformed values warn and fall through.
- *  2. the `hippo_session_id` cookie — validated by the same pattern. The cookie
- *     is scoped to the registrable root, so any sibling subdomain can write it;
- *     an unvalidated value would flow straight into a cookie write, a query
- *     string and a server-side session key. Malformed values warn and fall
- *     through, exactly as in tier 1.
+ *  1. the `hippo_session_id` cookie — validated by SESSION_ID_PATTERN. A
+ *     returning visitor keeps the session they already have. `persist: false`:
+ *     re-writing the same value only rolls the TTL, and the ledger's I3 ruling
+ *     keeps that off.
+ *  2. `?sessionid=` — validated by the same pattern, taken only when no usable
+ *     cookie exists, i.e. for a genuinely new visitor. Superfunnel mints its own
+ *     UUID into this param; honouring it for new visitors is what stitches their
+ *     session to ours. Malformed values warn and fall through.
  *  3. a freshly minted UUIDv4.
  *
- * Accepting a URL-supplied id is session fixation by design; for this pilot the
- * blast radius is analytics, not authentication or payment. The regex and the
- * debug log line are the mitigations.
+ * Why this differs from the reference: the funnel app can safely rank the param
+ * first because its own `/cid` router mints that param **server-side and reuses
+ * the visitor's existing cookie when one is present** (`src/server/cid/
+ * router.ts:167-174`, which also drops any caller-supplied `sessionid` first).
+ * By the time the param reaches that app's browser it already encodes the
+ * cookie, so param-first and cookie-first agree. Superfunnel has no equivalent
+ * server hop, so the same reconciliation has to happen here. Ranking the param
+ * first without it would let any inbound link re-key a returning visitor's
+ * session on every visit.
+ *
+ * Accepting a URL-supplied id is still session fixation by design; for this
+ * pilot the blast radius is analytics, not authentication or payment. The
+ * regex, the cookie precedence and the debug log line are the mitigations.
  */
 function resolveSessionId(search: string, logger: Logger): ResolvedSessionId {
+  const fromCookie = readCookie(SESSION_COOKIE_NAME)?.trim();
+  if (fromCookie) {
+    if (SESSION_ID_PATTERN.test(fromCookie)) {
+      return { sessionId: fromCookie, adopted: false, persist: false };
+    }
+    logger.warn('session: ignoring malformed hippo_session_id cookie value');
+  }
+
   const fromUrl = readSessionIdFromUrl(search);
   if (fromUrl) {
     logger.debug('session: adopting ?sessionid= handoff', fromUrl);
@@ -262,14 +350,6 @@ function resolveSessionId(search: string, logger: Logger): ResolvedSessionId {
 
   if (hasSessionIdParam(search)) {
     logger.warn('session: ignoring malformed ?sessionid= handoff param');
-  }
-
-  const fromCookie = readCookie(SESSION_COOKIE_NAME)?.trim();
-  if (fromCookie) {
-    if (SESSION_ID_PATTERN.test(fromCookie)) {
-      return { sessionId: fromCookie, adopted: false, persist: false };
-    }
-    logger.warn('session: ignoring malformed hippo_session_id cookie value');
   }
 
   return { sessionId: mintSessionId(logger), adopted: false, persist: true };

@@ -69,7 +69,7 @@ function expectExactKeys(actual: unknown, expected: readonly string[], label: st
   ).toEqual([...expected].sort());
 }
 
-const FUNNEL_KEYS = keysOf<HippoShopFunnelDTO>()(['slug', 'name', 'active', 'steps']);
+const FUNNEL_KEYS = keysOf<HippoShopFunnelDTO>()(['id', 'slug', 'name', 'active', 'steps']);
 const FUNNEL_STEP_KEYS = keysOf<HippoShopFunnelStepDTO>()([
   'id', 'stepNumber', 'slug', 'name', 'kind',
 ]);

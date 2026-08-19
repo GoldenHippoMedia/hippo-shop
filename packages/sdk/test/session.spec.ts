@@ -147,9 +147,17 @@ describe('ensureSession', () => {
     expect(state.params.landingUrl).toContain('gundrymd.com');
   });
 
-  it('SessionState is exactly { sessionId, adopted, params }', async () => {
+  it('SessionState is exactly { sessionId, adopted, params, isNew, data }', async () => {
     const state = await ensureSession(makeConfig(), client);
-    expect(Object.keys(state).sort()).toEqual(['adopted', 'params', 'sessionId']);
+    expect(Object.keys(state).sort()).toEqual([
+      'adopted',
+      'data',
+      'isNew',
+      'params',
+      'sessionId',
+    ]);
+    // Still no cookie-presence flag: the funnel event carries `affParams` from
+    // `data` instead of relying on `connect.sid` riding the request.
     expect('hasConnectSid' in state).toBe(false);
     expect(state.params).not.toBeNull();
   });
@@ -186,8 +194,9 @@ describe('ensureSession', () => {
     expect(body.affParameters.landingUrl).toBe('https://ads.example.com/lp');
   });
 
+  // No cookie seeded: with cookie-first precedence, adoption only happens for
+  // a visitor who has none — which is exactly the first-touch case.
   it('I3: adopting ?sessionid= counts as a first touch, not a returning visit', async () => {
-    jar.seed(SESSION_COOKIE_NAME, 'stale-cookie-session-id');
     setLocation('https://info.gundrymd.com/lp/vsl?sessionid=adopted-session-id');
     const state = await ensureSession(makeConfig(), client);
     expect(state.sessionId).toBe('adopted-session-id');
@@ -401,8 +410,23 @@ describe('ensureSession — D1 resolution ladder', () => {
     jar.restore();
   });
 
-  it('adopts ?sessionid= over a different cookie value', async () => {
+  // The cookie outranks the param. A returning visitor keeps the session they
+  // already have, whatever an inbound link asserts — otherwise every fresh
+  // /cid click re-keys them, because that chain mints a new `sessionid` on
+  // every request.
+  it('keeps the cookie session over a different ?sessionid=', async () => {
     jar.seed('hippo_session_id', 'cookie-value-111');
+    setLocation('https://sf.example.com/offer?sessionid=url-value-222');
+    const state = await ensureSession(makeConfig(), client);
+    expect(state.sessionId).toBe('cookie-value-111');
+    expect(state.adopted).toBe(false);
+    // Not re-persisted: a cookie hit is `persist: false` (ledger ruling I3).
+    expect(jar.get('hippo_session_id')!.value).toBe('cookie-value-111');
+  });
+
+  // The new-visitor case Superfunnel depends on: it mints its own UUID into
+  // ?sessionid=, and with no cookie to defer to we stitch to it.
+  it('adopts ?sessionid= when there is no cookie', async () => {
     setLocation('https://sf.example.com/offer?sessionid=url-value-222');
     const state = await ensureSession(makeConfig(), client);
     expect(state.sessionId).toBe('url-value-222');
@@ -414,7 +438,6 @@ describe('ensureSession — D1 resolution ladder', () => {
   // subdomain of the brand to whichever session id one clicked link
   // happened to carry, for the full 30-day TTL. Adopted ids are host-only.
   it('persists the adopted id to the cookie host-only, not at the root domain', async () => {
-    jar.seed('hippo_session_id', 'cookie-value-111');
     setLocation('https://sf.example.com/offer?sessionid=url-value-222');
     await ensureSession(makeConfig(), client);
     const rec = jar.get('hippo_session_id');
@@ -424,7 +447,21 @@ describe('ensureSession — D1 resolution ladder', () => {
     expect(rec!.sameSite).toBe('Lax');
   });
 
-  it('falls through to the cookie when ?sessionid= is malformed, and warns', async () => {
+  // With no cookie the param is reached, so a malformed one warns and falls
+  // through to a mint. (Seeded with a cookie the param is never consulted at
+  // all — see the precedence test above.)
+  it('mints and warns when ?sessionid= is malformed and there is no cookie', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    setLocation('https://sf.example.com/offer?sessionid=bad%20value%3B%20Max-Age%3D0');
+
+    const state = await ensureSession(makeConfig(), client);
+
+    expect(state.sessionId).toMatch(UUID_V4_RE);
+    expect(state.adopted).toBe(false);
+    expect(warn).toHaveBeenCalledWith('[gh]', expect.stringContaining('malformed ?sessionid='));
+  });
+
+  it('never consults a malformed ?sessionid= when a usable cookie exists', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     jar.seed('hippo_session_id', 'cookie-value-111');
     setLocation('https://sf.example.com/offer?sessionid=bad%20value%3B%20Max-Age%3D0');
@@ -432,9 +469,7 @@ describe('ensureSession — D1 resolution ladder', () => {
     const state = await ensureSession(makeConfig(), client);
 
     expect(state.sessionId).toBe('cookie-value-111');
-    expect(state.adopted).toBe(false);
-    expect(warn).toHaveBeenCalledWith('[gh]', expect.stringContaining('malformed ?sessionid='));
-    expect(jar.get('hippo_session_id')!.value).toBe('cookie-value-111');
+    expect(warn).not.toHaveBeenCalledWith('[gh]', expect.stringContaining('malformed ?sessionid='));
   });
 
   it('mints a v4 UUID when there is no URL param and no cookie', async () => {

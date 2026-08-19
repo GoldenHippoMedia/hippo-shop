@@ -344,7 +344,13 @@ export function makeCheckoutUrlFn(
       );
     }
 
-    const session = opts.getSession() ?? { sessionId: '', adopted: false, params: {} };
+    const session = opts.getSession() ?? {
+      sessionId: '',
+      adopted: false,
+      params: {},
+      isNew: false,
+      data: null,
+    };
     return composeCheckoutUrl(destination, opts.config, session, opts.logger);
   };
 }
