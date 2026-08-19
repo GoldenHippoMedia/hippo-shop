@@ -48,7 +48,7 @@ The package has one barrel export at `@goldenhippo/hippo-shop-types`. Every type
 ### `HippoShopPricingDTO.checkoutOverrideUrl`
 
 - Type: `string | null`
-- Optional override for the checkout base URL on handoff. When non-null, the SDK uses this URL instead of the brand-level `data-checkout-base` script-tag attribute. When `null`, the brand default applies. See the SDK SPEC's [Checkout handoff](#checkout-handoff) section for full details on how this is used in URL composition.
+- Optional override for the checkout base URL on handoff. When non-null, the SDK uses this URL instead of the brand-level `data-checkout-base` script-tag attribute. When `null`, the brand default applies. See the SDK SPEC's [Checkout handoff](../sdk/SPEC.md#checkout-handoff) section for full details on how this is used in URL composition.
 
 ## Invariants
 

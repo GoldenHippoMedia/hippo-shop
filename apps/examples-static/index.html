@@ -173,6 +173,18 @@
       .matrix tbody tr:last-child td { border-bottom: none; }
       .matrix tbody tr:hover td { background: var(--blue-50); }
       .matrix tbody tr:hover td:first-child { background: var(--blue-100); }
+      .matrix tbody tr.matrix-group td {
+        text-align: left;
+        padding: 14px 10px 8px 18px;
+        background: var(--gray-100);
+        border-right: none;
+        color: var(--gray-600);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .matrix tbody tr.matrix-group:hover td { background: var(--gray-100); }
       .check { color: var(--blue-600); font-weight: 700; font-size: 15px; line-height: 1; }
       .dash  { color: var(--gray-300); font-weight: 400; }
 
@@ -203,8 +215,10 @@
         <h2>Three archetypes, all using MCT Wellness data</h2>
         <p class="section-lede">
           Open any file directly in a browser — no build step, no bundler. Each
-          demo loads the SDK from <code>api-uat.goldenhippo.io</code> with a
-          public test key.
+          demo loads the v4 SDK from
+          <code>api-uat.goldenhippo.io/sdk/v4/gh.js</code> with a public test
+          key, and each sets <code>data-brand-token</code> and
+          <code>data-debug</code> on its script tag.
         </p>
 
         <div class="demo-grid">
@@ -221,6 +235,8 @@
               <li><code>data-attr-data-stage="kind"</code> for per-step-kind CSS coloring</li>
               <li><code>gh:bindings-ready</code> listener that reads <code>funnel.steps[currentIndex + 1]</code></li>
               <li>Cached <code>window.gh.data.funnel(slug)</code> call from inline JS</li>
+              <li><code>data-gh-step</code> — step identity for funnel-event Page Views,
+                  read from the live DOM at emit time so an SPA can swap it</li>
             </ul>
             <p class="view"><a href="funnel-step.html">View demo</a></p>
           </article>
@@ -231,11 +247,14 @@
             <p class="summary">
               12 destinations on one page (2 flavors × 3 quantities × 2 purchase
               types). Filter pills collapse the 12 down to 3 visible cards.
-              Each card's CTA routes to its post-purchase funnel.
+              Each card's CTA is a composed checkout link. This is the canonical
+              Cluster G pilot shape.
             </p>
             <ul>
               <li>12 <code>data-gh-destination</code> resources fetched concurrently (deduped by the SDK)</li>
-              <li><code>data-attr-href="funnelSlug"</code> on each card's CTA — no JS for routing</li>
+              <li><code>data-gh-checkout</code> on each card's CTA — the SDK composes the
+                  outbound URL with <code>order_form_id</code>, <code>sessionid</code>, and the
+                  attribution params; no JS for routing</li>
               <li><code>data-if="pricing.price.savings"</code> ribbons on the value-tier cards</li>
               <li>Pill-driven <code>[hidden]</code> toggling — no extra fetches when filters change</li>
             </ul>
@@ -388,9 +407,59 @@
                 <td><span class="dash">—</span></td>
                 <td><span class="check">✓</span></td>
               </tr>
+              <tr class="matrix-group">
+                <td colspan="4">Cluster G — session, checkout composition, funnel events</td>
+              </tr>
+              <tr>
+                <td><code>hippo_session_id</code> session established on boot</td>
+                <td><span class="check">✓</span></td>
+                <td><span class="check">✓</span></td>
+                <td><span class="check">✓</span></td>
+              </tr>
+              <tr>
+                <td><code>data-brand-token</code> (Altern payload brand vocabulary)</td>
+                <td><span class="check">✓</span></td>
+                <td><span class="check">✓</span></td>
+                <td><span class="check">✓</span></td>
+              </tr>
+              <tr>
+                <td><code>data-debug</code> (emitter + binding diagnostics)</td>
+                <td><span class="check">✓</span></td>
+                <td><span class="check">✓</span></td>
+                <td><span class="check">✓</span></td>
+              </tr>
+              <tr>
+                <td><code>data-gh-checkout</code> (composed outbound checkout URL)</td>
+                <td><span class="dash">—</span></td>
+                <td><span class="check">✓</span></td>
+                <td><span class="dash">—</span></td>
+              </tr>
+              <tr>
+                <td><code>data-gh-step</code> (step identity on Page View)</td>
+                <td><span class="check">✓</span></td>
+                <td><span class="dash">—</span></td>
+                <td><span class="dash">—</span></td>
+              </tr>
+              <tr>
+                <td>Funnel-event <code>Page View</code> actually emitted</td>
+                <td><span class="dash">—</span></td>
+                <td><span class="check">✓</span></td>
+                <td><span class="dash">—</span></td>
+              </tr>
             </tbody>
           </table>
         </div>
+        <p class="section-lede matrix-note">
+          The <code>Page View</code> row reflects what each page emits as
+          written. Offer selector resolves a funnel id from its bound
+          destinations, so it emits. Funnel step declares a
+          <code>data-gh-step</code> but no funnel id — opened off the
+          filesystem, with no <code>?origmainFunnelIdOrig=</code> from
+          <code>/fst</code> and no bound destination, its Page View is gated
+          and dropped; <code>data-debug</code> makes that visible in the
+          console. The PDP binds no destination at all, which is correct for a
+          product page.
+        </p>
       </section>
 
       <footer class="demo-footer">

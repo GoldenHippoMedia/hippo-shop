@@ -4,7 +4,7 @@
 [![Release](https://github.com/GoldenHippoMedia/hippo-shop/actions/workflows/release.yml/badge.svg)](https://github.com/GoldenHippoMedia/hippo-shop/actions/workflows/release.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
 
-Typed, key-authenticated, brand-scoped public surface for Golden Hippo data — funnels, destinations, products — readable from external pages with two lines of HTML.
+Typed, key-authenticated, brand-scoped public surface for Golden Hippo data — funnels, destinations, products — readable from external pages with two lines of HTML. As of v4 the SDK also carries Golden Hippo's session and attribution model: it writes a first-party session cookie and posts attribution and `Page View` funnel events.
 
 ## Packages
 
@@ -25,16 +25,21 @@ Both are published with [SLSA provenance](https://slsa.dev/spec/v1.0/provenance)
 
 ## About this version
 
-v3 is the first release of Hippo Shop intended for use by other internal Golden Hippo teams. v1.x and v2.x were internal iterations during development; they remain on npm but are no longer maintained.
+**v4 is the current release.** It is the first version of Hippo Shop that participates in Golden Hippo's session and attribution model. A v4 page reads funnels, destinations, and products exactly as v3 did, and additionally resolves a session id, writes a first-party `hippo_session_id` cookie, POSTs this visit's attribution to `/public/v1/session`, stamps the session onto outbound offer links, and emits a `Page View` funnel event.
 
-If you're starting fresh, install the latest. If you've been on v1.x or v2.x, the only migration is replacing reads of `variants.<purchase>.standard` and `variants.<purchase>.myAccount` arrays with `<tier>List` (for iteration) or `<tier>ByQuantity` (for direct lookup).
+v1.x, v2.x, and v3.x remain on npm but are no longer maintained. There are no production consumers of those lines, so v4 is a clean cut rather than a migration — start on v4.
+
+Two things to know before you integrate, because neither fails loudly:
+
+- **Set `data-brand-token` on any page that binds a destination or checkout link.** It fills the `brand` field on funnel events, as `data-brand-token ?? data-brand`. Omit it and every event on the page is attributed to the display name instead of the brand token — with a `200` from the API and nothing in any log to tell you.
+- **`gh.checkoutUrl()` returns a `Promise<string>`**, because it awaits session resolution before composing the URL. Assign the result to `window.location.href`; `window.open(await gh.checkoutUrl(slug))` is popup-blocked in every major browser, because the `await` breaks the user-gesture chain. See [Session, attribution, and events](./packages/sdk/README.md#session-attribution-and-events) for the full surface, including how to open a new tab safely.
 
 ## Quickstart
 
 Drop one `<script>` tag and write your HTML — no install required:
 
 ```html
-<script src="https://api-prod.goldenhippo.io/sdk/v3/gh.js"
+<script src="https://api-prod.goldenhippo.io/sdk/v4/gh.js"
         data-key="gh_pk_yourbrand_xxxxxx"
         data-brand="Sample Co"></script>
 

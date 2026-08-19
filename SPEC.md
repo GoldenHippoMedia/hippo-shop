@@ -18,12 +18,12 @@ Golden Hippo's internal teams building landing pages, sales funnels, and support
 - **Brand-scoped isolation** — every request is scoped to one brand by the `data-brand` attribute and the access key. Cross-brand reads return 404.
 - **Access-key gating** — unknown or revoked keys are rejected at the edge (401 from Kong). CORS origins are allow-listed at the route level today; per-key origin pinning is on the roadmap.
 - **SLSA-provenanced npm releases** for both packages via npm Trusted Publishers.
-- **URL stability** for the CDN-hosted SDK: `https://api-prod.goldenhippo.io/sdk/v3/gh.js` is the current stable entry point. Each major-version cut publishes to its own URL path (`/sdk/vN/gh.js`) so embedded pages can upgrade on their own schedule.
+- **URL stability** for the CDN-hosted SDK: `https://api-prod.goldenhippo.io/sdk/v4/gh.js` is the current stable entry point. Each major-version cut publishes to its own URL path (`/sdk/vN/gh.js`) so embedded pages can upgrade on their own schedule.
 
 ## What it does NOT do
 
-- **No write operations.** Read-only by design. Cart, checkout, and order writes belong to other systems.
-- **No PII.** Public read surface; nothing per-shopper.
+- **No commerce writes.** Cart, checkout, and order writes belong to other systems. The data surface — funnels, destinations, products — is read-only. As of v4 the SDK does write: a first-party session cookie, a `POST /public/v1/session`, and a `POST /public/v1/funnel-event` per page load.
+- **No PII.** The session and funnel-event payloads carry URL attribution parameters, a pseudonymous session id, and a browser / OS / device string derived from the user agent. Nothing identifies a shopper.
 - **No server-side rendering.** Browser-only. Node integrations consume the types package and the live API directly, not the SDK runtime.
 - **No framework lock-in.** The SDK is framework-agnostic vanilla DOM; it can be used inside React, Vue, vanilla HTML, page builders, or anywhere a browser parses HTML.
 
@@ -40,7 +40,7 @@ Golden Hippo's internal teams building landing pages, sales funnels, and support
 
 - Both npm packages follow semver. Breaking DTO or SDK changes ship in a major.
 - Deprecated surfaces are documented in the package SPECs and stay alive for at least one minor release before removal.
-- The CDN script URL `https://api-prod.goldenhippo.io/sdk/v3/gh.js` will not break for v3.x. Future majors publish to a separate URL path (`/sdk/vN/gh.js`) so embedded pages upgrade on their own schedule. The prior `/sdk/v1/gh.js` URL is frozen at the last v2.1.1 build and is unsupported.
+- The CDN script URL `https://api-prod.goldenhippo.io/sdk/v4/gh.js` will not break for v4.x. Future majors publish to a separate URL path (`/sdk/vN/gh.js`) so embedded pages upgrade on their own schedule. The prior `/sdk/v3/gh.js` URL is frozen at the last v3.x build, and `/sdk/v1/gh.js` at the last v2.1.1 build; both are unsupported.
 
 ## Roadmap and backlog
 

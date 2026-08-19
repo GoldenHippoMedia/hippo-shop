@@ -6,7 +6,7 @@
 
 TypeScript type definitions for the Hippo Shop public API. Zero runtime dependencies — install in your project for IntelliSense and compile-time safety against the live API contract.
 
-> For context on v1.x/v2.x/v3.x → v4 — see [About this version](../../README.md#about-this-version) in the root README.
+> New to Hippo Shop? See [About this version](../../README.md#about-this-version) in the root README for what v4 does and the two things worth knowing before you integrate.
 
 > Runtime SDK: [`@goldenhippo/hippo-shop-sdk`](https://www.npmjs.com/package/@goldenhippo/hippo-shop-sdk)
 
@@ -118,20 +118,22 @@ What the API actually returns. All examples use a fictional product (`multi-vita
         "outOfStock": false,
         "restrictedCountryCodes": []
       }
-    ]
+    ],
+    "checkoutOverrideUrl": null
   }
 }
 ```
 
-Three of those fields exist because the SDK cannot derive them:
+Four keys on this DTO exist because the SDK cannot derive them:
 
 | Field | Type | What it is |
 |-------|------|------------|
 | `id` | `string` | Salesforce ID of the destination. |
 | `funnelId` | `string` | Salesforce ID of the funnel this destination resolves to — the same funnel `funnelSlug` names. |
 | `url` | `string \| null` | Absolute landing URL for the destination. `null` when Salesforce has none; callers then fall back to their own configured checkout base. |
+| `pricing.checkoutOverrideUrl` | `string \| null` | Per-destination override for the checkout base URL. Takes precedence over the destination's own `url` and over the brand-level `data-checkout-base`. `null` for the normal case — the key is still required. |
 
-Everything else in the public contract is slug-keyed. These are the deliberate exception: together with `HippoShopFunnelStepDTO.id` they carry the record identity a funnel-event payload needs (`funnelSTFId`, `mainFunnelId`, `destinationId`, `funnelSTPId`) out of a destination fetch a page is already making. All three are **required** on the DTO — `url` is nullable, but the key is always present.
+Everything else in the public contract is slug-keyed. The first three are the deliberate exception: together with `HippoShopFunnelStepDTO.id` they carry the record identity a funnel-event payload needs (`funnelSTFId`, `mainFunnelId`, `destinationId`, `funnelSTPId`) out of a destination fetch a page is already making. `checkoutOverrideUrl` is a different case — it is the first source in the SDK's checkout-base ladder, ahead of `url` and the brand-level `data-checkout-base`. All four are **required** on the DTO — `url` and `checkoutOverrideUrl` are nullable, but the keys are always present.
 
 ### `HippoShopProductDTO`
 
