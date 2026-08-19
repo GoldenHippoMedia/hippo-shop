@@ -6,6 +6,13 @@
  * resolved to the destination's `defaultFunnel` before serialization.
  */
 export interface HippoShopFunnelDTO {
+  /**
+   * Salesforce ID of the funnel. Needed as `funnelSTFId` / `mainFunnelId` on
+   * funnel-event payloads, which the upstream drops when it is blank — so a
+   * page that declares its funnel by `slug` alone could not emit an event
+   * without it. Prefer `slug` for anything addressable.
+   */
+  id: string;
   /** Stable, human-readable identifier — preferred over `id` for external use. */
   slug: string;
   /** Display name. */

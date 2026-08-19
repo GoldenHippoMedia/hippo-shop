@@ -148,6 +148,7 @@ export function boot(doc: Document = document, win: Window = window): boolean {
     getDestination: (slug) => runtime.getCachedDestination(slug),
     getFunnel: (slug) => runtime.getCachedFunnel(slug),
     ensureDestination: (slug) => runtime.ensureDestination(slug),
+    ensureFunnel: (slug) => runtime.ensureFunnel(slug),
   };
   root.track = makeTrackFn(emitterOptions);
   installPageViewEmitter(emitterOptions);

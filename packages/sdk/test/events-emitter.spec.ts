@@ -34,8 +34,13 @@ function makeDestination(
   return { slug, id, funnelId, funnelSlug, url: `https://www.gundrymd.com/${slug}` } as unknown as HippoShopDestinationDTO;
 }
 
-function makeFunnel(slug: string, steps: Array<{ slug: string; id: string }>): HippoShopFunnelDTO {
+function makeFunnel(
+  slug: string,
+  steps: Array<{ slug: string; id: string }>,
+  id = `a0Xfunnel-${slug}`,
+): HippoShopFunnelDTO {
   return {
+    id,
     slug,
     name: 'Bio Complete 3 main',
     active: true,
@@ -176,7 +181,10 @@ describe('readStepSlug', () => {
 describe('resolveEventIdentity', () => {
   const noFunnel = (): null => null;
 
-  it('takes funnelId and destinationId from the first bound destination DTO', () => {
+  // The destination DTO is still the primary source of `destinationId` — and
+  // is no longer a source of `funnelId` at all. A page binding offers says
+  // which offers it sells, not which funnel it is a step of.
+  it('takes destinationId from the first bound destination DTO, but never funnelId', () => {
     setBody(`
       <div data-gh-destination="bio3-1p-ot"></div>
       <div data-gh-destination="bio3-6p-sub"></div>
@@ -191,8 +199,10 @@ describe('resolveEventIdentity', () => {
       stepSlug: null,
       search: '',
     });
-    expect(identity.funnelId).toBe('a0Xfunnel1');
     expect(identity.destinationId).toBe('a0Ydest1');
+    // Nothing on this page declares a funnel, so there is no funnel identity —
+    // and a null funnelId suppresses the event downstream, which is the point.
+    expect(identity.funnelId).toBeNull();
   });
 
   it('falls back to data-gh-funnel-id when no destination DTO is cached', () => {
@@ -252,8 +262,11 @@ describe('resolveEventIdentity', () => {
     expect(identity.splitTestId).toBe('a0Wsplit');
   });
 
+  // The page must DECLARE the funnel: a bound destination's funnelSlug is no
+  // longer a source, because the resolved funnel's id now feeds funnelId and
+  // an arbitrary offer must not be able to establish funnel identity.
   it('matches funnelSTPId from the cached funnel steps by step slug', () => {
-    setBody('<div data-gh-destination="bio3-1p-ot"></div>');
+    setBody('<div data-gh-funnel="bio3-main" data-gh-destination="bio3-1p-ot"></div>');
     const identity = resolveEventIdentity({
       doc: document,
       getDestination: (slug) => makeDestination(slug, 'a0Ydest1', 'a0Xfunnel1', 'bio3-main'),
@@ -280,10 +293,17 @@ describe('resolveEventIdentity', () => {
     expect(
       resolveEventIdentity({ ...base, getFunnel: noFunnel, stepSlug: 'upsell' }).stepId,
     ).toBeNull();
+    // Two steps, deliberately: a ONE-step funnel has its own last-resort
+    // fallback to that step, so a single-step fixture here would prove nothing
+    // about slug matching.
     expect(
       resolveEventIdentity({
         ...base,
-        getFunnel: (slug) => makeFunnel(slug, [{ slug: 'offer-selector', id: 'a0Zstep1' }]),
+        getFunnel: (slug) =>
+          makeFunnel(slug, [
+            { slug: 'offer-selector', id: 'a0Zstep1' },
+            { slug: 'upsell', id: 'a0Zstep2' },
+          ]),
         stepSlug: 'nope',
       }).stepId,
     ).toBeNull();
@@ -297,8 +317,14 @@ describe('resolveEventIdentity', () => {
     const identity = resolveEventIdentity({
       doc: document,
       getDestination: () => null,
+      // Two steps so the match is provably by slug, not the single-step fallback.
       getFunnel: (slug) =>
-        slug === 'bio3-main' ? makeFunnel(slug, [{ slug: 'upsell', id: 'a0Zstep2' }]) : null,
+        slug === 'bio3-main'
+          ? makeFunnel(slug, [
+              { slug: 'offer-selector', id: 'a0Zstep1' },
+              { slug: 'upsell', id: 'a0Zstep2' },
+            ])
+          : null,
       stepSlug: 'upsell',
       search: '',
     });
@@ -317,6 +343,74 @@ describe('resolveEventIdentity', () => {
     expect(identity.funnelId).toBe('a0Xurl');
   });
 
+  // A page that names its funnel by SLUG is asserting membership just as much
+  // as one that hardcodes the Salesforce id — but the id is what the upstream
+  // requires, and it drops events whose funnelSTFId is blank. `funnel.id`
+  // closes that gap so `data-gh-funnel` alone is a usable declaration.
+  it('resolves funnelId from the funnel DTO when the page declares only data-gh-funnel', () => {
+    setBody('<div data-gh-funnel="bio3-main"></div>');
+    const identity = resolveEventIdentity({
+      doc: document,
+      getDestination: () => null,
+      getFunnel: (slug) =>
+        slug === 'bio3-main'
+          ? makeFunnel('bio3-main', [{ slug: 'lp', id: 'a0Zlp' }], 'a0XfromDto')
+          : null,
+      stepSlug: null,
+      search: '',
+    });
+    expect(identity.funnelId).toBe('a0XfromDto');
+  });
+
+  it('data-gh-funnel-id outranks the funnel DTO id', () => {
+    setBody('<div data-gh-funnel-id="a0Xattr" data-gh-funnel="bio3-main"></div>');
+    const identity = resolveEventIdentity({
+      doc: document,
+      getDestination: () => null,
+      getFunnel: () => makeFunnel('bio3-main', [{ slug: 'lp', id: 'a0Zlp' }], 'a0XfromDto'),
+      stepSlug: null,
+      search: '',
+    });
+    expect(identity.funnelId).toBe('a0Xattr');
+  });
+
+  // The DTO is live; ?origmainFunnelIdOrig= is a snapshot minted at /fst and
+  // carried through later hops — same rule the stepId fallback follows.
+  it('the funnel DTO id outranks ?origmainFunnelIdOrig=', () => {
+    setBody('<div data-gh-funnel="bio3-main"></div>');
+    const identity = resolveEventIdentity({
+      doc: document,
+      getDestination: () => null,
+      getFunnel: () => makeFunnel('bio3-main', [{ slug: 'lp', id: 'a0Zlp' }], 'a0XfromDto'),
+      stepSlug: null,
+      search: '?origmainFunnelIdOrig=a0Xurl',
+    });
+    expect(identity.funnelId).toBe('a0XfromDto');
+  });
+
+  // The /fst funnel-slug params are what make the CMS path resolvable without
+  // any author attribute at all.
+  it('resolves the funnel from ?origuidOrig= and takes its id', () => {
+    setBody('<div></div>');
+    const identity = resolveEventIdentity({
+      doc: document,
+      getDestination: () => null,
+      getFunnel: (slug) =>
+        slug === 'ultimateh2_cms_osstart_260520_p'
+          ? makeFunnel(
+              'ultimateh2_cms_osstart_260520_p',
+              [{ slug: 'os260520a_sh_ap', id: 'a0Zstep' }],
+              'a0XfromUid',
+            )
+          : null,
+      stepSlug: null,
+      search: '?origuidOrig=ultimateh2_cms_osstart_260520_p',
+      pathname: '/fp/os260520a_sh_ap',
+    });
+    expect(identity.funnelId).toBe('a0XfromUid');
+    expect(identity.stepId).toBe('a0Zstep');
+  });
+
   it('data-gh-funnel-id wins over ?origmainFunnelIdOrig=', () => {
     setBody('<div data-gh-funnel-id="a0Xattr"></div>');
     const identity = resolveEventIdentity({
@@ -329,19 +423,38 @@ describe('resolveEventIdentity', () => {
     expect(identity.funnelId).toBe('a0Xattr');
   });
 
-  it('destination DTO funnelId wins over data-gh-funnel-id and ?origmainFunnelIdOrig=', () => {
+  // Reversed precedence, deliberately: a bound destination's `funnelId` names
+  // that destination's OWN funnel, not the funnel this page view belongs to.
+  // On a selector page binding twelve offers the "first" one is arbitrary, so
+  // the DTO is not consulted for funnel identity at all — only what the page
+  // (data-gh-funnel-id) or the /fst hop (?origmainFunnelIdOrig=) asserts.
+  it('data-gh-funnel-id wins over ?origmainFunnelIdOrig=, and a destination DTO funnelId is ignored entirely', () => {
     setBody(`
       <div data-gh-funnel-id="a0Xattr"></div>
       <div data-gh-destination="bio3-1p-ot"></div>
     `);
-    const identity = resolveEventIdentity({
+    const withAttr = resolveEventIdentity({
       doc: document,
       getDestination: (slug) => makeDestination(slug, 'a0Ydest1', 'a0Xfunnel1'),
       getFunnel: noFunnel,
       stepSlug: null,
       search: '?origmainFunnelIdOrig=a0Xurl',
     });
-    expect(identity.funnelId).toBe('a0Xfunnel1');
+    expect(withAttr.funnelId).toBe('a0Xattr');
+    // The DTO is still the destinationId source — only funnel identity moved.
+    expect(withAttr.destinationId).toBe('a0Ydest1');
+
+    // Drop the attribute and the URL param takes over — the DTO's funnelId
+    // never enters the ranking, so it cannot win by default either.
+    setBody('<div data-gh-destination="bio3-1p-ot"></div>');
+    const withoutAttr = resolveEventIdentity({
+      doc: document,
+      getDestination: (slug) => makeDestination(slug, 'a0Ydest1', 'a0Xfunnel1'),
+      getFunnel: noFunnel,
+      stepSlug: null,
+      search: '?origmainFunnelIdOrig=a0Xurl',
+    });
+    expect(withoutAttr.funnelId).toBe('a0Xurl');
   });
 
   it('destinationId falls back to ?dsid=; origdsidOrig wins when both are present', () => {
@@ -381,13 +494,18 @@ describe('resolveEventIdentity', () => {
   });
 
   it('a resolved funnel-step DTO id wins over a conflicting ?funnelSTPId= (locks the staleness precedence)', () => {
-    setBody('<div data-gh-destination="bio3-1p-ot"></div>');
+    setBody('<div data-gh-funnel="bio3-main" data-gh-destination="bio3-1p-ot"></div>');
     const identity = resolveEventIdentity({
       doc: document,
       getDestination: (slug) => makeDestination(slug, 'a0Ydest1', 'a0Xfunnel1', 'bio3-main'),
+      // Two steps so the win is provably the slug match, not the single-step
+      // fallback (which ranks BELOW ?funnelSTPId= and would invert the proof).
       getFunnel: (slug) =>
         slug === 'bio3-main'
-          ? makeFunnel(slug, [{ slug: 'upsell', id: 'a0Zstep2' }])
+          ? makeFunnel(slug, [
+              { slug: 'offer-selector', id: 'a0Zstep1' },
+              { slug: 'upsell', id: 'a0Zstep2' },
+            ])
           : null,
       stepSlug: 'upsell',
       search: '?funnelSTPId=a0Zstep1',
@@ -404,6 +522,101 @@ describe('resolveEventIdentity', () => {
       search: '?ORIGDSIDORIG=X',
     });
     expect(identity.destinationId).toBeNull();
+  });
+
+  // --- URL-path step matching -------------------------------------------
+  // What makes a Superfunnel page resolvable with no data-gh-step at all: the
+  // CMS funnel's own step slugs already match the URL's last path segment.
+
+  it('matches a step by the last URL path segment when no data-gh-step is declared', () => {
+    setBody('<div data-gh-funnel="ultimateh2_cms" data-gh-funnel-id="a0Xattr"></div>');
+    const identity = resolveEventIdentity({
+      doc: document,
+      getDestination: () => null,
+      getFunnel: (slug) =>
+        slug === 'ultimateh2_cms'
+          ? makeFunnel(slug, [
+              { slug: 'os260520a_sh_ap', id: 'a0Zstep7' },
+              { slug: 'checkout', id: 'a0Zstep8' },
+            ])
+          : null,
+      stepSlug: null,
+      search: '',
+      pathname: '/fp/os260520a_sh_ap',
+    });
+    expect(identity.stepId).toBe('a0Zstep7');
+  });
+
+  it('strips a file extension off the path segment before matching (/offer-selector.html)', () => {
+    setBody('<div data-gh-funnel="bio3-main" data-gh-funnel-id="a0Xattr"></div>');
+    const identity = resolveEventIdentity({
+      doc: document,
+      getDestination: () => null,
+      getFunnel: (slug) =>
+        slug === 'bio3-main'
+          ? makeFunnel(slug, [
+              { slug: 'offer-selector', id: 'a0Zstep1' },
+              { slug: 'upsell', id: 'a0Zstep2' },
+            ])
+          : null,
+      stepSlug: null,
+      search: '',
+      pathname: '/offer-selector.html',
+    });
+    expect(identity.stepId).toBe('a0Zstep1');
+  });
+
+  it('prefers a declared data-gh-step over the URL path segment', () => {
+    setBody('<div data-gh-funnel="bio3-main" data-gh-funnel-id="a0Xattr"></div>');
+    const identity = resolveEventIdentity({
+      doc: document,
+      getDestination: () => null,
+      getFunnel: (slug) =>
+        slug === 'bio3-main'
+          ? makeFunnel(slug, [
+              { slug: 'offer-selector', id: 'a0Zstep1' },
+              { slug: 'upsell', id: 'a0Zstep2' },
+            ])
+          : null,
+      stepSlug: 'upsell',
+      search: '',
+      pathname: '/offer-selector',
+    });
+    expect(identity.stepId).toBe('a0Zstep2');
+  });
+
+  // --- Single-step fallback ---------------------------------------------
+  // A one-step Salesforce funnel is how a whole pre-purchase funnel built
+  // elsewhere (Superfunnel) gets modelled, so "the only step" is the right
+  // answer when nothing else matched — but only as the LAST resort, below the
+  // /fst-minted ?funnelSTPId=.
+
+  it('falls back to the funnel’s only step when neither the step slug nor the path matched', () => {
+    setBody('<div data-gh-funnel="superfunnel-1" data-gh-funnel-id="a0Xattr"></div>');
+    const identity = resolveEventIdentity({
+      doc: document,
+      getDestination: () => null,
+      getFunnel: (slug) =>
+        slug === 'superfunnel-1' ? makeFunnel(slug, [{ slug: 'the-only-step', id: 'a0Zonly' }]) : null,
+      stepSlug: 'nothing-like-it',
+      search: '',
+      pathname: '/nor/this',
+    });
+    expect(identity.stepId).toBe('a0Zonly');
+  });
+
+  it('?funnelSTPId= outranks the single-step fallback', () => {
+    setBody('<div data-gh-funnel="superfunnel-1" data-gh-funnel-id="a0Xattr"></div>');
+    const identity = resolveEventIdentity({
+      doc: document,
+      getDestination: () => null,
+      getFunnel: (slug) =>
+        slug === 'superfunnel-1' ? makeFunnel(slug, [{ slug: 'the-only-step', id: 'a0Zonly' }]) : null,
+      stepSlug: null,
+      search: '?funnelSTPId=a0Zfromurl',
+      pathname: '/nor/this',
+    });
+    expect(identity.stepId).toBe('a0Zfromurl');
   });
 });
 
@@ -425,6 +638,12 @@ function emitterSession(overrides: Partial<SessionState> = {}): SessionState {
     sessionId: 'b2e4f0a1-7c3d-4a5b-9e8f-0123456789ab',
     adopted: false,
     params: { utmSource: 'fb' },
+    // Default to a RESUMED session with no server echo: `isNew: true` would
+    // add a `New Session` emission to every test below, and `data` non-null
+    // would change the posted body's `affParams`. Both are opted into
+    // explicitly by the tests that are about them.
+    isNew: false,
+    data: null,
     ...overrides,
   };
 }
@@ -447,17 +666,28 @@ function makeEmitterOpts(
     getDestination: (slug) => makeDestination(slug, 'a0Ydest1', 'a0Xfunnel1'),
     getFunnel: () => null,
     ensureDestination: vi.fn().mockResolvedValue(undefined),
+    ensureFunnel: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
   return { opts, postEvent };
 }
+
+/**
+ * The funnel identity every emitter fixture below declares on the page.
+ *
+ * A destination DTO's `funnelId` is no longer a source of funnel identity, so
+ * a page that binds only `data-gh-destination` emits nothing at all. These
+ * specs are about emitter TIMING, so each fixture page states its funnel the
+ * way a real funnel step does — with the attribute.
+ */
+const EMITTER_FUNNEL_ATTR = 'data-gh-funnel-id="a0Xfunnel1"';
 
 describe('installPageViewEmitter', () => {
   beforeEach(() => {
     _resetEventsForTests();
     vi.useFakeTimers();
     vi.stubGlobal('navigator', { userAgent: UA_CHROME_MAC_EMITTER });
-    setBody('<div data-gh-destination="bio3-1p-ot"></div>');
+    setBody(`<div data-gh-destination="bio3-1p-ot" ${EMITTER_FUNNEL_ATTR}></div>`);
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -590,7 +820,7 @@ describe('makeTrackFn', () => {
   beforeEach(() => {
     _resetEventsForTests();
     vi.stubGlobal('navigator', { userAgent: UA_CHROME_MAC_EMITTER });
-    setBody('<div data-gh-destination="bio3-1p-ot"></div>');
+    setBody(`<div data-gh-destination="bio3-1p-ot" ${EMITTER_FUNNEL_ATTR}></div>`);
   });
   afterEach(() => {
     _resetEventsForTests();
@@ -599,7 +829,7 @@ describe('makeTrackFn', () => {
   it('emits a Page View built from the live DOM', async () => {
     setBody(`
       <section data-gh-step="offer-selector"></section>
-      <div data-gh-destination="bio3-1p-ot"></div>
+      <div data-gh-destination="bio3-1p-ot" ${EMITTER_FUNNEL_ATTR}></div>
     `);
     const { opts, postEvent } = makeEmitterOpts();
     await makeTrackFn(opts)('Page View');
@@ -623,7 +853,7 @@ describe('makeTrackFn', () => {
   it('emits again once data-gh-step changes (SPA route push)', async () => {
     setBody(`
       <section data-gh-step="step-1"></section>
-      <div data-gh-destination="bio3-1p-ot"></div>
+      <div data-gh-destination="bio3-1p-ot" ${EMITTER_FUNNEL_ATTR}></div>
     `);
     const { opts, postEvent } = makeEmitterOpts();
     const track = makeTrackFn(opts);
@@ -655,8 +885,12 @@ describe('makeTrackFn', () => {
     await makeTrackFn(opts)('Page View');
     expect(ensureDestination).toHaveBeenCalledWith('bio3-1p-ot');
     expect(postEvent).toHaveBeenCalledOnce();
-    expect((postEvent.mock.calls[0]![1] as Record<string, unknown>)['funnelSTFId']).toBe(
-      'a0Xlate',
+    // The proof that the await happened is the LATE-cached DTO's id landing in
+    // the payload. It is read off `destinationId`, not `funnelSTFId`: funnel
+    // identity no longer comes from the destination DTO, so that field now
+    // reports the page's own data-gh-funnel-id no matter when the DTO arrived.
+    expect((postEvent.mock.calls[0]![1] as Record<string, unknown>)['destinationId']).toBe(
+      'a0Ylate',
     );
   });
 });
@@ -671,7 +905,7 @@ describe('installPageViewEmitter / makeTrackFn — throwing caller callbacks nev
     _resetEventsForTests();
     vi.useFakeTimers();
     vi.stubGlobal('navigator', { userAgent: UA_CHROME_MAC_EMITTER });
-    setBody('<div data-gh-destination="bio3-1p-ot"></div>');
+    setBody(`<div data-gh-destination="bio3-1p-ot" ${EMITTER_FUNNEL_ATTR}></div>`);
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -693,10 +927,13 @@ describe('installPageViewEmitter / makeTrackFn — throwing caller callbacks nev
 
   it('gh.track rejects neither on a throwing getFunnel nor a throwing getDestination', async () => {
     setBody(`
-      <section data-gh-step="offer-selector"></section>
-      <div data-gh-destination="bio3-1p-ot"></div>
+      <section data-gh-step="offer-selector" data-gh-funnel="bio3-main"></section>
+      <div data-gh-destination="bio3-1p-ot" ${EMITTER_FUNNEL_ATTR}></div>
     `);
     const { opts, postEvent } = makeEmitterOpts({
+      // data-gh-funnel is what makes getFunnel reachable at all: without a
+      // declared funnel slug the emitter never consults it, and this test
+      // would pass for the wrong reason.
       getFunnel: () => {
         throw new Error('boom from getFunnel');
       },
@@ -713,7 +950,7 @@ describe('installPageViewEmitter — SPA step change (D9)', () => {
     _resetEventsForTests();
     vi.useFakeTimers();
     vi.stubGlobal('navigator', { userAgent: UA_CHROME_MAC_EMITTER });
-    setBody('<div data-gh-destination="bio3-1p-ot"></div>');
+    setBody(`<div data-gh-destination="bio3-1p-ot" ${EMITTER_FUNNEL_ATTR}></div>`);
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -723,7 +960,7 @@ describe('installPageViewEmitter — SPA step change (D9)', () => {
   it('re-emits when data-gh-step is swapped and the step change is signalled', async () => {
     setBody(`
       <section data-gh-step="step-1"></section>
-      <div data-gh-destination="bio3-1p-ot"></div>
+      <div data-gh-destination="bio3-1p-ot" ${EMITTER_FUNNEL_ATTR}></div>
     `);
     const { opts, postEvent } = makeEmitterOpts();
     installPageViewEmitter(opts);
@@ -745,7 +982,7 @@ describe('installPageViewEmitter — SPA step change (D9)', () => {
   it('re-arms on every subsequent step change, not just the first', async () => {
     setBody(`
       <section data-gh-step="step-1"></section>
-      <div data-gh-destination="bio3-1p-ot"></div>
+      <div data-gh-destination="bio3-1p-ot" ${EMITTER_FUNNEL_ATTR}></div>
     `);
     const { opts, postEvent } = makeEmitterOpts();
     installPageViewEmitter(opts);
@@ -766,7 +1003,7 @@ describe('installPageViewEmitter — SPA step change (D9)', () => {
   it('does not re-emit when the signal arrives but the slug is unchanged', async () => {
     setBody(`
       <section data-gh-step="step-1"></section>
-      <div data-gh-destination="bio3-1p-ot"></div>
+      <div data-gh-destination="bio3-1p-ot" ${EMITTER_FUNNEL_ATTR}></div>
     `);
     const { opts, postEvent } = makeEmitterOpts();
     installPageViewEmitter(opts);
@@ -785,7 +1022,7 @@ describe('installPageViewEmitter — SPA step change (D9)', () => {
   it('re-emits end to end through GhRuntime.bind when data-gh-step is mutated', async () => {
     setBody(`
       <section data-gh-step="step-1"></section>
-      <div data-gh-destination="bio3-1p-ot"></div>
+      <div data-gh-destination="bio3-1p-ot" ${EMITTER_FUNNEL_ATTR}></div>
     `);
     const { opts, postEvent } = makeEmitterOpts();
     const runtimeClient = {
@@ -854,7 +1091,7 @@ describe('installPageViewEmitter — SPA step change (D9)', () => {
   });
 });
 
-describe('offer-selector page: six destinations, one Page View', () => {
+describe('offer-selector page: six destinations', () => {
   const SIX = [
     'bio3-1p-ot',
     'bio3-1p-sub',
@@ -864,29 +1101,65 @@ describe('offer-selector page: six destinations, one Page View', () => {
     'bio3-6p-sub',
   ];
 
+  /** The canonical page: one step, six bound offers, funnel optionally declared. */
+  function setOfferSelectorBody(funnelAttr = '', funnelSlugAttr = ''): void {
+    setBody(
+      `<section data-gh-step="offer-selector" ${funnelAttr} ${funnelSlugAttr}>` +
+        SIX.map((slug) => `<a data-gh-checkout="${slug}" data-gh-destination="${slug}"></a>`).join('') +
+        `</section>`,
+    );
+  }
+
+  /** Each of the six carries its OWN funnelId — six different ones. */
+  const sixDestinations = (slug: string): HippoShopDestinationDTO =>
+    makeDestination(slug, `id-${slug}`, `funnel-${slug}`, 'bio3-main');
+
+  const bio3Funnel = (slug: string): HippoShopFunnelDTO | null =>
+    slug === 'bio3-main'
+      ? makeFunnel(slug, [
+          { slug: 'offer-selector', id: 'a0Zstep1' },
+          { slug: 'upsell', id: 'a0Zstep2' },
+        ])
+      : null;
+
   beforeEach(() => {
     _resetEventsForTests();
     vi.useFakeTimers();
     vi.stubGlobal('navigator', { userAgent: UA_CHROME_MAC_EMITTER });
-    setBody(
-      `<section data-gh-step="offer-selector">` +
-        SIX.map((slug) => `<a data-gh-checkout="${slug}" data-gh-destination="${slug}"></a>`).join('') +
-        `</section>`,
-    );
+    setOfferSelectorBody(EMITTER_FUNNEL_ATTR, 'data-gh-funnel="bio3-main"');
   });
   afterEach(() => {
     vi.useRealTimers();
     _resetEventsForTests();
   });
 
-  it('emits exactly one event, identified by the first destination in document order', async () => {
+  // The headline fix. Binding offers is not a claim to be inside a funnel:
+  // which of the six is "first" is arbitrary DOM order, so taking funnel
+  // identity from that DTO invented funnel membership for every page that
+  // merely sells something — including one reached by a typed URL.
+  it('emits NOTHING when the page itself declares no funnel', async () => {
+    setOfferSelectorBody(); // no data-gh-funnel-id, and no ?origmainFunnelIdOrig=
     const { opts, postEvent } = makeEmitterOpts({
-      getDestination: (slug) =>
-        makeDestination(slug, `id-${slug}`, `funnel-${slug}`, 'bio3-main'),
-      getFunnel: (slug) =>
-        slug === 'bio3-main'
-          ? makeFunnel(slug, [{ slug: 'offer-selector', id: 'a0Zstep1' }])
-          : null,
+      getDestination: sixDestinations,
+      getFunnel: bio3Funnel,
+    });
+
+    installPageViewEmitter(opts);
+    window.dispatchEvent(new Event('gh:session-ready'));
+    window.dispatchEvent(new Event('gh:bindings-ready'));
+    // Past the hard deadline as well: the gate is a drop, not a delay.
+    await vi.advanceTimersByTimeAsync(PAGE_VIEW_DEADLINE_MS + 1);
+
+    expect(postEvent).not.toHaveBeenCalled();
+  });
+
+  // Sibling of the above, and the reason the gate is safe: the identical page
+  // WITH funnel identity still emits one Page View for all six offers, so the
+  // dedupe-by-page rule is unchanged.
+  it('emits exactly one event when the page declares data-gh-funnel-id, identified by the first destination in document order', async () => {
+    const { opts, postEvent } = makeEmitterOpts({
+      getDestination: sixDestinations,
+      getFunnel: bio3Funnel,
     });
 
     installPageViewEmitter(opts);
@@ -896,8 +1169,10 @@ describe('offer-selector page: six destinations, one Page View', () => {
 
     expect(postEvent).toHaveBeenCalledOnce();
     const body = postEvent.mock.calls[0]![1] as Record<string, unknown>;
-    expect(body['funnelSTFId']).toBe('funnel-bio3-1p-ot');
-    expect(body['mainFunnelId']).toBe('funnel-bio3-1p-ot');
+    // Funnel identity is the page's declaration — NOT `funnel-bio3-1p-ot`,
+    // which is the first destination's own funnel and no longer consulted.
+    expect(body['funnelSTFId']).toBe('a0Xfunnel1');
+    expect(body['mainFunnelId']).toBe('a0Xfunnel1');
     expect(body['destinationId']).toBe('id-bio3-1p-ot');
     expect(body['funnelSTPId']).toBe('a0Zstep1');
     expect(body['url']).toBe('offer-selector');
@@ -907,7 +1182,8 @@ describe('offer-selector page: six destinations, one Page View', () => {
 
   it('a late-arriving seventh offer does not produce a second event', async () => {
     const { opts, postEvent } = makeEmitterOpts({
-      getDestination: (slug) => makeDestination(slug, `id-${slug}`, `funnel-${slug}`),
+      getDestination: sixDestinations,
+      getFunnel: bio3Funnel,
     });
     installPageViewEmitter(opts);
     window.dispatchEvent(new Event('gh:session-ready'));
@@ -921,5 +1197,86 @@ describe('offer-selector page: six destinations, one Page View', () => {
     await vi.advanceTimersByTimeAsync(PAGE_VIEW_DEADLINE_MS + 1);
 
     expect(postEvent).toHaveBeenCalledOnce();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// New Session (D-new) and the affParams envelope
+// ---------------------------------------------------------------------------
+
+describe('installPageViewEmitter — New Session and affParams', () => {
+  beforeEach(() => {
+    _resetEventsForTests();
+    vi.useFakeTimers();
+    vi.stubGlobal('navigator', { userAgent: UA_CHROME_MAC_EMITTER });
+    setBody(`<div data-gh-destination="bio3-1p-ot" ${EMITTER_FUNNEL_ATTR}></div>`);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    _resetEventsForTests();
+  });
+
+  /** Install, raise both readiness signals, let the quiet window elapse. */
+  async function coldLoad(opts: PageViewEmitterOptions): Promise<void> {
+    installPageViewEmitter(opts);
+    window.dispatchEvent(new Event('gh:session-ready'));
+    window.dispatchEvent(new Event('gh:bindings-ready'));
+    await vi.advanceTimersByTimeAsync(PAGE_VIEW_QUIET_MS + 1);
+  }
+
+  it('sends New Session BEFORE the Page View when the session was established on this load', async () => {
+    const { opts, postEvent } = makeEmitterOpts({
+      getSession: () => emitterSession({ isNew: true }),
+    });
+    await coldLoad(opts);
+
+    // Two independent emissions, not alternatives — and two separate POSTs.
+    // They survive each other's dedupe only because the key carries the event
+    // type; both are keyed on the same (session, step).
+    expect(postEvent).toHaveBeenCalledTimes(2);
+    const first = postEvent.mock.calls[0]![1] as Record<string, unknown>;
+    const second = postEvent.mock.calls[1]![1] as Record<string, unknown>;
+    expect(first['eventType']).toBe('New Session');
+    expect(second['eventType']).toBe('Page View');
+    // Identical payloads apart from eventType: same funnel, same session.
+    expect(first['mainFunnelId']).toBe('a0Xfunnel1');
+    expect(second['mainFunnelId']).toBe('a0Xfunnel1');
+    expect(first['sessionId']).toBe(second['sessionId']);
+  });
+
+  it('sends only the Page View when the session was resumed rather than established', async () => {
+    const { opts, postEvent } = makeEmitterOpts(); // emitterSession defaults isNew: false
+    await coldLoad(opts);
+    expect(postEvent).toHaveBeenCalledOnce();
+    expect((postEvent.mock.calls[0]![1] as Record<string, unknown>)['eventType']).toBe('Page View');
+  });
+
+  it('carries the session POST response verbatim as affParams', async () => {
+    const data = { sessionId: 'srv-1', visitorId: 'vis-9', affId: 'AFF42', serverAdded: true };
+    const { opts, postEvent } = makeEmitterOpts({ getSession: () => emitterSession({ data }) });
+    await coldLoad(opts);
+
+    expect(postEvent).toHaveBeenCalledOnce();
+    const body = postEvent.mock.calls[0]![1] as Record<string, unknown>;
+    // Nested, not merged: the 36-field shape is matched byte-for-byte upstream,
+    // so the server's echo rides in its own key rather than flattened into it.
+    expect(body['affParams']).toEqual(data);
+    expect(body['eventType']).toBe('Page View');
+    expect(body['mainFunnelId']).toBe('a0Xfunnel1');
+  });
+
+  it('sends affParams as {} when the session POST failed', async () => {
+    const { opts, postEvent } = makeEmitterOpts({
+      getSession: () => emitterSession({ data: null }),
+    });
+    await coldLoad(opts);
+
+    expect(postEvent).toHaveBeenCalledOnce();
+    // A failed session POST costs attribution, not the event: full funnel
+    // identity is still on the wire.
+    expect((postEvent.mock.calls[0]![1] as Record<string, unknown>)['affParams']).toEqual({});
+    expect((postEvent.mock.calls[0]![1] as Record<string, unknown>)['mainFunnelId']).toBe(
+      'a0Xfunnel1',
+    );
   });
 });

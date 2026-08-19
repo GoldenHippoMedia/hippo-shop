@@ -22,8 +22,8 @@ Golden Hippo's internal teams building landing pages, sales funnels, and support
 
 ## What it does NOT do
 
-- **No commerce writes.** Cart, checkout, and order writes belong to other systems. The data surface — funnels, destinations, products — is read-only. As of v4 the SDK does write: a first-party session cookie, a `POST /public/v1/session`, and a `POST /public/v1/funnel-event` per page load.
-- **No PII.** The session and funnel-event payloads carry URL attribution parameters, a pseudonymous session id, and a browser / OS / device string derived from the user agent. Nothing identifies a shopper.
+- **No commerce writes.** Cart, checkout, and order writes belong to other systems. The data surface — funnels, destinations, products — is read-only. As of v4 the SDK does write: a first-party session cookie, a `POST /public/v1/session`, and one or two `POST /public/v1/funnel-event` calls per page load — a `Page View`, plus a `New Session` on the load that establishes the session.
+- **No PII.** The session and funnel-event payloads carry URL attribution parameters, a pseudonymous session id, and a browser / OS / device string derived from the user agent. A funnel event also nests the session's own server-returned record as `affParams` — the same attribution, echoed back. Nothing identifies a shopper.
 - **No server-side rendering.** Browser-only. Node integrations consume the types package and the live API directly, not the SDK runtime.
 - **No framework lock-in.** The SDK is framework-agnostic vanilla DOM; it can be used inside React, Vue, vanilla HTML, page builders, or anywhere a browser parses HTML.
 

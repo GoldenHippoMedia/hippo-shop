@@ -28,8 +28,15 @@ import type { GhDataClient } from './client';
 import type { Logger } from './log';
 import { generateSessionId } from './session';
 
-/** v4 ships one event type. Adding another is a typed change, not a string. */
-export type FunnelEventType = 'Page View';
+/**
+ * Adding another is a typed change, not a string.
+ *
+ * `New Session` mirrors the reference's `FunnelEventTypes.newSession`
+ * (`funnel-event-types.ts:8`) and carries the identical payload shape — only
+ * `eventType` differs. On a cold load both fire: they are independent
+ * emissions, not alternatives.
+ */
+export type FunnelEventType = 'Page View' | 'New Session';
 
 export interface FunnelEvent {
   // --- SFIDs ---
@@ -199,7 +206,10 @@ export interface PageViewContext {
  * owns the debug-mode warn; the silent drop is the one reference behaviour
  * worth not copying.
  */
-export function buildPageViewEvent(ctx: PageViewContext): FunnelEvent | null {
+export function buildPageViewEvent(
+  ctx: PageViewContext,
+  eventType: FunnelEventType = 'Page View',
+): FunnelEvent | null {
   const funnelId = ctx.funnelId;
   if (!funnelId) return null;
 
@@ -221,8 +231,9 @@ export function buildPageViewEvent(ctx: PageViewContext): FunnelEvent | null {
     // --- Request-specific ---
     // `||` not `??`: '' collapses to null (utility.ts:112 `ctx.pageName || null`).
     url: ctx.stepSlug || null,
-    // Hardcoded literal. Never build this from a variable.
-    eventType: 'Page View',
+    // From the typed union only — never an arbitrary caller string. The
+    // upstream matches this value exactly and drops what it does not know.
+    eventType,
     sessionId: ctx.session.sessionId,
     orderId: null,
 
@@ -308,12 +319,13 @@ export async function emitPageView(
   client: GhDataClient,
   ctx: PageViewContext,
   logger: Logger,
+  eventType: FunnelEventType = 'Page View',
 ): Promise<void> {
   let event: FunnelEvent | null = null;
   try {
-    event = buildPageViewEvent(ctx);
+    event = buildPageViewEvent(ctx, eventType);
   } catch (err) {
-    logger.debug('funnel-event: could not build Page View —', err);
+    logger.debug(`funnel-event: could not build ${eventType} —`, err);
     return;
   }
 
@@ -322,7 +334,7 @@ export async function emitPageView(
     // a third-party-hosted page stays quiet in production.
     if (ctx.config.debug) {
       logger.warn(
-        'funnel-event: no funnel id resolved (bind a data-gh-destination or set data-gh-funnel-id) — Page View not emitted',
+        `funnel-event: no funnel id resolved (set data-gh-funnel-id or arrive with ?origmainFunnelIdOrig=) — ${eventType} not emitted`,
       );
     }
     return;
@@ -332,12 +344,25 @@ export async function emitPageView(
   const eventId = newEventId();
   if (eventId) headers[EVENT_ID_HEADER] = eventId;
 
+  // The session's own record, nested rather than merged. The upstream reads
+  // attribution off `affParams`, so carrying it in the body is what lets a
+  // funnel event be enriched without the server needing our express-session —
+  // no `connect.sid` on this request, which means no credentialed CORS, no
+  // `SameSite=None`, and no dependence on third-party cookies that Safari and
+  // Firefox block outright.
+  //
+  // Forwarded verbatim from the session POST's response, not rebuilt from the
+  // local params: the server prunes, normalises and reconciles what it stored,
+  // so its echo is the accurate record. `{}` when the POST failed — the event
+  // still carries full funnel identity and is worth sending.
+  const body = { ...event, affParams: ctx.session.data ?? {} };
+
   try {
-    await client.postEvent(FUNNEL_EVENT_RESOURCE, event, headers);
-    logger.debug('funnel-event: Page View sent', eventId);
+    await client.postEvent(FUNNEL_EVENT_RESOURCE, body, headers);
+    logger.debug(`funnel-event: ${eventType} sent`, eventId);
   } catch (err) {
     // Non-fatal by design (Goal 8). No retry, no rethrow.
-    logger.debug('funnel-event: Page View delivery failed —', err);
+    logger.debug(`funnel-event: ${eventType} delivery failed —`, err);
   }
 }
 
@@ -393,9 +418,10 @@ export function pageViewDedupeKey(
   sessionId: string,
   stepSlug: string | null,
   pathname: string,
+  eventType: FunnelEventType = 'Page View',
 ): string {
   const stepKey = stepSlug && stepSlug.length > 0 ? stepSlug : pathname;
-  return `${sessionId}|Page View|${stepKey}`;
+  return `${sessionId}|${eventType}|${stepKey}`;
 }
 
 /** Claim `key` for this page load. `true` means the caller owns the emit. */
@@ -422,23 +448,24 @@ export async function emitPageViewOnce(
   ctx: PageViewContext,
   logger: Logger,
   pathname: string,
+  eventType: FunnelEventType = 'Page View',
 ): Promise<void> {
   if (!ctx.funnelId) {
     if (ctx.config.debug) {
       logger.warn(
-        'funnel-event: no funnel id resolved (bind a data-gh-destination or set data-gh-funnel-id) — Page View not emitted',
+        `funnel-event: no funnel id resolved (set data-gh-funnel-id or arrive with ?origmainFunnelIdOrig=) — ${eventType} not emitted`,
       );
     }
     return;
   }
 
-  const key = pageViewDedupeKey(ctx.session.sessionId, ctx.stepSlug, pathname);
+  const key = pageViewDedupeKey(ctx.session.sessionId, ctx.stepSlug, pathname, eventType);
   if (!claimPageView(key)) {
-    logger.debug('funnel-event: duplicate Page View suppressed —', key);
+    logger.debug(`funnel-event: duplicate ${eventType} suppressed —`, key);
     return;
   }
 
-  await emitPageView(client, ctx, logger);
+  await emitPageView(client, ctx, logger, eventType);
 }
 
 /** Test-only: clears the window-global dedupe guard. Not exported via index.ts. */
@@ -487,6 +514,15 @@ const FUNNEL_ID_PARAM = 'origmainFunnelIdOrig';
 const DESTINATION_ID_PARAM = 'origdsidOrig';
 const DESTINATION_ID_PARAM_INTERNAL = 'dsid';
 const STEP_ID_PARAM = 'funnelSTPId';
+/**
+ * The funnel SLUG, which is the only key `GET /public/v1/funnel/<slug>`
+ * resolves by — verified against UAT: the slug `ultimateh2_cms_osstart_260520_p`
+ * returns 200 with its step list, while the funnel *id* from
+ * `origmainFunnelIdOrig` returns 404. The /fst hop mints both spellings; the
+ * `orig…Orig` form is the one that survives later hops, so it is checked first.
+ */
+const FUNNEL_SLUG_PARAM = 'origuidOrig';
+const FUNNEL_SLUG_PARAM_SHORT = 'uid';
 
 /**
  * First non-blank trimmed value of `attr` among the elements `selector` matches.
@@ -564,10 +600,56 @@ export interface IdentityOptions {
   stepSlug: string | null;
   /**
    * location.search — the /fst-minted funnel-identity fallbacks
-   * (?origmainFunnelIdOrig=, ?origdsidOrig= / ?dsid=, ?funnelSTPId=) plus the
-   * pre-existing ?origsplitTestingFunnelIdOrig= handoff.
+   * (?origmainFunnelIdOrig=, ?origdsidOrig= / ?dsid=, ?funnelSTPId=,
+   * ?origuidOrig= / ?uid=) plus the pre-existing
+   * ?origsplitTestingFunnelIdOrig= handoff.
    */
   search: string;
+  /**
+   * location.pathname — the URL-based step-slug fallback. Optional: a caller
+   * with no URL context simply loses that one tier, which is the same
+   * degradation as a pathname that matches no step.
+   */
+  pathname?: string;
+}
+
+/**
+ * The funnel slug this page belongs to, or null.
+ *
+ * Exported because the emitter needs it *before* identity resolution, to
+ * trigger the funnel fetch that populates the cache `resolveEventIdentity`
+ * then reads. Both callers must agree on the precedence, so there is one
+ * implementation rather than two.
+ *
+ * A bound destination's `funnelSlug` is deliberately NOT a source. Two reasons,
+ * either sufficient: it names a Post-Purchase funnel, which
+ * `GET /public/v1/funnel/<slug>` rejects with a 404 by design
+ * (`getFunnelByIdOrSlug` requires `funnelType === 'Pre-Purchase'`); and since
+ * the resolved funnel's `id` now feeds `funnelId`, admitting it would let an
+ * arbitrary offer on a twelve-destination selector page re-establish the very
+ * funnel-identity leak this change exists to close.
+ */
+export function resolveFunnelSlug(doc: Document, params: URLSearchParams): string | null {
+  return (
+    readAttrPreferringPage(doc, FUNNEL_ATTR) ||
+    params.get(FUNNEL_SLUG_PARAM) ||
+    params.get(FUNNEL_SLUG_PARAM_SHORT) ||
+    null
+  );
+}
+
+/**
+ * The current URL's last path segment, as a step-slug candidate: trailing
+ * slashes dropped, then any file extension. `/fp/os260520a_sh_ap` ->
+ * `os260520a_sh_ap`; `/offer-selector.html` -> `offer-selector`; `/` -> null.
+ *
+ * Only ever compared against slugs from a funnel DTO the brand owns, so a
+ * non-matching segment costs one failed lookup and nothing else.
+ */
+function pathnameStepSlug(pathname: string): string | null {
+  const last = pathname.replace(/\/+$/, '').split('/').pop()?.trim();
+  if (!last) return null;
+  return last.replace(/\.[^./]+$/, '') || null;
 }
 
 /**
@@ -600,11 +682,6 @@ export function resolveEventIdentity(opts: IdentityOptions): EventIdentity {
   // is a `findCaseInsensitive` helper at url-params.ts:120-126 for the
   // ad-platform click-id casing games — these are funnel-minted params, not
   // that, so do not reach for it here.
-  const funnelId =
-    destination?.funnelId ||
-    readAttrPreferringPage(opts.doc, FUNNEL_ID_ATTR) ||
-    params.get(FUNNEL_ID_PARAM) ||
-    null;
   const destinationId =
     destination?.id ||
     params.get(DESTINATION_ID_PARAM) ||
@@ -612,17 +689,53 @@ export function resolveEventIdentity(opts: IdentityOptions): EventIdentity {
     null;
   const splitTestId = params.get('origsplitTestingFunnelIdOrig') || null;
 
-  const funnelSlug =
-    destination?.funnelSlug || readAttrPreferringPage(opts.doc, FUNNEL_ATTR) || null;
+  // Resolved before `funnelId`, because the funnel DTO is one of its sources.
+  const funnelSlug = resolveFunnelSlug(opts.doc, params);
+  const funnel = funnelSlug ? opts.getFunnel(funnelSlug) : null;
+
+  // A bound destination's `funnelId` is deliberately NOT a source here. It
+  // names the destination's own post-purchase funnel, not the funnel this page
+  // view belongs to — and on a selector page binding twelve destinations, the
+  // "first" one is arbitrary. Once #352 populated that field, every
+  // destination-bound page started emitting a Page View on any navigation,
+  // including a typed URL, attributed to whichever offer happened to be first
+  // in the DOM. Funnel identity now comes only from what the page, the funnel
+  // it names, or the /fst hop actually asserts about the funnel.
+  //
+  // Order follows the two precedence rules this file already applies:
+  //   - an author attribute outranks a URL param (url-params.ts:179-180), and
+  //   - a live DTO id outranks a /fst-minted snapshot (see the stepId note).
+  // So the funnel DTO's own id sits between them: it is reached either from an
+  // author attribute (`data-gh-funnel`) or from the same /fst mint that
+  // produced the param, and in the latter case both name the same funnel.
+  const funnelId =
+    readAttrPreferringPage(opts.doc, FUNNEL_ID_ATTR) ||
+    funnel?.id ||
+    params.get(FUNNEL_ID_PARAM) ||
+    null;
+
   let stepId: string | null = null;
-  if (funnelSlug && opts.stepSlug) {
-    const funnel = opts.getFunnel(funnelSlug);
-    stepId = funnel?.steps.find((s) => s.slug === opts.stepSlug)?.id ?? null;
+  if (funnel) {
+    // Author-declared `data-gh-step` first, then the current URL's last path
+    // segment. The second is what makes a Superfunnel page resolvable without
+    // an attribute: the CMS funnel's own step slugs already match it —
+    // `/fp/os260520a_sh_ap` against step slug `os260520a_sh_ap`.
+    for (const candidate of [opts.stepSlug, pathnameStepSlug(opts.pathname ?? '')]) {
+      if (!candidate) continue;
+      const lowered = candidate.toLowerCase();
+      stepId = funnel.steps.find((s) => s.slug.toLowerCase() === lowered)?.id ?? null;
+      if (stepId) break;
+    }
   }
   // Fallback only: a resolved funnel-step DTO id is always live, while the
   // URL's funnelSTPId is a stale step-1 snapshot (see the function doc
   // comment) — it must never overwrite a DTO-resolved stepId.
   if (!stepId) stepId = params.get(STEP_ID_PARAM) || null;
+  // Last resort, and only when the funnel genuinely has nowhere else to be.
+  // This is what lets a single-step Salesforce funnel stand in for a whole
+  // pre-purchase funnel built elsewhere (Superfunnel), which is the point of
+  // modelling it that way.
+  if (!stepId && funnel?.steps.length === 1) stepId = funnel.steps[0]?.id ?? null;
 
   return { funnelId, destinationId, stepId, splitTestId };
 }
@@ -675,6 +788,7 @@ export interface PageViewEmitterOptions {
   getDestination: (slug: string) => HippoShopDestinationDTO | null;
   getFunnel: (slug: string) => HippoShopFunnelDTO | null;
   ensureDestination: (slug: string) => Promise<void>;
+  ensureFunnel: (slug: string) => Promise<void>;
 }
 
 /**
@@ -812,7 +926,7 @@ export function makeTrackFn(
   opts: PageViewEmitterOptions,
 ): (eventType: FunnelEventType) => Promise<void> {
   return async function track(eventType: FunnelEventType): Promise<void> {
-    if (eventType !== 'Page View') {
+    if (eventType !== 'Page View' && eventType !== 'New Session') {
       opts.logger.warn(`gh.track: unsupported event type "${String(eventType)}"`);
       return;
     }
@@ -859,12 +973,35 @@ async function runPageView(opts: PageViewEmitterOptions): Promise<void> {
 
     const search = opts.win.location.search;
     const stepSlug = readStepSlug(opts.doc);
+
+    // Warm the funnel before identity resolution. `resolveEventIdentity` reads
+    // the cache synchronously, and on a Superfunnel page nothing else ever
+    // populates it — bind() only loads what it finds bound in the DOM. Without
+    // this the step could only ever come from ?funnelSTPId=, and the
+    // URL-slug and single-step paths would be dead code.
+    let params: URLSearchParams;
+    try {
+      params = new URLSearchParams(search);
+    } catch {
+      params = new URLSearchParams('');
+    }
+    const funnelSlug = resolveFunnelSlug(opts.doc, params);
+    if (funnelSlug && !opts.getFunnel(funnelSlug)) {
+      try {
+        await opts.ensureFunnel(funnelSlug);
+      } catch (err) {
+        // A funnel that will not load costs the step id, not the event.
+        opts.logger.debug('funnel-event: funnel load failed —', err);
+      }
+    }
+
     const identity = resolveEventIdentity({
       doc: opts.doc,
       getDestination: opts.getDestination,
       getFunnel: opts.getFunnel,
       stepSlug,
       search,
+      pathname: opts.win.location.pathname,
     });
 
     const ctx: PageViewContext = {
@@ -878,6 +1015,22 @@ async function runPageView(opts: PageViewEmitterOptions): Promise<void> {
       referrer: opts.doc.referrer,
       search,
     };
+
+    // A session established on this load gets a `New Session` before the
+    // `Page View`, mirroring the reference's two independent effects
+    // (`emission-driver.service.ts:107-147`) — on a cold load both fire.
+    // Ordered, not raced: they share the funnel-id gate and the upstream reads
+    // them in sequence. Its own dedupe key means the SPA re-arm on
+    // `gh:step-changed` re-emits Page View without re-emitting this.
+    if (ctx.session.isNew) {
+      await emitPageViewOnce(
+        opts.client,
+        ctx,
+        opts.logger,
+        opts.win.location.pathname,
+        'New Session',
+      );
+    }
 
     await emitPageViewOnce(opts.client, ctx, opts.logger, opts.win.location.pathname);
   } catch (err) {
