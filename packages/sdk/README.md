@@ -659,18 +659,17 @@ Show a pulsing skeleton while the product loads, an error message if the fetch f
 
 ### Custom formatter — "Save 23% off"
 
-Register your own formatter once on `gh:data-ready`, then bind any field through it. This pattern is the right way to express derived values (percentages, computed labels, currency-in-words) without adding per-page JS to every binding.
+Register your own formatter once, then bind any field through it. This is the right way to express derived values (percentages, computed labels, currency-in-words) without adding per-page JS to every binding.
+
+Register from an inline `<script>` placed **after** the SDK tag. `window.gh` already exists by then, and the SDK defers its first bind pass to `DOMContentLoaded`, so the formatter is in place before anything renders — no listener and no `gh.refresh()` needed:
 
 ```html
 <script>
-  window.addEventListener('gh:data-ready', () => {
-    window.gh.format.register('savePercent', (savings, fullPriceStr) => {
-      const full = Number(fullPriceStr);
-      if (!savings || !Number.isFinite(full) || full === 0) return '';
-      return 'Save ' + Math.round((savings / (full + savings)) * 100) + '%';
-    });
-    window.gh.refresh(); // re-bind so existing pages pick up the new formatter
-  }, { once: true });
+  window.gh.format.register('savePercent', (savings, fullPriceStr) => {
+    const full = Number(fullPriceStr);
+    if (!savings || !Number.isFinite(full) || full === 0) return '';
+    return 'Save ' + Math.round((savings / (full + savings)) * 100) + '%';
+  });
 </script>
 
 <article data-gh-product="multi-vitamin" data-with="variants.subscription.standardByQuantity.6">
@@ -682,6 +681,10 @@ Register your own formatter once on `gh:data-ready`, then bind any field through
 ```
 
 Formatters receive the bound value as their first argument; additional `:`-separated values from `data-format` are passed as string arguments (so the `:169.95` above arrives as a string and `Number()`'s back to a float).
+
+> **Do not wrap registration in a `gh:data-ready` listener placed below the SDK tag.** That event is dispatched synchronously from inside `boot()`, while the SDK's own `<script>` is still executing — so it has already fired before any later inline script runs, and a listener added from there never fires. The formatter is silently never registered and the element renders the raw bound value, which for a number reads as a plausible result rather than as a bug. If you cannot control script order, use the [defensive pattern](#defensive-already-booted-pattern).
+>
+> `gh.refresh()` is only needed when you register **after** the first bind pass — from a `load` handler, an async callback, or a framework effect. See [Inline-script timing](#inline-script-timing).
 
 ### Checkout handoff
 
