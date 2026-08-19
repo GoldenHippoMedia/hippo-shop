@@ -362,6 +362,66 @@ describe('resolveEventIdentity', () => {
     expect(identity.funnelId).toBe('a0XfromDto');
   });
 
+  // The real /fst hop mints ?origmainFunnelIdOrig= on every inbound link, and a
+  // page can easily know its funnel's id without knowing its slug. The route
+  // resolves either, so the id has to be usable as a lookup key — otherwise the
+  // funnel is never fetched and step resolution degrades to whatever
+  // ?funnelSTPId= carries.
+  it('fetches the funnel by ?origmainFunnelIdOrig= and resolves the step from it', () => {
+    setBody('<div></div>');
+    const identity = resolveEventIdentity({
+      doc: document,
+      getDestination: () => null,
+      getFunnel: (key) =>
+        key === 'a0qQL00000NR2IEYA1'
+          ? makeFunnel(
+              'demo_superfunnel_offer-selector',
+              [{ slug: 'order-form', id: 'a0Zorderform' }],
+              'a0qQL00000NR2IEYA1',
+            )
+          : null,
+      stepSlug: null,
+      search: '?origmainFunnelIdOrig=a0qQL00000NR2IEYA1',
+      pathname: '/order-form',
+    });
+    expect(identity.funnelId).toBe('a0qQL00000NR2IEYA1');
+    expect(identity.stepId).toBe('a0Zorderform');
+  });
+
+  it('fetches the funnel by data-gh-funnel-id when no slug is declared', () => {
+    setBody('<div data-gh-funnel-id="a0Xbyattr"></div>');
+    const identity = resolveEventIdentity({
+      doc: document,
+      getDestination: () => null,
+      getFunnel: (key) =>
+        key === 'a0Xbyattr'
+          ? makeFunnel('some-funnel', [{ slug: 'lp', id: 'a0Zlp' }], 'a0Xbyattr')
+          : null,
+      stepSlug: null,
+      search: '',
+      pathname: '/lp',
+    });
+    expect(identity.funnelId).toBe('a0Xbyattr');
+    expect(identity.stepId).toBe('a0Zlp');
+  });
+
+  // A slug-shaped declaration is the more specific one, so it wins the lookup.
+  it('prefers a declared data-gh-funnel slug over the funnel-id params', () => {
+    setBody('<div data-gh-funnel="bio3-main" data-gh-funnel-id="a0Xbyattr"></div>');
+    const keys: string[] = [];
+    resolveEventIdentity({
+      doc: document,
+      getDestination: () => null,
+      getFunnel: (key) => {
+        keys.push(key);
+        return null;
+      },
+      stepSlug: null,
+      search: '?origmainFunnelIdOrig=a0Xbyparam',
+    });
+    expect(keys).toEqual(['bio3-main']);
+  });
+
   it('data-gh-funnel-id outranks the funnel DTO id', () => {
     setBody('<div data-gh-funnel-id="a0Xattr" data-gh-funnel="bio3-main"></div>');
     const identity = resolveEventIdentity({

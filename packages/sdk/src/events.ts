@@ -614,26 +614,40 @@ export interface IdentityOptions {
 }
 
 /**
- * The funnel slug this page belongs to, or null.
+ * The identifier to fetch this page's funnel by — a slug OR a Salesforce id.
+ *
+ * `GET /public/v1/funnel/{funnelSlugOrId}` resolves BOTH, verified against UAT:
+ * the slug `ultimateh2_cms_osstart_260520_p` and the id `a0qQL00000KlmGzYAJ`
+ * return the same funnel. So the funnel-id sources are lookup keys too, which
+ * matters because the /fst hop mints `origmainFunnelIdOrig` on every real
+ * inbound link — a page can easily arrive knowing its funnel's id and not its
+ * slug. Without the id tiers below there is no lookup key at all on that path,
+ * the funnel is never fetched, and step resolution silently degrades to
+ * whatever `?funnelSTPId=` happens to carry.
+ *
+ * Slug-shaped sources rank first only because a page that names its funnel
+ * explicitly is the more specific declaration; either kind resolves the same
+ * record.
  *
  * Exported because the emitter needs it *before* identity resolution, to
  * trigger the funnel fetch that populates the cache `resolveEventIdentity`
  * then reads. Both callers must agree on the precedence, so there is one
  * implementation rather than two.
  *
- * A bound destination's `funnelSlug` is deliberately NOT a source. Two reasons,
- * either sufficient: it names a Post-Purchase funnel, which
- * `GET /public/v1/funnel/<slug>` rejects with a 404 by design
- * (`getFunnelByIdOrSlug` requires `funnelType === 'Pre-Purchase'`); and since
- * the resolved funnel's `id` now feeds `funnelId`, admitting it would let an
+ * A bound destination's `funnelSlug` is deliberately NOT a source: it names a
+ * Post-Purchase funnel, which the route rejects by design
+ * (`getFunnelByIdOrSlug` requires `funnelType === 'Pre-Purchase'`), and since
+ * the resolved funnel's `id` feeds `funnelId`, admitting it would let an
  * arbitrary offer on a twelve-destination selector page re-establish the very
- * funnel-identity leak this change exists to close.
+ * funnel-identity leak this gate exists to close.
  */
-export function resolveFunnelSlug(doc: Document, params: URLSearchParams): string | null {
+export function resolveFunnelLookupKey(doc: Document, params: URLSearchParams): string | null {
   return (
     readAttrPreferringPage(doc, FUNNEL_ATTR) ||
     params.get(FUNNEL_SLUG_PARAM) ||
     params.get(FUNNEL_SLUG_PARAM_SHORT) ||
+    readAttrPreferringPage(doc, FUNNEL_ID_ATTR) ||
+    params.get(FUNNEL_ID_PARAM) ||
     null
   );
 }
@@ -690,8 +704,8 @@ export function resolveEventIdentity(opts: IdentityOptions): EventIdentity {
   const splitTestId = params.get('origsplitTestingFunnelIdOrig') || null;
 
   // Resolved before `funnelId`, because the funnel DTO is one of its sources.
-  const funnelSlug = resolveFunnelSlug(opts.doc, params);
-  const funnel = funnelSlug ? opts.getFunnel(funnelSlug) : null;
+  const funnelKey = resolveFunnelLookupKey(opts.doc, params);
+  const funnel = funnelKey ? opts.getFunnel(funnelKey) : null;
 
   // A bound destination's `funnelId` is deliberately NOT a source here. It
   // names the destination's own post-purchase funnel, not the funnel this page
@@ -985,10 +999,10 @@ async function runPageView(opts: PageViewEmitterOptions): Promise<void> {
     } catch {
       params = new URLSearchParams('');
     }
-    const funnelSlug = resolveFunnelSlug(opts.doc, params);
-    if (funnelSlug && !opts.getFunnel(funnelSlug)) {
+    const funnelKey = resolveFunnelLookupKey(opts.doc, params);
+    if (funnelKey && !opts.getFunnel(funnelKey)) {
       try {
-        await opts.ensureFunnel(funnelSlug);
+        await opts.ensureFunnel(funnelKey);
       } catch (err) {
         // A funnel that will not load costs the step id, not the event.
         opts.logger.debug('funnel-event: funnel load failed —', err);
