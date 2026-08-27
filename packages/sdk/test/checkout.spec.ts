@@ -14,6 +14,10 @@ function makeConfig(overrides: Partial<GhConfig> = {}): GhConfig {
     checkoutBase: 'https://checkout.gundrymd.com',
     cookieDomain: null,
     brandToken: null,
+    sessionEnabled: true,
+    checkoutSessionId: true,
+    eventsEnabled: true,
+    sessionUrlFirst: false,
     ...overrides,
   };
 }
@@ -165,6 +169,47 @@ describe('composeCheckoutUrl', () => {
     const url = new URL(composeCheckoutUrl(makeDestination(), makeConfig(), makeSession()));
     expect(url.searchParams.get('sessionid')).toBe('174710238129');
     expect(url.searchParams.has('session_id')).toBe(false);
+  });
+
+  describe('data-checkout-sessionid="off"', () => {
+    const off = () => makeConfig({ checkoutSessionId: false });
+
+    it('omits sessionid from the composed URL', () => {
+      const url = new URL(composeCheckoutUrl(makeDestination(), off(), makeSession()));
+      expect(url.searchParams.has('sessionid')).toBe(false);
+    });
+
+    // The point of the switch: Superfunnel appends its own `sessionid` to every
+    // link on the page. Ours landed first and every reader takes the first
+    // occurrence, so ours silently won. Dropping ours leaves theirs alone.
+    it('leaves order_form_id and the attribution params untouched', () => {
+      const session = makeSession({ params: { utmSource: 'fb', subId1: 'a' } });
+      const url = new URL(composeCheckoutUrl(makeDestination(), off(), session));
+      expect(url.searchParams.get('order_form_id')).toBe('OF_123');
+      expect(url.searchParams.get('utm_source')).toBe('fb');
+      expect(url.searchParams.get('subid1')).toBe('a');
+    });
+
+    // I2 is knowingly re-opened here: with the SDK no longer owning the param,
+    // a foreign sessionid pasted into a Salesforce destination record survives.
+    // The warning still fires so the misconfiguration stays visible.
+    it('leaves a foreign sessionid on the base URL in place, and still warns', () => {
+      const dest = makeDestination({
+        checkoutOverrideUrl: 'https://www.gundrymd.com/bio3?sessionid=3f6b2c11-forged',
+      });
+      const logger = { debug: vi.fn(), warn: vi.fn(), error: vi.fn() };
+      const url = new URL(composeCheckoutUrl(dest, off(), makeSession(), logger));
+      expect(url.searchParams.get('sessionid')).toBe('3f6b2c11-forged');
+      expect(url.searchParams.getAll('sessionid')).toHaveLength(1);
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('sessionid=3f6b2c11-forged'),
+      );
+    });
+
+    it('is independent of the other toggles', () => {
+      const url = new URL(composeCheckoutUrl(makeDestination(), makeConfig(), makeSession()));
+      expect(url.searchParams.get('sessionid')).toBe('174710238129');
+    });
   });
 
   it('emits subidN, not sub_idN', () => {

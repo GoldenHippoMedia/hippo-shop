@@ -12,6 +12,10 @@ const CONFIG: GhConfig = {
   checkoutBase: null,
   cookieDomain: null,
   brandToken: null,
+  sessionEnabled: true,
+  checkoutSessionId: true,
+  eventsEnabled: true,
+  sessionUrlFirst: false,
 };
 
 function mockFetchOnce(body: unknown, init: ResponseInit = {}): void {
@@ -239,6 +243,10 @@ describe('GhDataClient.postJson', () => {
         checkoutBase: null,
         cookieDomain: null,
         brandToken: null,
+        sessionEnabled: true,
+        checkoutSessionId: true,
+        eventsEnabled: true,
+        sessionUrlFirst: false,
       },
       { debug: () => {}, warn: () => {}, error: () => {} },
     );

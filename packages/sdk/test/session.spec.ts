@@ -19,6 +19,10 @@ function makeConfig(overrides: Partial<GhConfig> = {}): GhConfig {
     checkoutBase: null,
     cookieDomain: null,
     brandToken: null,
+    sessionEnabled: true,
+    checkoutSessionId: true,
+    eventsEnabled: true,
+    sessionUrlFirst: false,
     ...overrides,
   };
 }
@@ -160,6 +164,128 @@ describe('ensureSession', () => {
     // `data` instead of relying on `connect.sid` riding the request.
     expect('hasConnectSid' in state).toBe(false);
     expect(state.params).not.toBeNull();
+  });
+
+  // Superfunnel navigates to the offer selector with `?sessionId=` (camelCase).
+  // Before the case-insensitive read this fell through to a fresh mint, so the
+  // SDK and Superfunnel disagreed about the visitor's identity for the whole
+  // session.
+  it('adopts a camelCase ?sessionId= handoff', async () => {
+    setLocation('https://info.gundrymd.com/offers?sessionId=sf-9958613519');
+    const state = await ensureSession(makeConfig(), client);
+    expect(state.sessionId).toBe('sf-9958613519');
+    expect(state.adopted).toBe(true);
+    expect(state.isNew).toBe(true);
+  });
+
+  it('an adopted camelCase id rides the outbound POST like any other', async () => {
+    setLocation('https://info.gundrymd.com/offers?sessionId=sf-9958613519');
+    await ensureSession(makeConfig(), client);
+    const [, body] = postSpy.mock.calls[0] as [string, { affParameters: Record<string, string> }];
+    expect(body.affParameters.sessionId).toBe('sf-9958613519');
+  });
+
+  describe('data-session-url-first', () => {
+    const URL_ID = 'sf-9958613519';
+    const COOKIE_ID = '9f1c2d3e-4a5b-4c6d-8e7f-0a1b2c3d4e5f';
+
+    // D1's default: the cookie outranks the param, so an inbound link cannot
+    // re-key a returning visitor on every visit.
+    it('off by default: the cookie still outranks ?sessionId=', async () => {
+      jar.seed(SESSION_COOKIE_NAME, COOKIE_ID);
+      setLocation(`https://info.gundrymd.com/offers?sessionId=${URL_ID}`);
+      const state = await ensureSession(makeConfig(), client);
+      expect(state.sessionId).toBe(COOKIE_ID);
+      expect(state.adopted).toBe(false);
+    });
+
+    // On a Superfunnel-hosted page Superfunnel is the identity authority, so a
+    // 30-day-old cookie must not win over the id it just put on the URL.
+    it('on: ?sessionId= outranks an existing cookie', async () => {
+      jar.seed(SESSION_COOKIE_NAME, COOKIE_ID);
+      setLocation(`https://info.gundrymd.com/offers?sessionId=${URL_ID}`);
+      const state = await ensureSession(makeConfig({ sessionUrlFirst: true }), client);
+      expect(state.sessionId).toBe(URL_ID);
+      expect(state.adopted).toBe(true);
+      expect(state.isNew).toBe(true);
+    });
+
+    it('on: falls back to the cookie when the URL carries no usable id', async () => {
+      jar.seed(SESSION_COOKIE_NAME, COOKIE_ID);
+      setLocation('https://info.gundrymd.com/offers');
+      const state = await ensureSession(makeConfig({ sessionUrlFirst: true }), client);
+      expect(state.sessionId).toBe(COOKIE_ID);
+      expect(state.adopted).toBe(false);
+    });
+
+    it('on: a malformed param does not beat a usable cookie', async () => {
+      jar.seed(SESSION_COOKIE_NAME, COOKIE_ID);
+      setLocation('https://info.gundrymd.com/offers?sessionId=a%3Db');
+      const state = await ensureSession(makeConfig({ sessionUrlFirst: true }), client);
+      expect(state.sessionId).toBe(COOKIE_ID);
+    });
+
+    it('on: mints when neither the URL nor the cookie has one', async () => {
+      setLocation('https://info.gundrymd.com/offers');
+      const state = await ensureSession(makeConfig({ sessionUrlFirst: true }), client);
+      expect(state.sessionId).toMatch(UUID_V4_RE);
+      expect(state.adopted).toBe(false);
+    });
+
+    // I4 is about the *source* of the id, not the rung it was read from: an
+    // adopted id stays host-only however it won.
+    it('on: an adopted id is still written host-only', async () => {
+      jar.seed(SESSION_COOKIE_NAME, COOKIE_ID);
+      setLocation(`https://info.gundrymd.com/offers?sessionId=${URL_ID}`);
+      await ensureSession(makeConfig({ sessionUrlFirst: true }), client);
+      const write = jar.writes.find((w) => w.startsWith(`${SESSION_COOKIE_NAME}=${URL_ID}`));
+      expect(write).toBeDefined();
+      expect(write).not.toContain('Domain=');
+    });
+  });
+
+  describe('data-session="off"', () => {
+    it('does not POST /session', async () => {
+      setLocation('https://info.gundrymd.com/offers?utm_source=fb');
+      await ensureSession(makeConfig({ sessionEnabled: false }), client);
+      expect(postSpy).not.toHaveBeenCalled();
+    });
+
+    it('resolves an empty sessionId rather than minting one', async () => {
+      const state = await ensureSession(makeConfig({ sessionEnabled: false }), client);
+      expect(state.sessionId).toBe('');
+      expect(state.isNew).toBe(false);
+      expect(state.adopted).toBe(false);
+      expect(state.data).toBeNull();
+    });
+
+    it('writes no cookie and reads no cookie', async () => {
+      jar.seed(SESSION_COOKIE_NAME, '9f1c2d3e-4a5b-4c6d-8e7f-0a1b2c3d4e5f');
+      const state = await ensureSession(makeConfig({ sessionEnabled: false }), client);
+      expect(state.sessionId).toBe('');
+      expect(jar.writes.some((w) => w.startsWith(SESSION_COOKIE_NAME))).toBe(false);
+    });
+
+    // Attribution still parses: UTM and click-id params ride outbound checkout
+    // links even with no session identity of our own.
+    it('still parses landing attribution', async () => {
+      setLocation('https://info.gundrymd.com/lp/vsl?utm_source=fb&gclid=abc123');
+      const state = await ensureSession(makeConfig({ sessionEnabled: false }), client);
+      expect(state.params).toMatchObject({ utmSource: 'fb', gclid: 'abc123' });
+    });
+
+    it('still fires gh:session-ready so checkout links resolve', async () => {
+      const seen: unknown[] = [];
+      window.addEventListener('gh:session-ready', (e) => seen.push((e as CustomEvent).detail));
+      await ensureSession(makeConfig({ sessionEnabled: false }), client);
+      expect(seen).toHaveLength(1);
+    });
+
+    it('ignores ?sessionId= entirely', async () => {
+      setLocation('https://info.gundrymd.com/offers?sessionId=sf-9958613519');
+      const state = await ensureSession(makeConfig({ sessionEnabled: false }), client);
+      expect(state.sessionId).toBe('');
+    });
   });
 
   it('reuses an existing session cookie instead of minting', async () => {

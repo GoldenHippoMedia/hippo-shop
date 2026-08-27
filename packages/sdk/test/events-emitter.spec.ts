@@ -690,6 +690,10 @@ function emitterConfig(overrides: Partial<GhConfig> = {}): GhConfig {
     checkoutBase: 'https://checkout.gundrymd.com',
     cookieDomain: null,
     brandToken: null,
+    sessionEnabled: true,
+    checkoutSessionId: true,
+    eventsEnabled: true,
+    sessionUrlFirst: false,
     ...overrides,
   };
 }
@@ -775,6 +779,52 @@ describe('installPageViewEmitter', () => {
     expect(event.destinationId).toBe('a0Ydest1');
     expect(event.funnelSTPId).toBe('a0Zstep1');
     expect(event.splitTestingFunnelId).toBe('a0Wsplit1');
+  });
+
+  describe('data-events="off"', () => {
+    const offOpts = () => makeEmitterOpts({ config: emitterConfig({ eventsEnabled: false }) });
+
+    it('installs nothing — no Page View after the readiness signals', async () => {
+      const { opts, postEvent } = offOpts();
+      installPageViewEmitter(opts);
+      window.dispatchEvent(new Event('gh:session-ready'));
+      window.dispatchEvent(new Event('gh:bindings-ready'));
+      await vi.advanceTimersByTimeAsync(PAGE_VIEW_QUIET_MS + 1);
+      expect(postEvent).not.toHaveBeenCalled();
+    });
+
+    it('emits no New Session even when the session is new', async () => {
+      const { opts, postEvent } = makeEmitterOpts({
+        config: emitterConfig({ eventsEnabled: false }),
+        getSession: () => emitterSession({ isNew: true }),
+      });
+      installPageViewEmitter(opts);
+      window.dispatchEvent(new Event('gh:session-ready'));
+      window.dispatchEvent(new Event('gh:bindings-ready'));
+      await vi.advanceTimersByTimeAsync(PAGE_VIEW_QUIET_MS + 1);
+      expect(postEvent).not.toHaveBeenCalled();
+    });
+
+    it('does not re-arm on gh:step-changed', async () => {
+      const { opts, postEvent } = offOpts();
+      installPageViewEmitter(opts);
+      window.dispatchEvent(new Event('gh:session-ready'));
+      window.dispatchEvent(new Event('gh:bindings-ready'));
+      await vi.advanceTimersByTimeAsync(PAGE_VIEW_QUIET_MS + 1);
+      setBody(`<div data-gh-step="step-2" ${EMITTER_FUNNEL_ATTR}></div>`);
+      window.dispatchEvent(new Event('gh:step-changed'));
+      await vi.advanceTimersByTimeAsync(PAGE_VIEW_QUIET_MS + 1);
+      expect(postEvent).not.toHaveBeenCalled();
+    });
+
+    // `gh.track` stays callable so a page that calls it does not throw; it just
+    // resolves without emitting.
+    it('gh.track resolves without emitting', async () => {
+      const { opts, postEvent } = offOpts();
+      const track = makeTrackFn(opts);
+      await expect(track('Page View')).resolves.toBeUndefined();
+      expect(postEvent).not.toHaveBeenCalled();
+    });
   });
 
   it('emits after both readiness signals plus the quiet window', async () => {

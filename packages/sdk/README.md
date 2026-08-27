@@ -26,6 +26,7 @@ Both share the same auth, caching, and brand-scoped access rules enforced by the
 - [Loops](#loops)
 - [Declarative scope (`data-with`)](#declarative-scope-data-with)
 - [Resource lifecycle (`data-when`)](#resource-lifecycle-data-when)
+- [Superfunnel-hosted pages](#superfunnel-hosted-pages)
 - [Session, attribution, and events](#session-attribution-and-events)
 - [Recipes](#recipes)
 - [Evaluation order](#evaluation-order)
@@ -140,7 +141,24 @@ The SDK boots from a single `<script>` tag. All configuration lives on that tag'
 | `data-checkout-base` | conditional | — | Brand-level fallback base URL for outbound offer links (e.g. `https://checkout.gundrymd.com`). Used only when the destination carries neither a per-destination override nor its own `url`. Required if any page on this brand uses `data-gh-checkout` or `gh.checkoutUrl()` against destinations Salesforce has no URL for; optional otherwise. |
 | `data-cookie-domain` | conditional | auto-detect | Explicit `Domain` for the `hippo_session_id` cookie (e.g. `.gundrymd.com`). When absent the SDK derives the registrable root from `location.hostname` using a single-segment TLD allowlist — `com, net, org, io, app, dev, ai, co, us, store, shop`. **Multi-part TLDs (`.co.uk`, `.com.au`, `.co.jp`) require this attribute**; auto-detect refuses to guess them and falls back to a host-only cookie, which breaks the cross-subdomain handoff. |
 
+| `data-session` | no | on | Set to `"off"` (or `"false"`) to disable session identity entirely: no `POST /public/v1/session`, no `hippo_session_id` cookie, and no `sessionid=` on outbound links. Landing attribution is still parsed, so UTM and click-id params keep riding checkout links. **Implies `data-events="off"`** — an event with no session id is unattributable. |
+| `data-checkout-sessionid` | no | on | Set to `"off"` to stop writing `sessionid=` onto outbound checkout URLs while leaving the session, the cookie, and funnel events fully working. For pages where another system owns that param. |
+| `data-events` | no | on | Set to `"off"` to disable funnel events: the `Page View`/`New Session` emitter is not installed and `gh.track()` becomes a no-op (still callable, so existing page code doesn't throw). |
+| `data-session-url-first` | no | `"false"` | Set to `"true"` to make `?sessionid=` outrank the `hippo_session_id` cookie in the resolution ladder. Off by default so an inbound link cannot re-key a returning visitor's session on every visit — turn it on only where another system owns visitor identity. See [Superfunnel-hosted pages](#superfunnel-hosted-pages). |
+
+`data-session`, `data-checkout-sessionid` and `data-events` accept `"off"` and `"false"` interchangeably. Anything else — including a typo — leaves the feature **on**, deliberately: silently disabling session tracking for a whole brand returns `200`s and surfaces only in a missing-revenue report weeks later.
+
 Set `data-checkout-base` and `data-cookie-domain` together on brands running a Superfunnel-hosted subdomain — see [Session, attribution, and events](#session-attribution-and-events).
+
+### Superfunnel-hosted pages
+
+Superfunnel owns visitor identity on the pages it serves, and it interacts with the SDK in two ways worth knowing about.
+
+**It puts its session id on the URL as `?sessionId=` — camelCase.** The SDK matches that key case-insensitively, so `?sessionId=`, `?sessionid=` and `?SESSIONID=` are all adopted. (Through v4.1.2 the match was exact, so a camelCase param fell through to a freshly minted UUID and the two systems disagreed about the visitor for the whole session.) Outbound checkout links still *write* lowercase `sessionid`, which is what the funnel reads — the SDK reads liberally and writes exactly.
+
+**It appends its own `sessionid` to every link on the page, including the ones the SDK builds.** That produces two `sessionid` params on one URL. Every reader — the funnel included — takes the first occurrence, and the SDK's is written first, so the SDK's value wins. Once the SDK is adopting Superfunnel's id (above), both values are the same and this resolves itself. Where it doesn't, `data-checkout-sessionid="off"` drops the SDK's copy and leaves Superfunnel's alone.
+
+A returning visitor carrying a `hippo_session_id` cookie from an earlier visit still resolves to the cookie, not to Superfunnel's `?sessionId=` — that ordering is what stops any inbound link re-keying a session on every visit. On Superfunnel-hosted pages, where Superfunnel is the identity authority and a 30-day-old cookie of ours must not outrank it, set `data-session-url-first="true"`.
 
 The script tag itself is auto-located via `document.currentScript`; if that's unavailable, the SDK falls back to a `[data-key][data-brand]` `<script>` whose `src` ends in `/gh.js`. That covers the active CDN URL (`/sdk/v4/gh.js`), the frozen `/sdk/v3/gh.js` and `/sdk/v1/gh.js` URLs, and local-dev paths.
 
@@ -388,7 +406,7 @@ All of it degrades quietly. A blocked cookie, a failed POST, an unresolvable fun
 One id per visitor, resolved once per page load, in this order:
 
 1. **The `hippo_session_id` cookie** — validated against `/^[A-Za-z0-9._-]{1,128}$/`; a value that fails is ignored and the SDK falls through. A returning visitor keeps the session they already have, and the cookie is not re-written, so the 30-day window does not roll.
-2. **`?sessionid=` on the current URL.** Matched **case-sensitively** — `?SessionId=` is ignored. Validated against that same pattern, and read **only when no usable cookie exists** — that is, for a genuinely new visitor. On a pass the value is adopted and written to the cookie. On a fail the SDK warns and falls through.
+2. **`?sessionid=` on the current URL.** The key is matched **case-insensitively** — `?sessionId=`, `?SESSIONID=` and `?sessionid=` are all accepted, which is what lets Superfunnel's camelCase handoff through. Where the same URL carries the param more than once (Superfunnel appends its own to every link), the **first** occurrence wins, matching every other reader including the funnel. Validated against that same pattern, and read **only when no usable cookie exists** — that is, for a genuinely new visitor — unless `data-session-url-first="true"` swaps rungs 1 and 2. On a pass the value is adopted and written to the cookie, host-only. On a fail the SDK warns and falls through.
 3. **A freshly minted UUID v4** — `crypto.randomUUID()`, with an RFC-4122 `getRandomValues` fallback. In a runtime that offers neither, minting throws; the SDK catches that, logs an error, and degrades to a last-resort `fallback-<base36>-<base36>` id — neither a UUID nor cryptographically random. Resolution has to finish either way: if it didn't, `gh:session-ready` would never fire and every checkout link would stay at `href="#"`.
 
 | Cookie | Max-Age | Path | Domain | SameSite | Secure |
@@ -415,7 +433,7 @@ Land a **new** visitor with `?sessionid=<id>` and the SDK adopts that id as its 
 https://sf.gundrymd.com/offer?sessionid=3f6b2c11-1c2a-4b1d-9f0a-77c1d2e3f455&utm_source=fb&fbclid=IwAR…
 ```
 
-That is how one page hands a visitor to another without minting a second identifier for a single visit, and it is how a session minted elsewhere — Superfunnel's own UUID, for instance — becomes the session id on this side. A visitor who already carries a valid `hippo_session_id` cookie keeps it: the param is read only when the cookie is absent or malformed, so an inbound link cannot re-key a returning visitor. The SDK trusts the URL here **by design** — see [SPEC — Session identity and inbound `?sessionid=`](./SPEC.md#session-identity-and-inbound-sessionid) for the threat note and why the blast radius is analytics only. With `data-debug="true"` the adoption is logged as `[gh] session: adopting ?sessionid= handoff <id>`.
+That is how one page hands a visitor to another without minting a second identifier for a single visit, and it is how a session minted elsewhere — Superfunnel's own UUID, for instance — becomes the session id on this side. A visitor who already carries a valid `hippo_session_id` cookie keeps it: by default the param is read only when the cookie is absent or malformed, so an inbound link cannot re-key a returning visitor. Set `data-session-url-first="true"` to invert that on pages where another system owns visitor identity — see [Superfunnel-hosted pages](#superfunnel-hosted-pages). The SDK trusts the URL here **by design** — see [SPEC — Session identity and inbound `?sessionid=`](./SPEC.md#session-identity-and-inbound-sessionid) for the threat note and why the blast radius is analytics only. With `data-debug="true"` the adoption is logged as `[gh] session: adopting ?sessionid= handoff <id>`.
 
 ### Outbound handoff — `data-gh-checkout`
 
@@ -440,7 +458,7 @@ Onto that base the SDK appends, in this order and skipping anything empty: `orde
 https://www.gundrymd.com/bio3-3pk-sub?order_form_id=OF_123&sessionid=3f6b2c11-…&utm_source=fb&subid1=IwAR…&fbclid=IwAR…
 ```
 
-Attribution parameters use `setIfAbsent` semantics — a parameter already present on the base URL wins, and the SDK only fills what is absent. `order_form_id` and `sessionid` are the deliberate exception: they are SDK-owned and written unconditionally, overwriting whatever the base URL carried. Overwriting a pre-existing, different value logs a warning — it almost always means a live funnel link with a session already baked into it was pasted into the destination record in Salesforce. Values are never truncated.
+Attribution parameters use `setIfAbsent` semantics — a parameter already present on the base URL wins, and the SDK only fills what is absent. `order_form_id` and `sessionid` are the deliberate exception: they are SDK-owned and written unconditionally, overwriting whatever the base URL carried. (`data-checkout-sessionid="off"` gives up SDK ownership of `sessionid` — the base URL's value then survives, and the warning below changes to say so.) Overwriting a pre-existing, different value logs a warning — it almost always means a live funnel link with a session already baked into it was pasted into the destination record in Salesforce. Values are never truncated.
 
 ### Inbound click-ids → `subid` slots
 
@@ -528,7 +546,7 @@ The step resolves in this order. Tiers 1, 2, and 4 match against the steps of th
 
 #### URL params the SDK reads
 
-Alongside `?sessionid=` and the click-ids, these `/fst`-minted params feed funnel-event identity. All are read **case-sensitively**.
+Alongside `?sessionid=` and the click-ids, these `/fst`-minted params feed funnel-event identity. These `/fst` params are read **case-sensitively** (`?sessionid=` is the exception — see [The session id](#the-session-id)).
 
 | Param | What it supplies |
 |-------|------------------|
@@ -1042,7 +1060,7 @@ pnpm add -D @goldenhippo/hippo-shop-types
 
 ## Size budget
 
-Hard-budgeted at **8 KB gzipped**, CI-enforced.
+Hard-budgeted at **11 KB gzipped**, CI-enforced on every PR and again at release (`scripts/size-check.mjs`).
 
 ## Provenance
 

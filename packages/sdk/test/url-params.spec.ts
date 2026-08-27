@@ -120,13 +120,37 @@ describe('readSessionIdFromUrl', () => {
     expect(readSessionIdFromUrl('?sessionid=%20%20')).toBeNull();
   });
 
-  it('is case-sensitive on the key — ?SessionId= is ignored', () => {
-    expect(readSessionIdFromUrl('?SessionId=abc123')).toBeNull();
-    expect(readSessionIdFromUrl('?SESSIONID=abc123')).toBeNull();
+  // Superfunnel's landing pages navigate to the offer selector with
+  // `?sessionId=` (camelCase). Reading that key case-sensitively meant we never
+  // adopted their id and minted our own instead, so the two systems disagreed
+  // about who the visitor was for the whole session. Read liberally, write
+  // exactly — outbound links still emit lowercase `sessionid`.
+  it('matches the key case-insensitively', () => {
+    expect(readSessionIdFromUrl('?sessionId=abc123')).toBe('abc123');
+    expect(readSessionIdFromUrl('?SessionId=abc123')).toBe('abc123');
+    expect(readSessionIdFromUrl('?SESSIONID=abc123')).toBe('abc123');
+    expect(readSessionIdFromUrl('?SeSsIoNiD=abc123')).toBe('abc123');
   });
 
-  it('rejects the near-miss camelCase key ?sessionId=', () => {
-    expect(readSessionIdFromUrl('?sessionId=abc123')).toBeNull();
+  it('applies the same validation to a case-variant key', () => {
+    expect(readSessionIdFromUrl('?sessionId=')).toBeNull();
+    expect(readSessionIdFromUrl('?sessionId=%20%20')).toBeNull();
+    expect(readSessionIdFromUrl('?sessionId=a%3Db')).toBeNull();
+    expect(readSessionIdFromUrl(`?sessionId=${'a'.repeat(129)}`)).toBeNull();
+  });
+
+  it('takes the first matching key when several casings are present', () => {
+    expect(readSessionIdFromUrl('?sessionid=first&sessionId=second')).toBe('first');
+    expect(readSessionIdFromUrl('?sessionId=first&sessionid=second')).toBe('first');
+  });
+
+  // Deliberately does NOT scan past a malformed first match for a valid later
+  // one. Every downstream reader of this param — the funnel included — takes
+  // the first occurrence without validating it, so recovering here would make
+  // us the only party using the second value. Agreeing on a bad id beats
+  // disagreeing about a good one.
+  it('does not skip past a malformed first match to a valid later one', () => {
+    expect(readSessionIdFromUrl('?sessionId=a%3Db&sessionid=abc123')).toBeNull();
   });
 
   it('rejects the near-miss snake_case key ?session_id=', () => {

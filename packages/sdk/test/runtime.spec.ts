@@ -13,6 +13,10 @@ const CONFIG: GhConfig = {
   checkoutBase: null,
   cookieDomain: null,
   brandToken: null,
+  sessionEnabled: true,
+  checkoutSessionId: true,
+  eventsEnabled: true,
+  sessionUrlFirst: false,
 };
 
 const PRODUCT = {
