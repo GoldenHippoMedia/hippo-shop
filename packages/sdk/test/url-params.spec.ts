@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { parseLandingParams, CLICK_ID_MAP } from '../src/url-params';
 
 const BASE = 'https://info.gundrymd.com/some-funnel';
@@ -411,5 +411,134 @@ describe('parseLandingParams — landing and referral URLs', () => {
       true,
     );
     expect(out.landingUrl).toBe(explicit);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// data-params (hardcoded values) and data-param-map (manual mappings)
+// ---------------------------------------------------------------------------
+
+/**
+ * One precedence ladder governs both features, and every test below pins one
+ * rung of it:
+ *
+ *   1. explicit URL param   2. click-id table   3. data-param-map   4. data-params
+ *
+ * The rule is "anything derived from the URL beats anything the script tag
+ * says", so neither feature can erase attribution — both only ever fill a slot
+ * that is still empty.
+ */
+describe('parseLandingParams — hardcoded params and manual mappings', () => {
+  it('data-params fills an empty slot', () => {
+    const out = parseLandingParams(`${BASE}?utm_source=fb`, '', false, {
+      hardcodedParams: { subid2: 'superfunnel' },
+    });
+    expect(out.subId2).toBe('superfunnel');
+    expect(out.utmSource).toBe('fb');
+  });
+
+  it('an explicit URL param beats data-params', () => {
+    const out = parseLandingParams(`${BASE}?subid2=affiliate123`, '', false, {
+      hardcodedParams: { subid2: 'superfunnel' },
+    });
+    expect(out.subId2).toBe('affiliate123');
+  });
+
+  it('the legacy sub_idN spelling also beats data-params', () => {
+    const out = parseLandingParams(`${BASE}?sub_id2=affiliate123`, '', false, {
+      hardcodedParams: { subid2: 'superfunnel' },
+    });
+    expect(out.subId2).toBe('affiliate123');
+  });
+
+  it('data-param-map copies an inbound param into the target slot', () => {
+    const out = parseLandingParams(`${BASE}?sessionId=abc-123`, '', false, {
+      paramMap: { sessionId: 'subid2' },
+    });
+    expect(out.subId2).toBe('abc-123');
+  });
+
+  it('data-param-map matches the inbound key case-insensitively', () => {
+    const out = parseLandingParams(`${BASE}?SESSIONID=abc-123`, '', false, {
+      paramMap: { sessionId: 'subid2' },
+    });
+    expect(out.subId2).toBe('abc-123');
+  });
+
+  it('data-param-map is a no-op when the inbound param is absent', () => {
+    const out = parseLandingParams(`${BASE}?utm_source=fb`, '', false, {
+      paramMap: { sessionId: 'subid2' },
+    });
+    expect('subId2' in out).toBe(false);
+  });
+
+  it('data-param-map beats data-params for the same slot', () => {
+    const out = parseLandingParams(`${BASE}?ref=partner-a`, '', false, {
+      paramMap: { ref: 'subid3' },
+      hardcodedParams: { subid3: 'fallback' },
+    });
+    expect(out.subId3).toBe('partner-a');
+  });
+
+  it('data-params still fills the slot when the mapped param is missing', () => {
+    const out = parseLandingParams(BASE, '', false, {
+      paramMap: { ref: 'subid3' },
+      hardcodedParams: { subid3: 'fallback' },
+    });
+    expect(out.subId3).toBe('fallback');
+  });
+
+  // The whole reason subid2/subid3 are the recommended slots: on paid traffic
+  // the click-id table has already claimed subid1/subid4/subid5, and it wins.
+  it('the click-id table beats data-param-map and data-params', () => {
+    const out = parseLandingParams(
+      `${BASE}?fbclid=FB123&ScCid=SC456&ref=partner-a`,
+      '',
+      false,
+      {
+        paramMap: { ref: 'subid1' },
+        hardcodedParams: { subid1: 'hardcoded', subid5: 'hardcoded' },
+      },
+    );
+    expect(out.subId1).toBe('FB123');
+    expect(out.subId5).toBe('snap');
+  });
+
+  it('applies to every param the SDK sends, not just sub-ids', () => {
+    const out = parseLandingParams(BASE, '', false, {
+      hardcodedParams: { utm_source: 'superfunnel', off_id: '42', sales_funnel: 'sf-9' },
+    });
+    expect(out.utmSource).toBe('superfunnel');
+    expect(out.offId).toBe('42');
+    expect(out.salesFunnel).toBe('sf-9');
+  });
+
+  it('strips control characters from both hardcoded and mapped values', () => {
+    const out = parseLandingParams(`${BASE}?ref=a%00b`, '', false, {
+      paramMap: { ref: 'subid3' },
+      hardcodedParams: { subid2: 'c%00d' },
+    });
+    expect(out.subId3).toBe('ab');
+    // Not URL-decoded: a hardcoded value is authored text, not a query string.
+    expect(out.subId2).toBe('c%00d');
+  });
+
+  it('warns and ignores an unknown target rather than inventing a param', () => {
+    const warn = vi.fn();
+    const logger = { debug: vi.fn(), warn, error: vi.fn() };
+    const out = parseLandingParams(BASE, '', false, {
+      hardcodedParams: { subid9: 'nope' },
+      paramMap: { ref: 'not_a_param' },
+      logger,
+    });
+    expect(Object.keys(out)).toEqual(['landingUrl']);
+    expect(warn).toHaveBeenCalledTimes(2);
+    expect(warn.mock.calls.map((c) => String(c[0])).join(' ')).toContain('subid9');
+    expect(warn.mock.calls.map((c) => String(c[0])).join(' ')).toContain('not_a_param');
+  });
+
+  it('is a no-op when neither attribute is configured', () => {
+    const out = parseLandingParams(`${BASE}?utm_source=fb`, '', false, {});
+    expect(out).toEqual({ landingUrl: BASE, utmSource: 'fb' });
   });
 });

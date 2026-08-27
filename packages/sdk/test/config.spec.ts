@@ -44,6 +44,8 @@ describe('parseScriptConfig', () => {
       checkoutSessionId: true,
       eventsEnabled: true,
       sessionUrlFirst: false,
+      hardcodedParams: {},
+      paramMap: {},
     });
   });
 
@@ -207,5 +209,62 @@ describe('parseScriptConfig', () => {
       src: goodSrc,
     });
     expect(parseScriptConfig(blank).brandToken).toBeNull();
+  });
+});
+
+describe('parseScriptConfig — data-params and data-param-map', () => {
+  const base = {
+    key: 'gh_pk_netlify_gundry_a1b2c3',
+    brand: 'Gundry MD',
+    src: 'https://api-prod.goldenhippo.io/sdk/v3/gh.js',
+  };
+
+  it('defaults both to an empty object when the attributes are absent', () => {
+    const c = parseScriptConfig(makeScript(base));
+    expect(c.hardcodedParams).toEqual({});
+    expect(c.paramMap).toEqual({});
+  });
+
+  it('parses data-params as a query string', () => {
+    const c = parseScriptConfig(
+      makeScript({ ...base, params: 'subid2=superfunnel&subid3=quiz-a' }),
+    );
+    expect(c.hardcodedParams).toEqual({ subid2: 'superfunnel', subid3: 'quiz-a' });
+  });
+
+  it('parses data-param-map as a query string', () => {
+    const c = parseScriptConfig(
+      makeScript({ ...base, 'param-map': 'sessionId=subid2&ref=subid3' }),
+    );
+    expect(c.paramMap).toEqual({ sessionId: 'subid2', ref: 'subid3' });
+  });
+
+  // The query-string format is the whole reason we do not invent an encoding:
+  // spaces, ampersands and commas in a value all survive it.
+  it('URL-decodes values', () => {
+    const c = parseScriptConfig(
+      makeScript({ ...base, params: 'utm_campaign=summer%20sale%20%26%20more' }),
+    );
+    expect(c.hardcodedParams).toEqual({ utm_campaign: 'summer sale & more' });
+  });
+
+  it('tolerates a leading ? and surrounding whitespace', () => {
+    const c = parseScriptConfig(makeScript({ ...base, params: '  ?subid2=superfunnel  ' }));
+    expect(c.hardcodedParams).toEqual({ subid2: 'superfunnel' });
+  });
+
+  // A blank value could only ever fill a slot with nothing, so carrying it
+  // would make "is this configured?" lie to every reader downstream.
+  it('drops pairs with a blank key or blank value', () => {
+    const c = parseScriptConfig(
+      makeScript({ ...base, params: 'subid2=&=orphan&subid3=kept' }),
+    );
+    expect(c.hardcodedParams).toEqual({ subid3: 'kept' });
+  });
+
+  it('is empty, not a throw, for a malformed attribute', () => {
+    const c = parseScriptConfig(makeScript({ ...base, params: '&&&', 'param-map': '' }));
+    expect(c.hardcodedParams).toEqual({});
+    expect(c.paramMap).toEqual({});
   });
 });

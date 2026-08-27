@@ -152,7 +152,31 @@ Pre-existing query keys on the base URL are preserved for the attribution params
 - `data-checkout-base="https://checkout.brand.com"` — brand-level fallback base URL, source 3 of the ladder above. Required only if a page uses `[data-gh-checkout]` or `gh.checkoutUrl()` against destinations that carry neither a `checkoutOverrideUrl` nor a `url`. Optional otherwise.
 - `data-cookie-domain=".brand.com"` — optional explicit `Domain` for the `hippo_session_id` cookie. When absent, the SDK auto-detects the registrable root via the safe-TLD allowlist: `com, net, org, io, app, dev, ai, co, us, store, shop`. Multi-part TLDs (`.co.uk`, `.com.au`, `.co.jp`) require this attribute; without it the cookie falls back to host-only and the cross-subdomain handoff stops working.
 - `data-brand-token="gundry"` — the brand's `BRAND_NAME` token. The funnel-event payload's `brand` field is `data-brand-token ?? data-brand`. Altern attributes off that payload field, not the `X-GH-Brand` header, and it expects the token vocabulary (`gundry`) rather than the public display name (`Gundry MD`); both land in the same Salesforce column, so omitting this attribute mis-attributes every event the page emits, with a `200` from the API and nothing in any log. Required on every brand whose token differs from its display name, which in practice is all of them.
+- `data-params="subid2=superfunnel&subid3=quiz-a"` — hardcoded attribution values, parsed as a query string. Fill-if-empty. See [Hardcoded params and manual mappings](#hardcoded-params-and-manual-mappings).
+- `data-param-map="sessionId=subid2&ref=subid3"` — inbound URL param → outbound param, parsed as a query string, inbound key matched case-insensitively. Fill-if-empty. See [Hardcoded params and manual mappings](#hardcoded-params-and-manual-mappings).
 - `data-gh-step` / `data-gh-funnel-id` — also accepted on the script tag as page-wide defaults for funnel events. See [Write calls: session and funnel events](#write-calls-session-and-funnel-events).
+
+### Hardcoded params and manual mappings
+
+Two script-tag attributes contribute attribution the landing URL does not carry. Both are parsed as query strings (`URLSearchParams`), so escaping is inherited rather than invented, and both name params in the **outbound spelling** (`subid2`, `utm_source`) rather than the internal `ParsedParams` field names.
+
+- `data-params="subid2=superfunnel&subid3=quiz-a"` — hardcoded values.
+- `data-param-map="sessionId=subid2&ref=subid3"` — inbound URL param → target param. The inbound key is matched **case-insensitively**, like the click-id table.
+
+Both feed `ParsedParams` at parse time, so they reach both consumers: `affParameters` on `POST /public/v1/session`, and every outbound checkout link.
+
+**Precedence**, highest first:
+
+1. an explicit URL param — `?subid2=affiliate123`
+2. the click-id table — `fbclid` → `subid1`, `wbraid` → `subid4`, platform marker → `subid5`
+3. `data-param-map`
+4. `data-params`
+
+Anything derived from the URL beats anything the script tag says. Both rungs 3 and 4 write only into a slot that is still `undefined`, matching the existing guard on the legacy `sub_idN` and click-id passes, so neither can erase attribution. The consequence is that a mapping or hardcode aimed at `subid1`/`subid4`/`subid5` loses on paid traffic; `subid2` and `subid3` are the only slots the SDK never derives into and therefore the only ones where these attributes are guaranteed to land.
+
+A target outside the accepted set is dropped with a `logger.warn`, not passed through — the session API discards keys it does not know, so an invented param would ride outbound links while silently vanishing from the session record. Accepted targets are exactly the `ParsedParams` keys: the eight `utm_*`, `off_id`, `aff_id`, `subid1`–`subid5`, `landing_url`, `referral_url`, `sales_funnel`, and the seven raw click-ids. A malformed attribute yields no pairs rather than a `ConfigError`: refusing to boot over one bad pair would take the whole page's attribution down with it.
+
+Note that a hardcoded `landing_url` takes effect only on a returning visit — on a first visit the SDK has already synthesised `landingUrl` from the current page (I3).
 
 ### `window.gh.checkoutUrl(slug: string): Promise<string>`
 

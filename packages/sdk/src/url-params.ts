@@ -14,6 +14,8 @@
  * See the Cluster G design spec, decision D3.
  */
 
+import type { Logger } from './log';
+
 // eslint-disable-next-line no-control-regex
 const CONTROL_CHARS_RE = /[\x00-\x1F\x7F]/g; // ASCII control chars
 /** Stripped from click-id-derived sub-id values only (click-id-normalizer.ts:45-50). */
@@ -127,6 +129,66 @@ const OTHER_KEY_MAP: Record<string, keyof ParsedParams> = {
   referral_url: 'referralUrl',
 };
 
+/**
+ * Every outbound param name the SDK is willing to write, mapped to the
+ * `ParsedParams` field behind it. This is the target vocabulary for
+ * `data-params` and `data-param-map`, and it is composed from the maps above
+ * rather than restated so the two cannot drift apart.
+ *
+ * Deliberately closed: a target outside this set is dropped with a warning
+ * rather than passed through. `ParsedParams` is a typed contract posted to
+ * `/public/v1/session` as `affParameters`, and the API discards keys it does
+ * not know — so an invented param would ride outbound links while silently
+ * vanishing from the session record, which is the worst of both.
+ */
+const TARGET_KEY_MAP: Record<string, keyof ParsedParams> = {
+  ...UTM_KEY_MAP,
+  ...SUB_ID_KEY_MAP,
+  ...LEGACY_SUB_ID_KEY_MAP,
+  ...OTHER_KEY_MAP,
+  ...Object.fromEntries(
+    CLICK_ID_MAP.map((row) => [row.incoming.toLowerCase(), row.rawKey] as const),
+  ),
+};
+
+/**
+ * Script-tag-authored additions to the parse, both fill-if-empty. See the
+ * precedence ladder on `parseLandingParams`.
+ */
+export interface ParamOverrides {
+  /** `data-param-map`: inbound URL param name → outbound param name. */
+  paramMap?: Record<string, string>;
+  /** `data-params`: outbound param name → hardcoded value. */
+  hardcodedParams?: Record<string, string>;
+  /** Optional, and only ever used to report an unrecognised target. */
+  logger?: Logger;
+}
+
+/**
+ * Resolve an author-supplied target name to a `ParsedParams` field, warning
+ * when it is not one the SDK sends.
+ *
+ * A typo'd target is silent by nature — the param simply never appears — and
+ * it would surface only as a hole in a report weeks later, so it is worth a
+ * console line. It is a warning rather than a `ConfigError` because refusing
+ * to boot the SDK over one bad pair would take the whole page's attribution
+ * down with it.
+ */
+function resolveTarget(
+  name: string,
+  attr: string,
+  logger?: Logger,
+): keyof ParsedParams | undefined {
+  const key = TARGET_KEY_MAP[name.trim().toLowerCase()];
+  if (key === undefined) {
+    logger?.warn(
+      `${attr}: "${name}" is not a param the SDK sends — ignoring this pair. ` +
+        `Valid targets: ${Object.keys(TARGET_KEY_MAP).sort().join(', ')}.`,
+    );
+  }
+  return key;
+}
+
 /** First case-insensitive match for `key`, or null when absent. */
 function findCaseInsensitive(params: URLSearchParams, key: string): string | null {
   const keyLower = key.toLowerCase();
@@ -170,11 +232,31 @@ function clean(value: string): string {
  *  uncorrectable by any later POST. On a returning visit the default is
  *  skipped entirely — an explicit `?landing_url=` below still wins
  *  regardless, exactly like a first touch.
+ * @param overrides `data-params` and `data-param-map` from the script tag.
+ *
+ *  One precedence ladder governs both, highest first:
+ *
+ *    1. an explicit URL param      `?subid2=affiliate123`
+ *    2. the click-id table         `fbclid` → `subid1`, `wbraid` → `subid4`,
+ *                                  the platform marker → `subid5`
+ *    3. `data-param-map`           `?sessionId=` → `subid2`
+ *    4. `data-params`              `subid2=superfunnel`
+ *
+ *  The rule behind it is one sentence: anything derived from the URL beats
+ *  anything the script tag says. Both new rungs only ever fill a slot that is
+ *  still empty, so neither can erase attribution — a media buyer's
+ *  ad-platform URL template can never be silently overwritten by page config,
+ *  and a hardcoded value can never displace a click id.
+ *
+ *  The cost of that ordering, and the reason `subid2`/`subid3` are the slots
+ *  to reach for: a mapping or hardcode aimed at `subid1`/`subid4`/`subid5`
+ *  will lose on exactly the paid traffic where it would have mattered most.
  */
 export function parseLandingParams(
   href: string,
   _referrer: string,
   isReturningVisit = false,
+  overrides: ParamOverrides = {},
 ): ParsedParams {
   const out: ParsedParams = {};
   if (!isReturningVisit) {
@@ -239,6 +321,31 @@ export function parseLandingParams(
     if (row.platform !== null && out.subId5 === undefined) {
       out.subId5 = row.platform;
     }
+  }
+
+  // Pass 3: `data-param-map` — copy an inbound param the SDK has no rule for
+  // into a slot the author chose. Case-insensitive on the inbound key, like
+  // the click-id table: partners are inconsistent about casing (`?sessionId=`
+  // vs `?sessionid=`) and being strict here only ever loses data.
+  for (const [incoming, target] of Object.entries(overrides.paramMap ?? {})) {
+    const key = resolveTarget(target, 'data-param-map', overrides.logger);
+    if (key === undefined || out[key] !== undefined) continue;
+    const found = findCaseInsensitive(url.searchParams, incoming);
+    if (found === null) continue;
+    const value = clean(found);
+    if (value) out[key] = value;
+  }
+
+  // Pass 4: `data-params` — hardcoded values, last so everything derived from
+  // the URL outranks them.
+  for (const [target, raw] of Object.entries(overrides.hardcodedParams ?? {})) {
+    const key = resolveTarget(target, 'data-params', overrides.logger);
+    if (key === undefined || out[key] !== undefined) continue;
+    // `clean` only, no URL-decoding: config.ts already unescaped this value
+    // out of the attribute's query string, so decoding again would corrupt a
+    // literal `%` an author actually meant.
+    const value = clean(raw);
+    if (value) out[key] = value;
   }
 
   return out;

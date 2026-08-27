@@ -16,6 +16,8 @@ const CONFIG: GhConfig = {
   checkoutSessionId: true,
   eventsEnabled: true,
   sessionUrlFirst: false,
+  hardcodedParams: {},
+  paramMap: {},
 };
 
 function mockFetchOnce(body: unknown, init: ResponseInit = {}): void {
@@ -247,6 +249,8 @@ describe('GhDataClient.postJson', () => {
         checkoutSessionId: true,
         eventsEnabled: true,
         sessionUrlFirst: false,
+        hardcodedParams: {},
+        paramMap: {},
       },
       { debug: () => {}, warn: () => {}, error: () => {} },
     );

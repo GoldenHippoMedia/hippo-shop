@@ -207,7 +207,11 @@ export async function ensureSession(
   // nothing new" branch of resolveSessionId — the one case that is a
   // returning visit reusing a prior session, not a fresh landing.
   const isReturningVisit = !resolved.persist;
-  const params = parseLandingParams(href, referrer, isReturningVisit);
+  const params = parseLandingParams(href, referrer, isReturningVisit, {
+    paramMap: config.paramMap,
+    hardcodedParams: config.hardcodedParams,
+    logger,
+  });
 
   // Boxed rather than warned in place: the warn is deliberately deferred past
   // the state transition below (see the note on it), and boxing keeps a thrown
@@ -437,7 +441,14 @@ function resolveDisabled(config: GhConfig, logger: Logger): SessionState {
   const state: SessionState = {
     sessionId: '',
     adopted: false,
-    params: parseLandingParams(href, referrer, false),
+    // `data-params`/`data-param-map` still apply: they are attribution the
+    // page author asked for on outbound links, and this branch is precisely
+    // the one that keeps those links carrying everything they otherwise would.
+    params: parseLandingParams(href, referrer, false, {
+      paramMap: config.paramMap,
+      hardcodedParams: config.hardcodedParams,
+      logger,
+    }),
     isNew: false,
     data: null,
   };
