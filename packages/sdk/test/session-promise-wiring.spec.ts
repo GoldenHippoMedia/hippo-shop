@@ -26,6 +26,8 @@ const CONFIG: GhConfig = {
   checkoutSessionId: true,
   eventsEnabled: true,
   sessionUrlFirst: false,
+  hardcodedParams: {},
+  paramMap: {},
 };
 
 const DESTINATION = {

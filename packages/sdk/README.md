@@ -26,6 +26,7 @@ Both share the same auth, caching, and brand-scoped access rules enforced by the
 - [Loops](#loops)
 - [Declarative scope (`data-with`)](#declarative-scope-data-with)
 - [Resource lifecycle (`data-when`)](#resource-lifecycle-data-when)
+- [Hardcoding and remapping attribution params](#hardcoding-and-remapping-attribution-params)
 - [Superfunnel-hosted pages](#superfunnel-hosted-pages)
 - [Session, attribution, and events](#session-attribution-and-events)
 - [Recipes](#recipes)
@@ -145,10 +146,63 @@ The SDK boots from a single `<script>` tag. All configuration lives on that tag'
 | `data-checkout-sessionid` | no | on | Set to `"off"` to stop writing `sessionid=` onto outbound checkout URLs while leaving the session, the cookie, and funnel events fully working. For pages where another system owns that param. |
 | `data-events` | no | on | Set to `"off"` to disable funnel events: the `Page View`/`New Session` emitter is not installed and `gh.track()` becomes a no-op (still callable, so existing page code doesn't throw). |
 | `data-session-url-first` | no | `"false"` | Set to `"true"` to make `?sessionid=` outrank the `hippo_session_id` cookie in the resolution ladder. Off by default so an inbound link cannot re-key a returning visitor's session on every visit — turn it on only where another system owns visitor identity. See [Superfunnel-hosted pages](#superfunnel-hosted-pages). |
+| `data-params` | no | — | Attribution values hardcoded on the page, written as a query string (`subid2=superfunnel&subid3=quiz-a`). They fill a slot only when nothing on the URL already claimed it. Names use the outbound spelling (`subid2`, `utm_source`). See [Hardcoding and remapping attribution params](#hardcoding-and-remapping-attribution-params). |
+| `data-param-map` | no | — | Maps inbound URL params onto the params the SDK sends, written as a query string (`sessionId=subid2&ref=subid3`). The inbound key is matched case-insensitively. Same fill-if-empty rule as `data-params`. See [Hardcoding and remapping attribution params](#hardcoding-and-remapping-attribution-params). |
 
 `data-session`, `data-checkout-sessionid` and `data-events` accept `"off"` and `"false"` interchangeably. Anything else — including a typo — leaves the feature **on**, deliberately: silently disabling session tracking for a whole brand returns `200`s and surfaces only in a missing-revenue report weeks later.
 
 Set `data-checkout-base` and `data-cookie-domain` together on brands running a Superfunnel-hosted subdomain — see [Session, attribution, and events](#session-attribution-and-events).
+
+### Hardcoding and remapping attribution params
+
+Two script-tag attributes let a page contribute attribution the URL doesn't carry. Both are written as a **query string**, so `URLSearchParams` does the unescaping and a value containing a space, an `&` or a comma survives without any quoting rules of its own:
+
+```html
+<script src="https://api-prod.goldenhippo.io/sdk/v4/gh.js"
+        data-key="gh_pk_gundry_a1b2c3d4e5f6"
+        data-brand="Gundry MD"
+        data-params="subid2=superfunnel&subid3=quiz-a"
+        data-param-map="sessionId=subid2&ref=subid3"></script>
+```
+
+- **`data-params`** — hardcoded values. Every link the SDK builds, and every session POST from this page, carries `subid2=superfunnel`.
+- **`data-param-map`** — `inboundUrlParam=targetParam`. Reads a query param off the landing URL and files it under a param the SDK sends. The inbound key is matched case-insensitively (`?sessionId=`, `?sessionid=` and `?SESSIONID=` all match `sessionId`), because partners are inconsistent about casing and being strict only ever loses data.
+
+Both name params in their **outbound spelling** — `subid2`, `utm_source`, `off_id` — not the internal camelCase field names. Both apply to the session POST *and* to outbound checkout links: the value lands in `affParameters` on `POST /public/v1/session` and rides every `data-gh-checkout` URL.
+
+A target the SDK doesn't send is dropped with a console warning rather than invented as a new param. Valid targets are exactly the params listed under [Session, attribution, and events](#session-attribution-and-events): the eight `utm_*`, `off_id`, `aff_id`, `subid1`–`subid5`, `landing_url`, `referral_url`, `sales_funnel`, and the seven raw click-ids.
+
+#### Precedence
+
+One ladder governs both, highest first:
+
+| | Source | Example |
+|---|---|---|
+| 1 | An explicit URL param | `?subid2=affiliate123` |
+| 2 | The click-id table | `fbclid` → `subid1`, `wbraid` → `subid4`, platform marker → `subid5` |
+| 3 | `data-param-map` | `?sessionId=abc` → `subid2` |
+| 4 | `data-params` | `subid2=superfunnel` |
+
+The rule behind it is one sentence: **anything derived from the URL beats anything the script tag says.** Both features only ever fill a slot that is still empty, so neither can erase attribution — a media buyer's ad-platform URL template can never be silently overwritten by page config, and a hardcoded value can never displace a click id.
+
+Two consequences worth knowing:
+
+- A hardcoded `landing_url` will only ever take effect on a **returning** visit. On a first visit the SDK synthesises `landingUrl` from the current page, so the slot is already full.
+- A mapping or hardcode aimed at `subid1`, `subid4` or `subid5` loses on exactly the paid traffic where it would have mattered most — see the slot table below.
+
+#### Which sub-id slot to use
+
+| Slot | Claimed by the SDK | Safe to hardcode or map to? |
+|---|---|---|
+| `subid1` | `fbclid`, `gclid`, `ScCid`, `qclid`, `twclid`, `ndclid` — first non-empty wins | **No** |
+| `subid2` | nothing | **Yes** |
+| `subid3` | nothing | **Yes** |
+| `subid4` | `wbraid:<value>` (Google web-to-app) | **No** |
+| `subid5` | platform marker — `snap`, `quora`, `twitter`, `nextdoor` | Only on traffic that is none of those four |
+
+**Use `subid2` and `subid3`.** They're the only two slots the SDK never derives a value for, which makes them the only two where a hardcode or mapping is guaranteed to land. A reasonable convention is `subid2` for the traffic system or property (`superfunnel`) and `subid3` for placement or variant.
+
+One caveat the SDK can't enforce: `subid2`/`subid3` are unclaimed *by the SDK*, not reserved globally. A media buyer can still put `?subid2=` in an ad-platform URL template, and by rung 1 above that value wins. Coordinate the slot with whoever owns the ad accounts before standardising on it.
 
 ### Superfunnel-hosted pages
 

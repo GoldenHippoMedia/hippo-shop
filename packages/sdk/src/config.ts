@@ -56,6 +56,23 @@ export interface GhConfig {
    * the URL, and a 30-day-old cookie of ours must not outrank it there.
    */
   sessionUrlFirst: boolean;
+  /**
+   * `data-params`. Attribution values hardcoded on the script tag, keyed by
+   * the *outbound* param name (`subid2`, not `subId2`) — the spelling you see
+   * in a URL and in checkout.ts's `PARAM_KEY_MAP`. Empty object when absent.
+   *
+   * These fill a slot only when it is still empty, so they are defaults rather
+   * than true overrides. See the precedence ladder on `parseLandingParams`.
+   */
+  hardcodedParams: Record<string, string>;
+  /**
+   * `data-param-map`. Inbound URL param name → outbound param name, e.g.
+   * `sessionId` → `subid2`. Empty object when absent.
+   *
+   * For partner traffic that arrives with its identifier under a name the SDK
+   * has no rule for. Same fill-if-empty semantics as `hardcodedParams`.
+   */
+  paramMap: Record<string, string>;
 }
 
 const KEY_PATTERN = /^gh_pk_[a-z0-9_-]+_[a-f0-9]+$/;
@@ -110,7 +127,38 @@ export function parseScriptConfig(script: HTMLScriptElement): GhConfig {
     checkoutSessionId: isEnabled(script.dataset['checkoutSessionid']),
     eventsEnabled: isEnabled(script.dataset['events']),
     sessionUrlFirst: isOptedIn(script.dataset['sessionUrlFirst']),
+    hardcodedParams: parseParamPairs(script.dataset['params']),
+    paramMap: parseParamPairs(script.dataset['paramMap']),
   };
+}
+
+/**
+ * Parse a `data-params` / `data-param-map` attribute. Both are written as a
+ * query string (`a=1&b=2`) so that `URLSearchParams` does the unescaping and
+ * we do not invent an encoding — a hardcoded `utm_campaign` containing a
+ * space, an `&`, or a comma has to survive, and a comma-separated list would
+ * have needed its own quoting rules to manage it.
+ *
+ * Never throws. A malformed attribute yields `{}`, matching the `isEnabled`
+ * philosophy elsewhere in this file: an optional attribute someone typo'd is
+ * not a reason to refuse to boot a whole brand's SDK. Unrecognised *targets*
+ * are a separate concern and do get a console warning — see `parseLandingParams`.
+ *
+ * Blank keys and blank values are dropped. An empty value could only ever fill
+ * a slot with nothing, so keeping it would make an "is this configured?" check
+ * lie to every reader downstream.
+ */
+function parseParamPairs(raw: string | undefined): Record<string, string> {
+  const out: Record<string, string> = {};
+  // A leading `?` is what someone copying from a real URL will paste.
+  const trimmed = (raw ?? '').trim().replace(/^\?/, '');
+  if (!trimmed) return out;
+  for (const [k, v] of new URLSearchParams(trimmed)) {
+    const key = k.trim();
+    const value = v.trim();
+    if (key && value) out[key] = value;
+  }
+  return out;
 }
 
 /**
