@@ -1060,7 +1060,11 @@ pnpm add -D @goldenhippo/hippo-shop-types
 
 ## Size budget
 
-Hard-budgeted at **11 KB gzipped**, CI-enforced on every PR and again at release (`scripts/size-check.mjs`).
+Hard-budgeted at **12 KB gzipped**, CI-enforced on every PR and again at release (`scripts/size-check.mjs`).
+
+That number is not arbitrary. Measured against the [2026 third-party-script benchmark](https://scripts.nuxt.com/learn/analytics-script-performance), `gh.js` ships ~10.8 KB transfer / ~31 KB decoded — level with Cloudflare Web Analytics (10.7 / 30.4 KB) and under half the weight of Segment (30.3 KB), which is the nearest comparable in what it actually does. The budget encodes one commitment: **stay in the lightweight tier.** It is deliberately not set somewhere the bundle cannot reach, because a budget that constrains nothing isn't one.
+
+When the budget is hit, the intended answer is trimming, not raising it.
 
 ## Provenance
 
