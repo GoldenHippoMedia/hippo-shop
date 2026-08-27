@@ -40,6 +40,71 @@ describe('parseScriptConfig', () => {
       checkoutBase: null,
       cookieDomain: null,
       brandToken: null,
+      sessionEnabled: true,
+      checkoutSessionId: true,
+      eventsEnabled: true,
+      sessionUrlFirst: false,
+    });
+  });
+
+  describe('feature toggles', () => {
+    const base = { key: goodKey, brand: 'Gundry MD', src: goodSrc };
+
+    it.each([
+      ['session', 'sessionEnabled'],
+      ['checkout-sessionid', 'checkoutSessionId'],
+      ['events', 'eventsEnabled'],
+    ] as const)('data-%s defaults to on', (_attr, field) => {
+      expect(parseScriptConfig(makeScript(base))[field]).toBe(true);
+    });
+
+    it.each([
+      ['session', 'sessionEnabled'],
+      ['checkout-sessionid', 'checkoutSessionId'],
+      ['events', 'eventsEnabled'],
+    ] as const)('data-%s="off" turns %s off', (attr, field) => {
+      expect(parseScriptConfig(makeScript({ ...base, [attr]: 'off' }))[field]).toBe(false);
+    });
+
+    // "off" and "false" are both accepted so nobody loses an afternoon to a
+    // reasonable guess. Anything else is on — a typo must not silently
+    // disable session tracking for a whole brand.
+    it.each([
+      ['off', false],
+      ['OFF', false],
+      ['  off  ', false],
+      ['false', false],
+      ['FALSE', false],
+      ['on', true],
+      ['true', true],
+      ['', true],
+      ['0', true],
+      ['no', true],
+      ['nope', true],
+    ])('data-session=%j -> sessionEnabled %s', (value, expected) => {
+      expect(parseScriptConfig(makeScript({ ...base, session: value })).sessionEnabled).toBe(
+        expected,
+      );
+    });
+
+    it('toggles are independent of one another', () => {
+      const c = parseScriptConfig(makeScript({ ...base, 'checkout-sessionid': 'off' }));
+      expect(c.checkoutSessionId).toBe(false);
+      expect(c.sessionEnabled).toBe(true);
+      expect(c.eventsEnabled).toBe(true);
+    });
+
+    it('data-session-url-first defaults to false and opts in with "true"', () => {
+      expect(parseScriptConfig(makeScript(base)).sessionUrlFirst).toBe(false);
+      expect(
+        parseScriptConfig(makeScript({ ...base, 'session-url-first': 'true' })).sessionUrlFirst,
+      ).toBe(true);
+      expect(
+        parseScriptConfig(makeScript({ ...base, 'session-url-first': 'TRUE' })).sessionUrlFirst,
+      ).toBe(true);
+      expect(
+        parseScriptConfig(makeScript({ ...base, 'session-url-first': 'yes' })).sessionUrlFirst,
+      ).toBe(false);
     });
   });
 

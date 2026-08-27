@@ -133,7 +133,17 @@ export function composeCheckoutUrl(
   }
 
   setSdkOwned(url, 'order_form_id', destination.pricing.orderFormId, logger);
-  setSdkOwned(url, 'sessionid', session.sessionId, logger);
+  if (config.checkoutSessionId) {
+    setSdkOwned(url, 'sessionid', session.sessionId, logger);
+  } else {
+    // `data-checkout-sessionid="off"`: another system owns this param on these
+    // pages, so we leave the URL's own value alone. The I2 check still runs —
+    // a foreign `sessionid` baked into a Salesforce destination record is
+    // still a misconfiguration, and it is now load-bearing rather than
+    // harmlessly overwritten, so it must not go quiet just because we stopped
+    // writing the param.
+    warnForeignSessionId(url, logger);
+  }
 
   for (const [key, paramName] of PARAM_KEY_MAP) {
     setIfAbsent(url, paramName, session.params[key]);
@@ -188,6 +198,22 @@ function setSdkOwned(url: URL, name: string, value: string | undefined | null, l
         `live funnel link); fix the destination URL/checkoutOverrideUrl in Salesforce.`,
     );
   }
+}
+
+/**
+ * Warn about a pre-existing `sessionid` on the base URL when the SDK is not
+ * writing its own. Same misconfiguration `setSdkOwned` warns about (I2), with
+ * a different remedy line: nothing overwrote it, so it is what the visitor
+ * will actually be sent with.
+ */
+function warnForeignSessionId(url: URL, logger?: Logger): void {
+  const existing = url.searchParams.get('sessionid');
+  if (existing === null) return;
+  logger?.warn(
+    `checkout: destination base URL carries "sessionid=${existing}" and ` +
+      `data-checkout-sessionid="off" leaves it in place — every visitor through this link ` +
+      `gets that one session id. Fix the destination URL/checkoutOverrideUrl in Salesforce.`,
+  );
 }
 
 // ---------------------------------------------------------------------------

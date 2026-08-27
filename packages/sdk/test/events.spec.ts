@@ -177,6 +177,10 @@ function makeConfig(overrides: Partial<GhConfig> = {}): GhConfig {
     checkoutBase: 'https://checkout.gundrymd.com',
     cookieDomain: null,
     brandToken: null,
+    sessionEnabled: true,
+    checkoutSessionId: true,
+    eventsEnabled: true,
+    sessionUrlFirst: false,
     ...overrides,
   };
 }

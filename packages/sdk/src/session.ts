@@ -18,6 +18,7 @@ import type { GhConfig } from './config';
 import type { GhDataClient } from './client';
 import { getCookieDomain, readCookie, writeCookie } from './cookies';
 import {
+  firstSessionIdParam,
   parseLandingParams,
   readSessionIdFromUrl,
   SESSION_ID_PATTERN,
@@ -171,7 +172,9 @@ export async function ensureSession(
   const logger = createLogger(config.debug);
   const search = typeof window !== 'undefined' ? window.location.search : '';
 
-  const resolved = resolveSessionId(search, logger);
+  if (!config.sessionEnabled) return resolveDisabled(config, logger);
+
+  const resolved = resolveSessionId(search, logger, config.sessionUrlFirst);
   // Hoisted out of the write below because the server-replacement path further
   // down needs the same scoping decision, and the two must not drift.
   const cookieDomain = resolved.adopted ? null : getCookieDomain(config);
@@ -333,23 +336,38 @@ interface ResolvedSessionId {
  * pilot the blast radius is analytics, not authentication or payment. The
  * regex, the cookie precedence and the debug log line are the mitigations.
  */
-function resolveSessionId(search: string, logger: Logger): ResolvedSessionId {
-  const fromCookie = readCookie(SESSION_COOKIE_NAME)?.trim();
-  if (fromCookie) {
-    if (SESSION_ID_PATTERN.test(fromCookie)) {
-      return { sessionId: fromCookie, adopted: false, persist: false };
+function resolveSessionId(search: string, logger: Logger, urlFirst: boolean): ResolvedSessionId {
+  const fromUrl = (): ResolvedSessionId | null => {
+    const id = readSessionIdFromUrl(search);
+    if (id) {
+      logger.debug('session: adopting ?sessionid= handoff', id);
+      return { sessionId: id, adopted: true, persist: true };
+    }
+    if (hasSessionIdParam(search)) {
+      logger.warn('session: ignoring malformed ?sessionid= handoff param');
+    }
+    return null;
+  };
+
+  const fromCookie = (): ResolvedSessionId | null => {
+    const id = readCookie(SESSION_COOKIE_NAME)?.trim();
+    if (!id) return null;
+    if (SESSION_ID_PATTERN.test(id)) {
+      return { sessionId: id, adopted: false, persist: false };
     }
     logger.warn('session: ignoring malformed hippo_session_id cookie value');
-  }
+    return null;
+  };
 
-  const fromUrl = readSessionIdFromUrl(search);
-  if (fromUrl) {
-    logger.debug('session: adopting ?sessionid= handoff', fromUrl);
-    return { sessionId: fromUrl, adopted: true, persist: true };
-  }
-
-  if (hasSessionIdParam(search)) {
-    logger.warn('session: ignoring malformed ?sessionid= handoff param');
+  // `sessionUrlFirst` swaps only these two rungs; the mint stays the floor.
+  // A malformed value on the winning rung falls through to the loser rather
+  // than short-circuiting to a mint — both readers already warn on their own
+  // malformed input, and dropping a usable id because the other source was
+  // garbage would be strictly worse.
+  const ladder = urlFirst ? [fromUrl, fromCookie] : [fromCookie, fromUrl];
+  for (const rung of ladder) {
+    const resolved = rung();
+    if (resolved) return resolved;
   }
 
   return { sessionId: mintSessionId(logger), adopted: false, persist: true };
@@ -375,13 +393,58 @@ function mintSessionId(logger: Logger): string {
   }
 }
 
-/** True when a non-blank `sessionid` key is present, whatever its value. */
+/**
+ * True when a non-blank `sessionid` key is present, whatever its value and
+ * whatever its casing. Matched case-insensitively for the same reason
+ * `readSessionIdFromUrl` is: otherwise a malformed `?sessionId=` would fall
+ * through to a silent mint with no warning at all.
+ */
 function hasSessionIdParam(search: string): boolean {
-  try {
-    return !!new URLSearchParams(search).get('sessionid')?.trim();
-  } catch {
-    return false;
-  }
+  return !!firstSessionIdParam(search)?.trim();
+}
+
+/**
+ * `data-session="off"`: resolve a session state that carries no identity.
+ *
+ * No POST, no cookie read, no cookie write, no mint — `sessionId` is `''`.
+ * Landing attribution is still parsed, because it is independent of identity
+ * and still has somewhere to go: `composeCheckoutUrl` writes the UTM and
+ * click-id params onto every outbound link regardless.
+ *
+ * Two things this deliberately still does. It caches and fires
+ * `gh:session-ready` exactly like the normal path — every `data-gh-checkout`
+ * link on the page waits on that event, and skipping it would leave them all
+ * at `href="#"` for the life of the page, which is a broken page rather than a
+ * disabled feature. And it returns a real `SessionState` rather than null, so
+ * `getSessionState()` has one shape for every caller.
+ *
+ * The empty `sessionId` is what suppresses the downstream effects: `setSdkOwned`
+ * skips empty values so `sessionid=` never reaches a checkout URL, and the
+ * funnel-event emitter gates on it so no Page View or New Session is emitted —
+ * an event carrying no session id is unattributable, so this dominates
+ * `eventsEnabled`.
+ *
+ * `isNew` is false: nothing was established, so the one-shot `New Session`
+ * must not arm even if something later re-enables emission.
+ */
+function resolveDisabled(config: GhConfig, logger: Logger): SessionState {
+  const href = typeof window !== 'undefined' ? window.location.href : '';
+  const referrer = typeof document !== 'undefined' ? document.referrer : '';
+  // `isReturningVisit: false` — with no session of our own there is no prior
+  // session to protect from an I3 landingUrl overwrite, and the params are
+  // never POSTed from here anyway. Parsing the full set keeps outbound links
+  // carrying everything they would otherwise carry.
+  const state: SessionState = {
+    sessionId: '',
+    adopted: false,
+    params: parseLandingParams(href, referrer, false),
+    isNew: false,
+    data: null,
+  };
+  logger.debug('session: disabled by data-session="off" — no POST, no cookie, no session id');
+  cachedState = state;
+  fireReady(state);
+  return state;
 }
 
 function fireReady(state: SessionState): void {

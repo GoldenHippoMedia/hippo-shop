@@ -256,12 +256,25 @@ export function parseLandingParams(
 export const SESSION_ID_PATTERN = /^[A-Za-z0-9._-]{1,128}$/;
 
 /**
- * Read `?sessionid=` from a query string. Returns the trimmed value when it
- * passes SESSION_ID_PATTERN, else null — absent, blank and malformed are the
- * same answer to the caller, which falls through to the cookie.
+ * Read the session-id handoff param from a query string. Returns the trimmed
+ * value when it passes SESSION_ID_PATTERN, else null — absent, blank and
+ * malformed are the same answer to the caller, which falls through to the
+ * cookie.
  *
- * The key is matched **case-sensitively** (`URLSearchParams.get` is exact)
- * because the funnel reads `sessionid` case-sensitively (session.service.ts:85).
+ * The key is matched **case-insensitively**. This used to be an exact match,
+ * justified by "the funnel reads `sessionid` case-sensitively
+ * (session.service.ts:85)" — but that is a fact about what we must *write*, and
+ * outbound checkout links still emit lowercase `sessionid` unchanged. It never
+ * justified being strict about what we *read*. Superfunnel's landing pages
+ * navigate to the offer selector with `?sessionId=` (camelCase), so the exact
+ * match meant we never adopted their id and minted our own instead, leaving the
+ * two systems disagreeing about the visitor for the whole session. Read
+ * liberally, write exactly.
+ *
+ * Note this widens what the SDK accepts from the URL, and accepting a
+ * URL-supplied id is session fixation by design (see the D1 note on
+ * `resolveSessionId`). SESSION_ID_PATTERN, not the key's casing, is the
+ * mitigation — a `?SeSsIoNiD=` attacker could always have written `?sessionid=`.
  *
  * Deliberately NOT a `ParsedParams` field: the resolved id is posted in its own
  * `affParameters.sessionId` slot, so parsing it here as well would double-send it.
@@ -269,14 +282,28 @@ export const SESSION_ID_PATTERN = /^[A-Za-z0-9._-]{1,128}$/;
  * @param search A query string, with or without the leading `?`.
  */
 export function readSessionIdFromUrl(search: string): string | null {
-  let raw: string | null;
-  try {
-    raw = new URLSearchParams(search).get('sessionid');
-  } catch {
-    return null;
-  }
-  const trimmed = raw?.trim();
+  const trimmed = firstSessionIdParam(search)?.trim();
   if (!trimmed) return null;
   if (!SESSION_ID_PATTERN.test(trimmed)) return null;
   return trimmed;
+}
+
+/**
+ * The first `sessionid`-keyed value in query-string order, whatever its casing
+ * and whatever its value. Null when the key is absent or the string will not
+ * parse.
+ *
+ * "First" is load-bearing, and this deliberately does NOT scan past a malformed
+ * match for a valid later one. Duplicate `sessionid` params are the normal case
+ * on a Superfunnel page — it appends its own to every link — and every
+ * downstream reader, the funnel included, takes the first occurrence without
+ * validating it. Recovering here would make the SDK the only party using the
+ * second value. Agreeing on a bad id beats disagreeing about a good one.
+ */
+export function firstSessionIdParam(search: string): string | null {
+  try {
+    return findCaseInsensitive(new URLSearchParams(search), 'sessionid');
+  } catch {
+    return null;
+  }
 }

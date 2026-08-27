@@ -819,6 +819,15 @@ export interface PageViewEmitterOptions {
  */
 export function installPageViewEmitter(opts: PageViewEmitterOptions): void {
   const { win, logger } = opts;
+  // `data-events="off"`: install nothing. Returning before the generation
+  // bump matters — the bump is what invalidates a previously installed
+  // emitter's closures, and a disabled install has no business doing that.
+  // Nothing else here is conditional, so no listener, timer or deadline is
+  // ever registered and there is nothing to tear down.
+  if (!opts.config.eventsEnabled) {
+    logger.debug('funnel-event: disabled by data-events="off" — emitter not installed');
+    return;
+  }
   const myGeneration = ++installGeneration;
   /** Per-emission latch. Cleared by a step change so the SPA path can re-fire. */
   let fired = false;
@@ -940,6 +949,13 @@ export function makeTrackFn(
   opts: PageViewEmitterOptions,
 ): (eventType: FunnelEventType) => Promise<void> {
   return async function track(eventType: FunnelEventType): Promise<void> {
+    // Stays callable rather than being left undefined on `window.gh`: a page
+    // that calls `gh.track()` must not start throwing because a brand flipped
+    // an attribute. Resolves, emits nothing.
+    if (!opts.config.eventsEnabled) {
+      opts.logger.debug('gh.track: ignored — events disabled by data-events="off"');
+      return;
+    }
     if (eventType !== 'Page View' && eventType !== 'New Session') {
       opts.logger.warn(`gh.track: unsupported event type "${String(eventType)}"`);
       return;
@@ -970,6 +986,16 @@ async function runPageView(opts: PageViewEmitterOptions): Promise<void> {
       if (opts.config.debug) {
         opts.logger.warn('funnel-event: session unresolved — Page View not emitted');
       }
+      return;
+    }
+
+    // `data-session="off"` resolves a real SessionState with an empty
+    // `sessionId` (see `resolveDisabled` in session.ts). An event carrying no
+    // session id is unattributable — Altern would accept it with a `200` and
+    // strand it — so session-off dominates `eventsEnabled` here rather than at
+    // install time, which also covers `gh.track` on a session-off page.
+    if (!session.sessionId) {
+      opts.logger.debug('funnel-event: no session id — Page View not emitted');
       return;
     }
 
